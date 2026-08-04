@@ -1,0 +1,1034 @@
+"""Typed data models for the DomotiApp Energy integration.
+
+Every model is JSON round-trippable. ``to_dict()`` produces exactly the shape
+that is written to storage and sent over the WebSocket API; ``from_dict()``
+rebuilds the model from input that may be incomplete, reordered or corrupted.
+
+``from_dict()`` never raises (SPEC.md §12): unknown keys are ignored and any
+value that cannot be used falls back to the documented default. That makes a
+damaged storage file degrade into a usable configuration instead of preventing
+the integration from starting.
+
+Conventions used throughout:
+
+* Times are stored as ``"HH:MM"`` strings; ``"HH:MM:SS"`` from the Home
+  Assistant time selector is accepted and normalised.
+* Weekdays are integers, Monday = 0 ... Sunday = 6, matching
+  ``datetime.weekday()`` so they compare directly against ``dt_util.now()``.
+* Timestamps are timezone-aware ``datetime`` objects and serialise to ISO 8601.
+* Optional entity links are omitted from the output when unset, never written
+  as an empty string (SPEC.md §8).
+"""
+
+from __future__ import annotations
+
+import math
+import uuid
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
+from datetime import datetime
+from typing import Any, Final, Self
+
+from homeassistant.util import dt as dt_util
+
+from .const import (
+    ALL_DAYS_OF_WEEK,
+    ALLOWED_PHASES,
+    CONFIDENCE_LEVELS,
+    CONFIDENCE_LOW,
+    CONTRACT_TYPES,
+    CONTROL_ADVICE_ONLY,
+    CONTROL_LEVEL_0_1_0,
+    CONTROL_MODES,
+    CONTROL_MONITOR_ONLY,
+    DEFAULT_CONTRACT_TYPE,
+    DEFAULT_CONTROL_MODE,
+    DEFAULT_DEVICE_TYPE,
+    DEFAULT_HOME_NAME,
+    DEFAULT_MAX_ADVICE_COUNT,
+    DEFAULT_MIN_SAVINGS_EUR,
+    DEFAULT_MIN_SOLAR_SURPLUS_W,
+    DEFAULT_PEAK_WARNING_PERCENT,
+    DEFAULT_PHASES,
+    DEFAULT_PRIORITY,
+    DEFAULT_QUIET_HOURS_END,
+    DEFAULT_QUIET_HOURS_START,
+    DEFAULT_SCALE_FACTOR,
+    DEFAULT_SOURCE_TYPE,
+    DEFAULT_STRATEGY,
+    DEVICE_ENTITY_BINDING_KEYS,
+    DEVICE_TYPES,
+    INFLEXIBLE_BY_DEFAULT_DEVICE_TYPES,
+    INITIAL_REVISION,
+    MAX_ADVICE_COUNT,
+    MAX_DAY_OF_WEEK,
+    MAX_MAIN_FUSE_A,
+    METER_MODES,
+    MIN_ADVICE_COUNT,
+    MIN_DAY_OF_WEEK,
+    MIN_MAIN_FUSE_A,
+    NOISY_BY_DEFAULT_DEVICE_TYPES,
+    NOMINAL_VOLTAGE_PER_PHASE,
+    POSITIVE_MEANS_OPTIONS,
+    PRIORITIES,
+    SCHEMA_VERSION,
+    SEVERITIES,
+    SEVERITY_INFO,
+    SOURCE_TYPES,
+    STRATEGIES,
+    UNIT_NONE,
+    UNITS,
+    VALUE_SOURCE_STATE,
+    VALUE_SOURCES,
+)
+
+# Clock bounds, used when normalising a "HH:MM" time string.
+_TIME_PARTS_REQUIRED: Final = 2
+_MAX_HOUR: Final = 23
+_MAX_MINUTE: Final = 59
+
+
+# --- Defensive coercion helpers ---------------------------------------------
+#
+# These are deliberately small and total: each one returns a usable value for
+# every possible input, so from_dict() never has to guard its callers.
+
+
+def _as_str(value: Any, default: str) -> str:
+    """Return a non-empty string, or the default."""
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return default
+
+
+def _as_optional_str(value: Any) -> str | None:
+    """Return a non-empty string, or None. Empty strings become None."""
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return None
+
+
+def _as_bool(value: Any, default: bool) -> bool:
+    """Return a boolean, or the default for anything that is not one."""
+    return value if isinstance(value, bool) else default
+
+
+def _as_number(value: Any) -> float | None:
+    """Return a finite float, or None.
+
+    Booleans are rejected explicitly: ``bool`` is a subclass of ``int``, so
+    ``True`` would otherwise silently become ``1.0``.
+    """
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        number = float(value)
+    elif isinstance(value, str):
+        try:
+            number = float(value.strip())
+        except ValueError:
+            return None
+    else:
+        return None
+    return number if math.isfinite(number) else None
+
+
+def _as_float(value: Any, default: float, *, minimum: float | None = None) -> float:
+    """Return a finite float clamped to a lower bound, or the default."""
+    number = _as_number(value)
+    if number is None:
+        return default
+    if minimum is not None and number < minimum:
+        return default
+    return number
+
+
+def _as_optional_float(
+    value: Any, *, minimum: float | None = None, maximum: float | None = None
+) -> float | None:
+    """Return a finite float within bounds, or None."""
+    number = _as_number(value)
+    if number is None:
+        return None
+    if minimum is not None and number < minimum:
+        return None
+    if maximum is not None and number > maximum:
+        return None
+    return number
+
+
+def _as_int(
+    value: Any,
+    default: int,
+    *,
+    minimum: int | None = None,
+    maximum: int | None = None,
+) -> int:
+    """Return an int clamped to the allowed range, or the default."""
+    number = _as_number(value)
+    if number is None:
+        return default
+    result = int(number)
+    if minimum is not None:
+        result = max(result, minimum)
+    if maximum is not None:
+        result = min(result, maximum)
+    return result
+
+
+def _as_optional_int(
+    value: Any, *, minimum: int | None = None, maximum: int | None = None
+) -> int | None:
+    """Return an int within bounds, or None when it is unusable."""
+    number = _as_number(value)
+    if number is None:
+        return None
+    result = int(number)
+    if minimum is not None and result < minimum:
+        return None
+    if maximum is not None and result > maximum:
+        return None
+    return result
+
+
+def _as_choice(value: Any, allowed: Sequence[Any], default: Any) -> Any:
+    """Return the value when it is one of the allowed options, else default."""
+    return value if value in allowed else default
+
+
+def _as_time(value: Any, default: str | None = None) -> str | None:
+    """Normalise "HH:MM" or "HH:MM:SS" to "HH:MM"; else return the default."""
+    if not isinstance(value, str):
+        return default
+    parts = value.strip().split(":")
+    if len(parts) < _TIME_PARTS_REQUIRED:
+        return default
+    try:
+        hour = int(parts[0])
+        minute = int(parts[1])
+    except ValueError:
+        return default
+    if not (0 <= hour <= _MAX_HOUR and 0 <= minute <= _MAX_MINUTE):
+        return default
+    return f"{hour:02d}:{minute:02d}"
+
+
+def _as_days_of_week(value: Any) -> list[int]:
+    """Return a sorted list of weekday numbers; empty input means every day."""
+    if not isinstance(value, (list, tuple, set)):
+        return list(ALL_DAYS_OF_WEEK)
+    days = {
+        day
+        for item in value
+        if (
+            day := _as_optional_int(
+                item, minimum=MIN_DAY_OF_WEEK, maximum=MAX_DAY_OF_WEEK
+            )
+        )
+        is not None
+    }
+    return sorted(days) if days else list(ALL_DAYS_OF_WEEK)
+
+
+def _as_datetime(value: Any) -> datetime | None:
+    """Parse an ISO 8601 timestamp, or return None."""
+    if isinstance(value, datetime):
+        return value
+    if not isinstance(value, str):
+        return None
+    return dt_util.parse_datetime(value)
+
+
+def _as_mapping(value: Any) -> Mapping[str, Any]:
+    """Return a mapping; anything else becomes an empty one."""
+    return value if isinstance(value, Mapping) else {}
+
+
+def _as_str_list(value: Any) -> list[str]:
+    """Return a list of non-empty strings, dropping anything unusable."""
+    if not isinstance(value, (list, tuple)):
+        return []
+    return [text for item in value if (text := _as_optional_str(item)) is not None]
+
+
+def _new_id() -> str:
+    """Return a new identifier for a manually added source or device."""
+    return str(uuid.uuid4())
+
+
+# --- Configuration models ---------------------------------------------------
+
+
+@dataclass(slots=True)
+class EntityBinding:
+    """How a single Home Assistant entity value is read and interpreted.
+
+    The unit is an explicit user choice, never derived from the entity's own
+    ``unit_of_measurement`` or its name (SPEC.md §8 and §15).
+    """
+
+    entity_id: str | None = None
+    value_source: str = VALUE_SOURCE_STATE
+    attribute_name: str | None = None
+    unit: str = UNIT_NONE
+    scale_factor: float = DEFAULT_SCALE_FACTOR
+    invert_value: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return the binding as a flat JSON-serialisable mapping."""
+        return {
+            "entity_id": self.entity_id,
+            "value_source": self.value_source,
+            "attribute_name": self.attribute_name,
+            "unit": self.unit,
+            "scale_factor": self.scale_factor,
+            "invert_value": self.invert_value,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> Self:
+        """Build a binding from stored data, filling in defaults."""
+        data = _as_mapping(data)
+        return cls(
+            entity_id=_as_optional_str(data.get("entity_id")),
+            value_source=_as_choice(
+                data.get("value_source"), VALUE_SOURCES, VALUE_SOURCE_STATE
+            ),
+            attribute_name=_as_optional_str(data.get("attribute_name")),
+            unit=_as_choice(data.get("unit"), UNITS, UNIT_NONE),
+            # A scale factor must be > 0; 0 or a negative value would silently
+            # destroy every measurement, so it falls back to the default.
+            scale_factor=_as_float(
+                data.get("scale_factor"), DEFAULT_SCALE_FACTOR, minimum=0.0
+            )
+            or DEFAULT_SCALE_FACTOR,
+            invert_value=_as_bool(data.get("invert_value"), False),
+        )
+
+    def with_entity_id(self, entity_id: str | None) -> EntityBinding:
+        """Return a copy that reads a different entity with the same rules.
+
+        Used for the separate import/export entities of a grid meter, which
+        share the unit, scale factor and inversion of their source.
+        """
+        return EntityBinding(
+            entity_id=entity_id,
+            value_source=self.value_source,
+            attribute_name=self.attribute_name,
+            unit=self.unit,
+            scale_factor=self.scale_factor,
+            invert_value=self.invert_value,
+        )
+
+
+@dataclass(slots=True)
+class HomeProfile:
+    """The manually entered properties of the home (SPEC.md §8 "Woning")."""
+
+    home_name: str = DEFAULT_HOME_NAME
+    phases: int = DEFAULT_PHASES
+    main_fuse_a: int | None = None
+    max_grid_power_w: float | None = None
+    peak_warning_percent: int = DEFAULT_PEAK_WARNING_PERCENT
+    contract_type: str = DEFAULT_CONTRACT_TYPE
+    fixed_import_price_eur_kwh: float | None = None
+    feed_in_price_eur_kwh: float | None = None
+    low_price_threshold_eur_kwh: float | None = None
+    high_price_threshold_eur_kwh: float | None = None
+    min_solar_surplus_w: float = DEFAULT_MIN_SOLAR_SURPLUS_W
+    default_strategy: str = DEFAULT_STRATEGY
+    # Fixed to advice_only in 0.1.0; the field exists so a later release can
+    # widen it without a storage migration (SPEC.md §2.2).
+    control_level: str = CONTROL_LEVEL_0_1_0
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return the profile as a JSON-serialisable mapping."""
+        return {
+            "home_name": self.home_name,
+            "phases": self.phases,
+            "main_fuse_a": self.main_fuse_a,
+            "max_grid_power_w": self.max_grid_power_w,
+            "peak_warning_percent": self.peak_warning_percent,
+            "contract_type": self.contract_type,
+            "fixed_import_price_eur_kwh": self.fixed_import_price_eur_kwh,
+            "feed_in_price_eur_kwh": self.feed_in_price_eur_kwh,
+            "low_price_threshold_eur_kwh": self.low_price_threshold_eur_kwh,
+            "high_price_threshold_eur_kwh": self.high_price_threshold_eur_kwh,
+            "min_solar_surplus_w": self.min_solar_surplus_w,
+            "default_strategy": self.default_strategy,
+            "control_level": self.control_level,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> Self:
+        """Build a home profile from stored data, filling in defaults."""
+        data = _as_mapping(data)
+        return cls(
+            home_name=_as_str(data.get("home_name"), DEFAULT_HOME_NAME),
+            phases=_as_choice(data.get("phases"), ALLOWED_PHASES, DEFAULT_PHASES),
+            main_fuse_a=_as_optional_int(
+                data.get("main_fuse_a"),
+                minimum=MIN_MAIN_FUSE_A,
+                maximum=MAX_MAIN_FUSE_A,
+            ),
+            max_grid_power_w=_as_optional_float(
+                data.get("max_grid_power_w"), minimum=0.0
+            ),
+            peak_warning_percent=_as_int(
+                data.get("peak_warning_percent"),
+                DEFAULT_PEAK_WARNING_PERCENT,
+                minimum=0,
+                maximum=100,
+            ),
+            contract_type=_as_choice(
+                data.get("contract_type"), CONTRACT_TYPES, DEFAULT_CONTRACT_TYPE
+            ),
+            fixed_import_price_eur_kwh=_as_optional_float(
+                data.get("fixed_import_price_eur_kwh")
+            ),
+            feed_in_price_eur_kwh=_as_optional_float(data.get("feed_in_price_eur_kwh")),
+            low_price_threshold_eur_kwh=_as_optional_float(
+                data.get("low_price_threshold_eur_kwh")
+            ),
+            high_price_threshold_eur_kwh=_as_optional_float(
+                data.get("high_price_threshold_eur_kwh")
+            ),
+            min_solar_surplus_w=_as_float(
+                data.get("min_solar_surplus_w"),
+                DEFAULT_MIN_SOLAR_SURPLUS_W,
+                minimum=0.0,
+            ),
+            default_strategy=_as_choice(
+                data.get("default_strategy"), STRATEGIES, DEFAULT_STRATEGY
+            ),
+            # Whatever is stored, 0.1.0 only ever runs in advice_only.
+            control_level=CONTROL_LEVEL_0_1_0,
+        )
+
+    @property
+    def theoretical_max_grid_power_w(self) -> float | None:
+        """Return phases x 230 V x main fuse, or None when the fuse is unset.
+
+        This is shown as a hint in the GUI only. Every calculation uses
+        ``max_grid_power_w`` exclusively (SPEC.md §8).
+        """
+        if self.main_fuse_a is None:
+            return None
+        return float(self.phases * NOMINAL_VOLTAGE_PER_PHASE * self.main_fuse_a)
+
+
+@dataclass(slots=True)
+class EnergySource:
+    """A manually configured energy source (SPEC.md §8 "Energiebronnen")."""
+
+    id: str = field(default_factory=_new_id)
+    name: str = ""
+    type: str = DEFAULT_SOURCE_TYPE
+    enabled: bool = True
+    binding: EntityBinding = field(default_factory=EntityBinding)
+    # Grid meter only. Never derived or guessed: when the installer has not
+    # chosen a meter mode, the calculator treats the meter as unusable.
+    meter_mode: str | None = None
+    positive_means: str | None = None
+    import_entity_id: str | None = None
+    export_entity_id: str | None = None
+    notes: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return the source as a flat JSON-serialisable mapping."""
+        return {
+            "id": self.id,
+            "name": self.name,
+            "type": self.type,
+            "enabled": self.enabled,
+            **self.binding.to_dict(),
+            "meter_mode": self.meter_mode,
+            "positive_means": self.positive_means,
+            "import_entity_id": self.import_entity_id,
+            "export_entity_id": self.export_entity_id,
+            "notes": self.notes,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> Self:
+        """Build a source from stored data, filling in defaults."""
+        data = _as_mapping(data)
+        return cls(
+            id=_as_str(data.get("id"), _new_id()),
+            name=_as_str(data.get("name"), ""),
+            type=_as_choice(data.get("type"), SOURCE_TYPES, DEFAULT_SOURCE_TYPE),
+            enabled=_as_bool(data.get("enabled"), True),
+            binding=EntityBinding.from_dict(data),
+            meter_mode=_as_choice(data.get("meter_mode"), METER_MODES, None),
+            positive_means=_as_choice(
+                data.get("positive_means"), POSITIVE_MEANS_OPTIONS, None
+            ),
+            import_entity_id=_as_optional_str(data.get("import_entity_id")),
+            export_entity_id=_as_optional_str(data.get("export_entity_id")),
+            notes=_as_optional_str(data.get("notes")),
+        )
+
+    @property
+    def import_binding(self) -> EntityBinding:
+        """Return the binding that reads the separate import entity."""
+        return self.binding.with_entity_id(self.import_entity_id)
+
+    @property
+    def export_binding(self) -> EntityBinding:
+        """Return the binding that reads the separate export entity."""
+        return self.binding.with_entity_id(self.export_entity_id)
+
+
+@dataclass(slots=True)
+class DeviceProfile:
+    """A manually configured appliance (SPEC.md §8 "Apparaten")."""
+
+    id: str = field(default_factory=_new_id)
+    name: str = ""
+    device_type: str = DEFAULT_DEVICE_TYPE
+    enabled: bool = True
+    priority: str = DEFAULT_PRIORITY
+    location: str | None = None
+    control_mode: str = DEFAULT_CONTROL_MODE
+    nominal_power_w: float | None = None
+    energy_per_cycle_kwh: float | None = None
+    duration_minutes: int | None = None
+    earliest_start: str | None = None
+    latest_finish: str | None = None
+    days_of_week: list[int] = field(default_factory=lambda: list(ALL_DAYS_OF_WEEK))
+    notes: str | None = None
+    is_noisy: bool = False
+    is_flexible: bool = True
+    # Optional entity links, keyed by DEVICE_ENTITY_BINDING_KEYS. A key is
+    # absent when unset; it is never stored as an empty string.
+    entity_links: dict[str, str] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return the device as a flat JSON-serialisable mapping."""
+        return {
+            "id": self.id,
+            "name": self.name,
+            "device_type": self.device_type,
+            "enabled": self.enabled,
+            "priority": self.priority,
+            "location": self.location,
+            "control_mode": self.control_mode,
+            "nominal_power_w": self.nominal_power_w,
+            "energy_per_cycle_kwh": self.energy_per_cycle_kwh,
+            "duration_minutes": self.duration_minutes,
+            "earliest_start": self.earliest_start,
+            "latest_finish": self.latest_finish,
+            "days_of_week": list(self.days_of_week),
+            "notes": self.notes,
+            "is_noisy": self.is_noisy,
+            "is_flexible": self.is_flexible,
+            **self.entity_links,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> Self:
+        """Build a device from stored data, filling in defaults."""
+        data = _as_mapping(data)
+        device_type = _as_choice(
+            data.get("device_type"), DEVICE_TYPES, DEFAULT_DEVICE_TYPE
+        )
+        return cls(
+            id=_as_str(data.get("id"), _new_id()),
+            name=_as_str(data.get("name"), ""),
+            device_type=device_type,
+            enabled=_as_bool(data.get("enabled"), True),
+            priority=_as_choice(data.get("priority"), PRIORITIES, DEFAULT_PRIORITY),
+            location=_as_optional_str(data.get("location")),
+            control_mode=_as_choice(
+                data.get("control_mode"), CONTROL_MODES, DEFAULT_CONTROL_MODE
+            ),
+            nominal_power_w=_as_optional_float(
+                data.get("nominal_power_w"), minimum=0.0
+            ),
+            energy_per_cycle_kwh=_as_optional_float(
+                data.get("energy_per_cycle_kwh"), minimum=0.0
+            ),
+            duration_minutes=_as_optional_int(data.get("duration_minutes"), minimum=0),
+            earliest_start=_as_time(data.get("earliest_start")),
+            latest_finish=_as_time(data.get("latest_finish")),
+            days_of_week=_as_days_of_week(data.get("days_of_week")),
+            notes=_as_optional_str(data.get("notes")),
+            is_noisy=_as_bool(
+                data.get("is_noisy"), device_type in NOISY_BY_DEFAULT_DEVICE_TYPES
+            ),
+            is_flexible=_as_bool(
+                data.get("is_flexible"),
+                device_type not in INFLEXIBLE_BY_DEFAULT_DEVICE_TYPES,
+            ),
+            entity_links={
+                key: entity_id
+                for key in DEVICE_ENTITY_BINDING_KEYS
+                if (entity_id := _as_optional_str(data.get(key))) is not None
+            },
+        )
+
+    @property
+    def effective_control_mode(self) -> str:
+        """Return the control mode the backend actually applies.
+
+        In 0.1.0 everything except monitor_only is treated as advice_only
+        (SPEC.md §2.2); nothing is ever controlled.
+        """
+        if self.control_mode == CONTROL_MONITOR_ONLY:
+            return CONTROL_MONITOR_ONLY
+        return CONTROL_ADVICE_ONLY
+
+    @property
+    def has_time_window(self) -> bool:
+        """Return whether both ends of the allowed time window are set."""
+        return self.earliest_start is not None and self.latest_finish is not None
+
+
+@dataclass(slots=True)
+class UserPreferences:
+    """Advice preferences (SPEC.md §8 "Voorkeuren")."""
+
+    quiet_hours_start: str = DEFAULT_QUIET_HOURS_START
+    quiet_hours_end: str = DEFAULT_QUIET_HOURS_END
+    allow_advice_during_quiet_hours: bool = False
+    prefer_solar: bool = True
+    prefer_low_price: bool = True
+    respect_max_grid_load: bool = True
+    # Filters only advice for which a saving was actually calculated; safety,
+    # peak, missing-data and neutral advice is never filtered (SPEC.md §8).
+    min_savings_eur: float = DEFAULT_MIN_SAVINGS_EUR
+    max_advice_count: int = DEFAULT_MAX_ADVICE_COUNT
+    show_technical_explanation: bool = True
+    show_estimated_savings: bool = True
+    show_confidence: bool = True
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return the preferences as a JSON-serialisable mapping."""
+        return {
+            "quiet_hours_start": self.quiet_hours_start,
+            "quiet_hours_end": self.quiet_hours_end,
+            "allow_advice_during_quiet_hours": self.allow_advice_during_quiet_hours,
+            "prefer_solar": self.prefer_solar,
+            "prefer_low_price": self.prefer_low_price,
+            "respect_max_grid_load": self.respect_max_grid_load,
+            "min_savings_eur": self.min_savings_eur,
+            "max_advice_count": self.max_advice_count,
+            "show_technical_explanation": self.show_technical_explanation,
+            "show_estimated_savings": self.show_estimated_savings,
+            "show_confidence": self.show_confidence,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> Self:
+        """Build preferences from stored data, filling in defaults."""
+        data = _as_mapping(data)
+        return cls(
+            quiet_hours_start=_as_time(
+                data.get("quiet_hours_start"), DEFAULT_QUIET_HOURS_START
+            )
+            or DEFAULT_QUIET_HOURS_START,
+            quiet_hours_end=_as_time(
+                data.get("quiet_hours_end"), DEFAULT_QUIET_HOURS_END
+            )
+            or DEFAULT_QUIET_HOURS_END,
+            allow_advice_during_quiet_hours=_as_bool(
+                data.get("allow_advice_during_quiet_hours"), False
+            ),
+            prefer_solar=_as_bool(data.get("prefer_solar"), True),
+            prefer_low_price=_as_bool(data.get("prefer_low_price"), True),
+            respect_max_grid_load=_as_bool(data.get("respect_max_grid_load"), True),
+            min_savings_eur=_as_float(
+                data.get("min_savings_eur"), DEFAULT_MIN_SAVINGS_EUR, minimum=0.0
+            ),
+            max_advice_count=_as_int(
+                data.get("max_advice_count"),
+                DEFAULT_MAX_ADVICE_COUNT,
+                minimum=MIN_ADVICE_COUNT,
+                maximum=MAX_ADVICE_COUNT,
+            ),
+            show_technical_explanation=_as_bool(
+                data.get("show_technical_explanation"), True
+            ),
+            show_estimated_savings=_as_bool(data.get("show_estimated_savings"), True),
+            show_confidence=_as_bool(data.get("show_confidence"), True),
+        )
+
+
+@dataclass(slots=True)
+class LogEntry:
+    """A single logbook event (SPEC.md §8 "Logboek").
+
+    Never holds a full Home Assistant state object, a location or any other
+    personal data: only the fields below are stored.
+    """
+
+    id: str = field(default_factory=_new_id)
+    timestamp: datetime = field(default_factory=dt_util.utcnow)
+    event_type: str = ""
+    title: str = ""
+    message: str = ""
+    severity: str = SEVERITY_INFO
+    # Identifies what the event was about (a source or device id, for example)
+    # so repeated events about the same subject can be collapsed.
+    subject: str | None = None
+    count: int = 1
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return the entry as a JSON-serialisable mapping."""
+        return {
+            "id": self.id,
+            "timestamp": self.timestamp.isoformat(),
+            "event_type": self.event_type,
+            "title": self.title,
+            "message": self.message,
+            "severity": self.severity,
+            "subject": self.subject,
+            "count": self.count,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> Self:
+        """Build a log entry from stored data, filling in defaults."""
+        data = _as_mapping(data)
+        return cls(
+            id=_as_str(data.get("id"), _new_id()),
+            timestamp=_as_datetime(data.get("timestamp")) or dt_util.utcnow(),
+            event_type=_as_str(data.get("event_type"), ""),
+            title=_as_str(data.get("title"), ""),
+            message=_as_str(data.get("message"), ""),
+            severity=_as_choice(data.get("severity"), SEVERITIES, SEVERITY_INFO),
+            subject=_as_optional_str(data.get("subject")),
+            count=_as_int(data.get("count"), 1, minimum=1),
+        )
+
+
+@dataclass(slots=True)
+class StoredConfiguration:
+    """The complete persisted configuration (SPEC.md §13).
+
+    ``logs`` is ordered newest first, so trimming to the maximum length keeps
+    the most recent events.
+    """
+
+    schema_version: int = SCHEMA_VERSION
+    revision: int = INITIAL_REVISION
+    home: HomeProfile = field(default_factory=HomeProfile)
+    sources: list[EnergySource] = field(default_factory=list)
+    devices: list[DeviceProfile] = field(default_factory=list)
+    preferences: UserPreferences = field(default_factory=UserPreferences)
+    logs: list[LogEntry] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return the configuration as a JSON-serialisable mapping."""
+        return {
+            "schema_version": self.schema_version,
+            "revision": self.revision,
+            "home": self.home.to_dict(),
+            "sources": [source.to_dict() for source in self.sources],
+            "devices": [device.to_dict() for device in self.devices],
+            "preferences": self.preferences.to_dict(),
+            "logs": [entry.to_dict() for entry in self.logs],
+        }
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any] | None) -> Self:
+        """Build a configuration from stored data, filling in defaults.
+
+        A missing, empty or damaged payload yields a valid default
+        configuration rather than an error.
+        """
+        data = _as_mapping(data)
+        return cls(
+            schema_version=_as_int(
+                data.get("schema_version"), SCHEMA_VERSION, minimum=1
+            ),
+            revision=_as_int(data.get("revision"), INITIAL_REVISION, minimum=1),
+            home=HomeProfile.from_dict(_as_mapping(data.get("home"))),
+            sources=[
+                EnergySource.from_dict(item)
+                for item in _as_sequence(data.get("sources"))
+            ],
+            devices=[
+                DeviceProfile.from_dict(item)
+                for item in _as_sequence(data.get("devices"))
+            ],
+            preferences=UserPreferences.from_dict(_as_mapping(data.get("preferences"))),
+            logs=[LogEntry.from_dict(item) for item in _as_sequence(data.get("logs"))],
+        )
+
+
+def _as_sequence(value: Any) -> list[Mapping[str, Any]]:
+    """Return a list of mappings, dropping every entry that is not one."""
+    if not isinstance(value, (list, tuple)):
+        return []
+    return [item for item in value if isinstance(item, Mapping)]
+
+
+# --- Runtime result models --------------------------------------------------
+#
+# These are never persisted. They travel from the calculator to the advisor,
+# the coach provider, the WebSocket API and the entities.
+
+
+@dataclass(slots=True)
+class EnergySnapshot:
+    """The raw, normalised measurements at one moment in time (SPEC.md §16).
+
+    ``grid_power_w`` is already normalised to the internal convention:
+    positive means import from the grid, negative means export.
+    """
+
+    timestamp: datetime = field(default_factory=dt_util.utcnow)
+    grid_power_w: float | None = None
+    solar_power_w: float | None = None
+    household_consumption_w: float | None = None
+    battery_power_w: float | None = None
+    current_price_eur_kwh: float | None = None
+    # Source ids whose entity could not be read, and the reason per source.
+    invalid_source_ids: list[str] = field(default_factory=list)
+    reason_codes: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return the snapshot as a JSON-serialisable mapping."""
+        return {
+            "timestamp": self.timestamp.isoformat(),
+            "grid_power_w": self.grid_power_w,
+            "solar_power_w": self.solar_power_w,
+            "household_consumption_w": self.household_consumption_w,
+            "battery_power_w": self.battery_power_w,
+            "current_price_eur_kwh": self.current_price_eur_kwh,
+            "invalid_source_ids": list(self.invalid_source_ids),
+            "reason_codes": list(self.reason_codes),
+        }
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> Self:
+        """Build a snapshot from a mapping, filling in defaults."""
+        data = _as_mapping(data)
+        return cls(
+            timestamp=_as_datetime(data.get("timestamp")) or dt_util.utcnow(),
+            grid_power_w=_as_optional_float(data.get("grid_power_w")),
+            solar_power_w=_as_optional_float(data.get("solar_power_w")),
+            household_consumption_w=_as_optional_float(
+                data.get("household_consumption_w")
+            ),
+            battery_power_w=_as_optional_float(data.get("battery_power_w")),
+            current_price_eur_kwh=_as_optional_float(data.get("current_price_eur_kwh")),
+            invalid_source_ids=_as_str_list(data.get("invalid_source_ids")),
+            reason_codes=_as_str_list(data.get("reason_codes")),
+        )
+
+
+@dataclass(slots=True)
+class DataQualityResult:
+    """The weighted data completeness checklist (SPEC.md §16)."""
+
+    score: int = 0
+    completed_items: list[str] = field(default_factory=list)
+    missing_items: list[str] = field(default_factory=list)
+    invalid_items: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return the result as a JSON-serialisable mapping."""
+        return {
+            "score": self.score,
+            "completed_items": list(self.completed_items),
+            "missing_items": list(self.missing_items),
+            "invalid_items": list(self.invalid_items),
+        }
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> Self:
+        """Build a result from a mapping, filling in defaults."""
+        data = _as_mapping(data)
+        return cls(
+            score=_as_int(data.get("score"), 0, minimum=0, maximum=100),
+            completed_items=_as_str_list(data.get("completed_items")),
+            missing_items=_as_str_list(data.get("missing_items")),
+            invalid_items=_as_str_list(data.get("invalid_items")),
+        )
+
+
+@dataclass(slots=True)
+class EnergyMetrics:
+    """Everything the calculator derived from a snapshot (SPEC.md §16)."""
+
+    timestamp: datetime = field(default_factory=dt_util.utcnow)
+    grid_power_w: float | None = None
+    solar_surplus_w: float | None = None
+    solar_surplus_confidence: str = CONFIDENCE_LOW
+    grid_load_percent: float | None = None
+    peak_risk: bool = False
+    current_price_eur_kwh: float | None = None
+    data_quality: DataQualityResult = field(default_factory=DataQualityResult)
+    energy_score: int | None = None
+    # The individual weighted components, so the coach can explain the score.
+    score_components: dict[str, float] = field(default_factory=dict)
+    reason_codes: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return the metrics as a JSON-serialisable mapping."""
+        return {
+            "timestamp": self.timestamp.isoformat(),
+            "grid_power_w": self.grid_power_w,
+            "solar_surplus_w": self.solar_surplus_w,
+            "solar_surplus_confidence": self.solar_surplus_confidence,
+            "grid_load_percent": self.grid_load_percent,
+            "peak_risk": self.peak_risk,
+            "current_price_eur_kwh": self.current_price_eur_kwh,
+            "data_quality": self.data_quality.to_dict(),
+            "energy_score": self.energy_score,
+            "score_components": dict(self.score_components),
+            "reason_codes": list(self.reason_codes),
+        }
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> Self:
+        """Build metrics from a mapping, filling in defaults."""
+        data = _as_mapping(data)
+        return cls(
+            timestamp=_as_datetime(data.get("timestamp")) or dt_util.utcnow(),
+            grid_power_w=_as_optional_float(data.get("grid_power_w")),
+            solar_surplus_w=_as_optional_float(data.get("solar_surplus_w")),
+            solar_surplus_confidence=_as_choice(
+                data.get("solar_surplus_confidence"), CONFIDENCE_LEVELS, CONFIDENCE_LOW
+            ),
+            grid_load_percent=_as_optional_float(data.get("grid_load_percent")),
+            peak_risk=_as_bool(data.get("peak_risk"), False),
+            current_price_eur_kwh=_as_optional_float(data.get("current_price_eur_kwh")),
+            data_quality=DataQualityResult.from_dict(
+                _as_mapping(data.get("data_quality"))
+            ),
+            energy_score=_as_optional_int(
+                data.get("energy_score"), minimum=0, maximum=100
+            ),
+            score_components=_as_number_mapping(data.get("score_components")),
+            reason_codes=_as_str_list(data.get("reason_codes")),
+        )
+
+
+def _as_number_mapping(value: Any) -> dict[str, float]:
+    """Return a mapping of names to finite floats, dropping unusable entries."""
+    mapping = _as_mapping(value)
+    return {
+        key: number
+        for key, raw in mapping.items()
+        if isinstance(key, str) and (number := _as_number(raw)) is not None
+    }
+
+
+def _as_measurements(value: Any) -> dict[str, float | str]:
+    """Return advice measurements: finite numbers and short strings only."""
+    mapping = _as_mapping(value)
+    measurements: dict[str, float | str] = {}
+    for key, raw in mapping.items():
+        if not isinstance(key, str):
+            continue
+        number = _as_number(raw)
+        if number is not None:
+            measurements[key] = number
+        elif (text := _as_optional_str(raw)) is not None:
+            measurements[key] = text
+    return measurements
+
+
+@dataclass(slots=True)
+class AdviceItem:
+    """A single piece of advice (SPEC.md §12)."""
+
+    id: str
+    title: str
+    message: str
+    severity: str
+    reason_code: str
+    confidence: str
+    recommended_time: str | None = None
+    estimated_savings_eur: float | None = None
+    related_device_ids: list[str] = field(default_factory=list)
+    measurements: dict[str, float | str] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return the advice as a JSON-serialisable mapping."""
+        return {
+            "id": self.id,
+            "title": self.title,
+            "message": self.message,
+            "severity": self.severity,
+            "reason_code": self.reason_code,
+            "confidence": self.confidence,
+            "recommended_time": self.recommended_time,
+            "estimated_savings_eur": self.estimated_savings_eur,
+            "related_device_ids": list(self.related_device_ids),
+            "measurements": dict(self.measurements),
+        }
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> Self:
+        """Build advice from a mapping, filling in defaults."""
+        data = _as_mapping(data)
+        return cls(
+            id=_as_str(data.get("id"), _new_id()),
+            title=_as_str(data.get("title"), ""),
+            message=_as_str(data.get("message"), ""),
+            severity=_as_choice(data.get("severity"), SEVERITIES, SEVERITY_INFO),
+            reason_code=_as_str(data.get("reason_code"), ""),
+            confidence=_as_choice(
+                data.get("confidence"), CONFIDENCE_LEVELS, CONFIDENCE_LOW
+            ),
+            recommended_time=_as_optional_str(data.get("recommended_time")),
+            estimated_savings_eur=_as_optional_float(data.get("estimated_savings_eur")),
+            related_device_ids=_as_str_list(data.get("related_device_ids")),
+            measurements=_as_measurements(data.get("measurements")),
+        )
+
+
+@dataclass(slots=True)
+class CoachResult:
+    """The complete coach output shown in the panel (SPEC.md §8 and §17).
+
+    ``explanations`` is filled by the backend and keyed by the fixed question
+    keys from ``const.EXPLANATION_KEYS``. The frontend only renders these
+    strings and never draws its own conclusions.
+    """
+
+    generated_at: datetime = field(default_factory=dt_util.utcnow)
+    primary_advice: AdviceItem | None = None
+    advice: list[AdviceItem] = field(default_factory=list)
+    metrics: EnergyMetrics = field(default_factory=EnergyMetrics)
+    explanations: dict[str, str] = field(default_factory=dict)
+    missing_data: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return the coach result as a JSON-serialisable mapping."""
+        return {
+            "generated_at": self.generated_at.isoformat(),
+            "primary_advice": (
+                self.primary_advice.to_dict() if self.primary_advice else None
+            ),
+            "advice": [item.to_dict() for item in self.advice],
+            "metrics": self.metrics.to_dict(),
+            "explanations": dict(self.explanations),
+            "missing_data": list(self.missing_data),
+        }
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> Self:
+        """Build a coach result from a mapping, filling in defaults."""
+        data = _as_mapping(data)
+        primary = data.get("primary_advice")
+        return cls(
+            generated_at=_as_datetime(data.get("generated_at")) or dt_util.utcnow(),
+            primary_advice=(
+                AdviceItem.from_dict(primary) if isinstance(primary, Mapping) else None
+            ),
+            advice=[
+                AdviceItem.from_dict(item) for item in _as_sequence(data.get("advice"))
+            ],
+            metrics=EnergyMetrics.from_dict(_as_mapping(data.get("metrics"))),
+            explanations={
+                key: text
+                for key, raw in _as_mapping(data.get("explanations")).items()
+                if isinstance(key, str) and (text := _as_optional_str(raw)) is not None
+            },
+            missing_data=_as_str_list(data.get("missing_data")),
+        )

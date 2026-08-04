@@ -50,6 +50,9 @@ MAX_LOG_ENTRIES: Final = 200
 # adding a new log line (anti-spam rule, SPEC.md §8 "Logboek").
 LOG_DEDUPE_WINDOW_MINUTES: Final = 15
 
+# Revision of a configuration that has never been written.
+INITIAL_REVISION: Final = 1
+
 # --- WebSocket API (SPEC.md §14) --------------------------------------------
 
 WS_CONFIG_GET: Final = f"{DOMAIN}/config/get"
@@ -90,6 +93,9 @@ SERVICE_CLEAR_LOG: Final = "clear_log"
 PHASES_SINGLE: Final = 1
 PHASES_THREE: Final = 3
 ALLOWED_PHASES: Final[tuple[int, ...]] = (PHASES_SINGLE, PHASES_THREE)
+# A single-phase connection is the conservative assumption: it yields the
+# lowest theoretical maximum, so nothing is ever over-estimated by default.
+DEFAULT_PHASES: Final = PHASES_SINGLE
 
 # Nominal grid voltage per phase, used only for the informational hint
 # "theoretical maximum = phases x 230 V x main_fuse_a". Calculations use
@@ -102,6 +108,9 @@ MAX_MAIN_FUSE_A: Final = 100
 CONTRACT_TYPE_FIXED: Final = "fixed"
 CONTRACT_TYPE_DYNAMIC: Final = "dynamic"
 CONTRACT_TYPES: Final[tuple[str, ...]] = (CONTRACT_TYPE_FIXED, CONTRACT_TYPE_DYNAMIC)
+# A fixed contract never produces price advice, so it is the safe default:
+# no advice is generated until the installer explicitly selects "dynamic".
+DEFAULT_CONTRACT_TYPE: Final = CONTRACT_TYPE_FIXED
 
 STRATEGY_COMFORT: Final = "comfort"
 STRATEGY_BALANCED: Final = "balanced"
@@ -152,6 +161,10 @@ SOURCE_TYPES: Final[tuple[str, ...]] = (
     SOURCE_TYPE_HOME_BATTERY,
     SOURCE_TYPE_GENERAL_CONSUMPTION,
 )
+# Fallback for a stored source whose type is missing or unrecognised. General
+# consumption is the least harmful choice: it only ever feeds the secondary
+# solar-surplus calculation and never drives grid or price advice.
+DEFAULT_SOURCE_TYPE: Final = SOURCE_TYPE_GENERAL_CONSUMPTION
 
 VALUE_SOURCE_STATE: Final = "state"
 VALUE_SOURCE_ATTRIBUTE: Final = "attribute"
@@ -222,6 +235,9 @@ DEVICE_TYPES: Final[tuple[str, ...]] = (
     DEVICE_TYPE_GENERIC_SCHEDULABLE,
     DEVICE_TYPE_GENERIC_MONITOR,
 )
+# Fallback for a stored device whose type is missing or unrecognised. A monitor
+# is never flexible and never produces advice, so nothing is misadvised.
+DEFAULT_DEVICE_TYPE: Final = DEVICE_TYPE_GENERIC_MONITOR
 
 # Device types that default to is_noisy = true (SPEC.md §8).
 NOISY_BY_DEFAULT_DEVICE_TYPES: Final[frozenset[str]] = frozenset(
@@ -265,6 +281,12 @@ DEVICE_ENTITY_BINDING_KEYS: Final[tuple[str, ...]] = (
 )
 
 # --- Preferences (SPEC.md §8 "Voorkeuren") ----------------------------------
+
+# Weekday numbering follows datetime.weekday(): Monday = 0 ... Sunday = 6, so
+# a stored day list can be compared directly against dt_util.now().weekday().
+ALL_DAYS_OF_WEEK: Final[tuple[int, ...]] = (0, 1, 2, 3, 4, 5, 6)
+MIN_DAY_OF_WEEK: Final = 0
+MAX_DAY_OF_WEEK: Final = 6
 
 DEFAULT_QUIET_HOURS_START: Final = "22:00"
 DEFAULT_QUIET_HOURS_END: Final = "07:00"
