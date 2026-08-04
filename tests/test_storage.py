@@ -13,20 +13,20 @@ from custom_components.domotiapp_energy.const import (
     CONTROL_ADVICE_ONLY,
     CONTROL_MONITOR_ONLY,
     DEFAULT_CONTRACT_TYPE,
-    DEFAULT_DEVICE_TYPE,
     DEFAULT_HOME_NAME,
     DEFAULT_MAX_ADVICE_COUNT,
     DEFAULT_PEAK_WARNING_PERCENT,
     DEFAULT_PHASES,
     DEFAULT_PRIORITY,
     DEFAULT_SCALE_FACTOR,
-    DEFAULT_SOURCE_TYPE,
     DEVICE_TYPE_DISHWASHER,
     DEVICE_TYPE_HEAT_PUMP,
     INITIAL_REVISION,
+    INVALID_REASON_UNKNOWN_TYPE,
     LOG_DEDUPE_WINDOW_MINUTES,
     LOG_EVENT_ADVICE_RECALCULATED,
     LOG_EVENT_CONFIG_CHANGED,
+    LOG_EVENT_INVALID_CONFIGURATION,
     MAX_ADVICE_COUNT,
     MAX_LOG_ENTRIES,
     METER_MODE_SINGLE_SIGNED,
@@ -352,7 +352,7 @@ async def test_unknown_and_invalid_fields_fall_back_to_defaults(
             "sources": [
                 {
                     "id": "source-1",
-                    "type": "nonsense",
+                    "type": SOURCE_TYPE_GRID_METER,
                     "unit": "furlongs",
                     "scale_factor": -5,
                     "value_source": "telepathy",
@@ -360,7 +360,9 @@ async def test_unknown_and_invalid_fields_fall_back_to_defaults(
                 },
                 "this is not a mapping",
             ],
-            "devices": [{"id": "device-1", "device_type": "teleporter"}],
+            "devices": [
+                {"id": "device-1", "device_type": DEVICE_TYPE_DISHWASHER, "priority": 7}
+            ],
             "preferences": {"max_advice_count": 99, "prefer_solar": "yes"},
             "logs": [{"severity": "explosive", "count": -3}],
         }
@@ -379,13 +381,15 @@ async def test_unknown_and_invalid_fields_fall_back_to_defaults(
     # Entries that are not mappings are dropped, the rest is repaired.
     assert len(config.sources) == 1
     assert config.sources[0].id == "source-1"
-    assert config.sources[0].type == DEFAULT_SOURCE_TYPE
     assert config.sources[0].binding.unit == UNIT_NONE
     assert config.sources[0].binding.scale_factor == DEFAULT_SCALE_FACTOR
     assert config.sources[0].binding.value_source == VALUE_SOURCE_STATE
     # Never guessed: an unusable meter mode stays unset (SPEC.md §8).
     assert config.sources[0].meter_mode is None
-    assert config.devices[0].device_type == DEFAULT_DEVICE_TYPE
+    # A valid type is untouched, so the row stays usable.
+    assert config.sources[0].type == SOURCE_TYPE_GRID_METER
+    assert config.sources[0].invalid_reason is None
+    assert config.devices[0].priority == DEFAULT_PRIORITY
     assert config.preferences.max_advice_count == MAX_ADVICE_COUNT
     assert config.preferences.prefer_solar is True
     assert config.logs[0].severity == SEVERITY_INFO
@@ -489,7 +493,12 @@ def test_device_defaults_depend_on_the_device_type() -> None:
 def test_device_entity_links_are_omitted_when_unset() -> None:
     """An unset entity link is absent, never an empty string (SPEC.md §8)."""
     device = DeviceProfile.from_dict(
-        {"id": "d1", "power_entity": "sensor.power", "status_entity": ""}
+        {
+            "id": "d1",
+            "device_type": DEVICE_TYPE_DISHWASHER,
+            "power_entity": "sensor.power",
+            "status_entity": "",
+        }
     )
 
     stored = device.to_dict()
@@ -502,7 +511,12 @@ def test_device_entity_links_are_omitted_when_unset() -> None:
 def test_device_times_are_normalised() -> None:
     """The time selector's "HH:MM:SS" is stored as "HH:MM"."""
     device = DeviceProfile.from_dict(
-        {"id": "d1", "earliest_start": "07:30:00", "latest_finish": "23:00"}
+        {
+            "id": "d1",
+            "device_type": DEVICE_TYPE_DISHWASHER,
+            "earliest_start": "07:30:00",
+            "latest_finish": "23:00",
+        }
     )
 
     assert device.earliest_start == "07:30"
@@ -512,19 +526,30 @@ def test_device_times_are_normalised() -> None:
 
 def test_device_days_of_week_default_to_every_day() -> None:
     """An absent or unusable day list means the device may run any day."""
-    assert DeviceProfile.from_dict({"id": "d1"}).days_of_week == [0, 1, 2, 3, 4, 5, 6]
-    assert DeviceProfile.from_dict(
-        {"id": "d1", "days_of_week": ["nonsense", 9, -1]}
-    ).days_of_week == [0, 1, 2, 3, 4, 5, 6]
-    assert DeviceProfile.from_dict(
-        {"id": "d1", "days_of_week": [5, 5, 0]}
-    ).days_of_week == [0, 5]
+    every_day = [0, 1, 2, 3, 4, 5, 6]
+
+    def _device(**extra: Any) -> DeviceProfile:
+        return DeviceProfile.from_dict(
+            {"id": "d1", "device_type": DEVICE_TYPE_DISHWASHER, **extra}
+        )
+
+    assert _device().days_of_week == every_day
+    assert _device(days_of_week=["nonsense", 9, -1]).days_of_week == every_day
+    assert _device(days_of_week=[5, 5, 0]).days_of_week == [0, 5]
 
 
 def test_control_mode_is_capped_at_advice_only() -> None:
     """In 0.1.0 nothing above advice_only is ever applied (SPEC.md §2.2)."""
-    automatic = DeviceProfile.from_dict({"id": "d1", "control_mode": "automatic"})
-    monitor = DeviceProfile.from_dict({"id": "d2", "control_mode": "monitor_only"})
+    automatic = DeviceProfile.from_dict(
+        {"id": "d1", "device_type": DEVICE_TYPE_DISHWASHER, "control_mode": "automatic"}
+    )
+    monitor = DeviceProfile.from_dict(
+        {
+            "id": "d2",
+            "device_type": DEVICE_TYPE_DISHWASHER,
+            "control_mode": "monitor_only",
+        }
+    )
 
     assert automatic.control_mode == "automatic"
     assert automatic.effective_control_mode == CONTROL_ADVICE_ONLY
@@ -546,6 +571,117 @@ def test_theoretical_maximum_grid_power() -> None:
         NOMINAL_VOLTAGE_PER_PHASE * 25
     )
     assert HomeProfile.from_dict({}).theoretical_max_grid_power_w is None
+
+
+# --- Unrecognised types are quarantined, never degraded ---------------------
+
+
+def test_unknown_source_type_is_kept_and_quarantined() -> None:
+    """An unknown source type is never replaced by a known one (SPEC.md §12)."""
+    source = EnergySource.from_dict(
+        {
+            "id": "source-1",
+            "name": "Slimme meter",
+            "type": "grid_metre",
+            "enabled": True,
+        }
+    )
+
+    # The stored value survives, so the installer can see what went wrong.
+    assert source.type == "grid_metre"
+    assert source.enabled is False
+    assert source.invalid_reason == INVALID_REASON_UNKNOWN_TYPE
+    assert source.is_usable is False
+    # And it round-trips: reloading does not repair or degrade it either.
+    assert EnergySource.from_dict(source.to_dict()).type == "grid_metre"
+
+
+def test_missing_source_type_is_also_quarantined() -> None:
+    """A source without any type is unusable rather than assumed."""
+    source = EnergySource.from_dict({"id": "source-1"})
+
+    assert source.type == ""
+    assert source.enabled is False
+    assert source.invalid_reason == INVALID_REASON_UNKNOWN_TYPE
+    assert source.is_usable is False
+
+
+def test_unknown_device_type_is_kept_and_quarantined() -> None:
+    """An unknown device type gets the same treatment as a source."""
+    device = DeviceProfile.from_dict(
+        {"id": "device-1", "name": "Warmtepomp", "device_type": "heatpump"}
+    )
+
+    assert device.device_type == "heatpump"
+    assert device.enabled is False
+    assert device.invalid_reason == INVALID_REASON_UNKNOWN_TYPE
+    assert device.is_usable is False
+
+
+def test_a_valid_row_is_not_marked_invalid() -> None:
+    """The quarantine only ever applies to unrecognised types."""
+    source = EnergySource.from_dict({"id": "s1", "type": SOURCE_TYPE_GRID_METER})
+    device = DeviceProfile.from_dict(
+        {"id": "d1", "device_type": DEVICE_TYPE_DISHWASHER}
+    )
+
+    assert source.invalid_reason is None
+    assert source.is_usable is True
+    assert device.invalid_reason is None
+    assert device.is_usable is True
+    # A row the installer disabled on purpose is valid but not usable.
+    disabled = EnergySource.from_dict(
+        {"id": "s2", "type": SOURCE_TYPE_GRID_METER, "enabled": False}
+    )
+    assert disabled.invalid_reason is None
+    assert disabled.is_usable is False
+
+
+async def test_invalid_rows_are_logged_on_load(
+    hass: HomeAssistant, hass_storage: dict[str, Any]
+) -> None:
+    """Loading a configuration with unknown types writes warning log lines."""
+    hass_storage[STORAGE_KEY] = _stored(
+        {
+            "sources": [
+                {"id": "source-1", "name": "Slimme meter", "type": "grid_metre"},
+                {"id": "source-2", "name": "Zon", "type": "solar"},
+            ],
+            "devices": [{"id": "device-1", "name": "Warmtepomp", "type": "heatpump"}],
+        }
+    )
+
+    config = await ConfigurationStore(hass).async_load()
+
+    assert [source.id for source in config.invalid_sources] == ["source-1"]
+    assert [device.id for device in config.invalid_devices] == ["device-1"]
+
+    logged = [
+        entry
+        for entry in config.logs
+        if entry.event_type == LOG_EVENT_INVALID_CONFIGURATION
+    ]
+    assert len(logged) == 2
+    assert {entry.subject for entry in logged} == {"source-1", "device-1"}
+    assert all(entry.severity == SEVERITY_WARNING for entry in logged)
+
+
+async def test_a_clean_configuration_logs_nothing_on_load(
+    hass: HomeAssistant, hass_storage: dict[str, Any]
+) -> None:
+    """A configuration without unknown types is loaded without side effects."""
+    hass_storage[STORAGE_KEY] = _stored(
+        {
+            "revision": 3,
+            "sources": [{"id": "source-1", "type": SOURCE_TYPE_GRID_METER}],
+        }
+    )
+
+    config = await ConfigurationStore(hass).async_load()
+
+    assert config.logs == []
+    # No log means no write, so the revision is untouched.
+    assert config.revision == 3
 
 
 # --- Failure paths ----------------------------------------------------------

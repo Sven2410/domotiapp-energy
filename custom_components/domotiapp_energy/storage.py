@@ -27,8 +27,10 @@ from homeassistant.util import dt as dt_util
 
 from .const import (
     LOG_DEDUPE_WINDOW_MINUTES,
+    LOG_EVENT_INVALID_CONFIGURATION,
     MAX_LOG_ENTRIES,
     SEVERITY_INFO,
+    SEVERITY_WARNING,
     STORAGE_KEY,
     STORAGE_MINOR_VERSION,
     STORAGE_VERSION,
@@ -149,7 +151,49 @@ class ConfigurationStore:
             raw = None
 
         self._config = StoredConfiguration.from_dict(raw)
+        await self._async_report_invalid_rows(self._config)
         return self._config
+
+    async def _async_report_invalid_rows(self, config: StoredConfiguration) -> None:
+        """Log every stored row the engine will refuse to use.
+
+        A source or device with an unrecognised type stays in the list but is
+        disabled and marked invalid (SPEC.md §12). Without a visible warning the
+        installer would only notice through a silently lower data quality score.
+        """
+        for source in config.invalid_sources:
+            # No home name, location or entity state in the Home Assistant log
+            # (SPEC.md §21); the readable detail goes to the in-app logbook.
+            _LOGGER.warning(
+                "Energy source %s has unrecognised type %r and is disabled",
+                source.id,
+                source.type,
+            )
+            await self.async_add_log_entry(
+                LOG_EVENT_INVALID_CONFIGURATION,
+                "Onbekend brontype",
+                f"De energiebron '{source.name}' heeft een onbekend type "
+                f"('{source.type}') en is uitgeschakeld. Kies een geldig type "
+                f"om de bron weer te gebruiken.",
+                severity=SEVERITY_WARNING,
+                subject=source.id,
+            )
+
+        for device in config.invalid_devices:
+            _LOGGER.warning(
+                "Device profile %s has unrecognised type %r and is disabled",
+                device.id,
+                device.device_type,
+            )
+            await self.async_add_log_entry(
+                LOG_EVENT_INVALID_CONFIGURATION,
+                "Onbekend apparaattype",
+                f"Het apparaat '{device.name}' heeft een onbekend type "
+                f"('{device.device_type}') en is uitgeschakeld. Kies een geldig "
+                f"type om het apparaat weer te gebruiken.",
+                severity=SEVERITY_WARNING,
+                subject=device.id,
+            )
 
     async def async_update(
         self,

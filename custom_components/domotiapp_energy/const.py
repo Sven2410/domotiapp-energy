@@ -76,6 +76,11 @@ ATTR_EXPECTED_REVISION: Final = "expected_revision"
 ATTR_REVISION: Final = "revision"
 ATTR_ITEM: Final = "item"
 
+# Marks a stored source or device that the engine must never use. A row whose
+# type is unrecognised keeps that type verbatim: substituting a known type
+# would feed the calculations a guess, which SPEC.md §2.1 forbids.
+INVALID_REASON_UNKNOWN_TYPE: Final = "unknown_type"
+
 ERR_NOT_FOUND: Final = "not_found"
 ERR_DUPLICATE_ID: Final = "duplicate_id"
 ERR_INVALID_FORMAT: Final = "invalid_format"
@@ -161,10 +166,6 @@ SOURCE_TYPES: Final[tuple[str, ...]] = (
     SOURCE_TYPE_HOME_BATTERY,
     SOURCE_TYPE_GENERAL_CONSUMPTION,
 )
-# Fallback for a stored source whose type is missing or unrecognised. General
-# consumption is the least harmful choice: it only ever feeds the secondary
-# solar-surplus calculation and never drives grid or price advice.
-DEFAULT_SOURCE_TYPE: Final = SOURCE_TYPE_GENERAL_CONSUMPTION
 
 VALUE_SOURCE_STATE: Final = "state"
 VALUE_SOURCE_ATTRIBUTE: Final = "attribute"
@@ -235,9 +236,6 @@ DEVICE_TYPES: Final[tuple[str, ...]] = (
     DEVICE_TYPE_GENERIC_SCHEDULABLE,
     DEVICE_TYPE_GENERIC_MONITOR,
 )
-# Fallback for a stored device whose type is missing or unrecognised. A monitor
-# is never flexible and never produces advice, so nothing is misadvised.
-DEFAULT_DEVICE_TYPE: Final = DEVICE_TYPE_GENERIC_MONITOR
 
 # Device types that default to is_noisy = true (SPEC.md §8).
 NOISY_BY_DEFAULT_DEVICE_TYPES: Final[frozenset[str]] = frozenset(
@@ -305,6 +303,10 @@ LOG_EVENT_SOURCE_UNAVAILABLE: Final = "source_unavailable"
 LOG_EVENT_INVALID_MEASUREMENT: Final = "invalid_measurement"
 LOG_EVENT_PEAK_RISK_DETECTED: Final = "peak_risk_detected"
 LOG_EVENT_SOLAR_SURPLUS_DETECTED: Final = "solar_surplus_detected"
+# Added on top of the eight types in SPEC.md §8: a stored row with an
+# unrecognised type is a configuration problem, not an availability problem
+# (source_unavailable) and not a bad reading (invalid_measurement).
+LOG_EVENT_INVALID_CONFIGURATION: Final = "invalid_configuration"
 LOG_EVENT_TYPES: Final[tuple[str, ...]] = (
     LOG_EVENT_CONFIG_CHANGED,
     LOG_EVENT_DEVICE_ADDED,
@@ -314,6 +316,7 @@ LOG_EVENT_TYPES: Final[tuple[str, ...]] = (
     LOG_EVENT_INVALID_MEASUREMENT,
     LOG_EVENT_PEAK_RISK_DETECTED,
     LOG_EVENT_SOLAR_SURPLUS_DETECTED,
+    LOG_EVENT_INVALID_CONFIGURATION,
 )
 
 SEVERITY_INFO: Final = "info"

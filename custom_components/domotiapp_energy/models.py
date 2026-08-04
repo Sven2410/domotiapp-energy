@@ -43,7 +43,6 @@ from .const import (
     CONTROL_MONITOR_ONLY,
     DEFAULT_CONTRACT_TYPE,
     DEFAULT_CONTROL_MODE,
-    DEFAULT_DEVICE_TYPE,
     DEFAULT_HOME_NAME,
     DEFAULT_MAX_ADVICE_COUNT,
     DEFAULT_MIN_SAVINGS_EUR,
@@ -54,12 +53,12 @@ from .const import (
     DEFAULT_QUIET_HOURS_END,
     DEFAULT_QUIET_HOURS_START,
     DEFAULT_SCALE_FACTOR,
-    DEFAULT_SOURCE_TYPE,
     DEFAULT_STRATEGY,
     DEVICE_ENTITY_BINDING_KEYS,
     DEVICE_TYPES,
     INFLEXIBLE_BY_DEFAULT_DEVICE_TYPES,
     INITIAL_REVISION,
+    INVALID_REASON_UNKNOWN_TYPE,
     MAX_ADVICE_COUNT,
     MAX_DAY_OF_WEEK,
     MAX_MAIN_FUSE_A,
@@ -423,7 +422,10 @@ class EnergySource:
 
     id: str = field(default_factory=_new_id)
     name: str = ""
-    type: str = DEFAULT_SOURCE_TYPE
+    # An unrecognised type is kept verbatim rather than replaced by a known
+    # one: a corrupted grid_meter that came back as general_consumption would
+    # silently enter the solar surplus formula as household consumption.
+    type: str = ""
     enabled: bool = True
     binding: EntityBinding = field(default_factory=EntityBinding)
     # Grid meter only. Never derived or guessed: when the installer has not
@@ -441,6 +443,7 @@ class EnergySource:
             "name": self.name,
             "type": self.type,
             "enabled": self.enabled,
+            "invalid_reason": self.invalid_reason,
             **self.binding.to_dict(),
             "meter_mode": self.meter_mode,
             "positive_means": self.positive_means,
@@ -451,13 +454,19 @@ class EnergySource:
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> Self:
-        """Build a source from stored data, filling in defaults."""
+        """Build a source from stored data, filling in defaults.
+
+        A source whose type is unrecognised keeps that type and is disabled, so
+        the engine can never act on a guess (SPEC.md §12).
+        """
         data = _as_mapping(data)
+        source_type = _as_str(data.get("type"), "")
+        known_type = source_type in SOURCE_TYPES
         return cls(
             id=_as_str(data.get("id"), _new_id()),
             name=_as_str(data.get("name"), ""),
-            type=_as_choice(data.get("type"), SOURCE_TYPES, DEFAULT_SOURCE_TYPE),
-            enabled=_as_bool(data.get("enabled"), True),
+            type=source_type,
+            enabled=_as_bool(data.get("enabled"), True) if known_type else False,
             binding=EntityBinding.from_dict(data),
             meter_mode=_as_choice(data.get("meter_mode"), METER_MODES, None),
             positive_means=_as_choice(
@@ -467,6 +476,22 @@ class EnergySource:
             export_entity_id=_as_optional_str(data.get("export_entity_id")),
             notes=_as_optional_str(data.get("notes")),
         )
+
+    @property
+    def invalid_reason(self) -> str | None:
+        """Return why this source is unusable, or None when it is fine.
+
+        Derived from the type on every access rather than stored, so a stored
+        value can never disagree with the type it describes.
+        """
+        if self.type not in SOURCE_TYPES:
+            return INVALID_REASON_UNKNOWN_TYPE
+        return None
+
+    @property
+    def is_usable(self) -> bool:
+        """Return whether the engine may read and use this source."""
+        return self.enabled and self.invalid_reason is None
 
     @property
     def import_binding(self) -> EntityBinding:
@@ -485,7 +510,8 @@ class DeviceProfile:
 
     id: str = field(default_factory=_new_id)
     name: str = ""
-    device_type: str = DEFAULT_DEVICE_TYPE
+    # Kept verbatim when unrecognised, for the same reason as EnergySource.type.
+    device_type: str = ""
     enabled: bool = True
     priority: str = DEFAULT_PRIORITY
     location: str | None = None
@@ -510,6 +536,7 @@ class DeviceProfile:
             "name": self.name,
             "device_type": self.device_type,
             "enabled": self.enabled,
+            "invalid_reason": self.invalid_reason,
             "priority": self.priority,
             "location": self.location,
             "control_mode": self.control_mode,
@@ -527,16 +554,19 @@ class DeviceProfile:
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> Self:
-        """Build a device from stored data, filling in defaults."""
+        """Build a device from stored data, filling in defaults.
+
+        A device whose type is unrecognised keeps that type and is disabled, so
+        it never produces advice based on a guess (SPEC.md §12).
+        """
         data = _as_mapping(data)
-        device_type = _as_choice(
-            data.get("device_type"), DEVICE_TYPES, DEFAULT_DEVICE_TYPE
-        )
+        device_type = _as_str(data.get("device_type"), "")
+        known_type = device_type in DEVICE_TYPES
         return cls(
             id=_as_str(data.get("id"), _new_id()),
             name=_as_str(data.get("name"), ""),
             device_type=device_type,
-            enabled=_as_bool(data.get("enabled"), True),
+            enabled=_as_bool(data.get("enabled"), True) if known_type else False,
             priority=_as_choice(data.get("priority"), PRIORITIES, DEFAULT_PRIORITY),
             location=_as_optional_str(data.get("location")),
             control_mode=_as_choice(
@@ -566,6 +596,18 @@ class DeviceProfile:
                 if (entity_id := _as_optional_str(data.get(key))) is not None
             },
         )
+
+    @property
+    def invalid_reason(self) -> str | None:
+        """Return why this device is unusable, or None when it is fine."""
+        if self.device_type not in DEVICE_TYPES:
+            return INVALID_REASON_UNKNOWN_TYPE
+        return None
+
+    @property
+    def is_usable(self) -> bool:
+        """Return whether the engine may consider this device for advice."""
+        return self.enabled and self.invalid_reason is None
 
     @property
     def effective_control_mode(self) -> str:
@@ -755,6 +797,16 @@ class StoredConfiguration:
             preferences=UserPreferences.from_dict(_as_mapping(data.get("preferences"))),
             logs=[LogEntry.from_dict(item) for item in _as_sequence(data.get("logs"))],
         )
+
+    @property
+    def invalid_sources(self) -> list[EnergySource]:
+        """Return the sources the engine must never use."""
+        return [source for source in self.sources if source.invalid_reason is not None]
+
+    @property
+    def invalid_devices(self) -> list[DeviceProfile]:
+        """Return the devices the engine must never use."""
+        return [device for device in self.devices if device.invalid_reason is not None]
 
 
 def _as_sequence(value: Any) -> list[Mapping[str, Any]]:

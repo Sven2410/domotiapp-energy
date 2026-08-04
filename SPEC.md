@@ -404,7 +404,12 @@ concludeert nooit zelf.
 ### Logboek
 Max. 200 gebeurtenissen. Types: `config_changed`, `device_added`, `device_removed`,
 `advice_recalculated`, `source_unavailable`, `invalid_measurement`, `peak_risk_detected`,
-`solar_surplus_detected`.
+`solar_surplus_detected`, `invalid_configuration`.
+
+> `invalid_configuration` is toegevoegd t.o.v. de oorspronkelijke acht types. Een
+> opgeslagen bron of apparaat met een onbekend type is een configuratieprobleem — geen
+> beschikbaarheidsprobleem (`source_unavailable`) en geen ongeldige meting
+> (`invalid_measurement`). Zie §12 voor de omgang met zulke rijen.
 
 Toon: tijd · type · titel · korte omschrijving · ernst (`info`/`warning`/`error`/`success`).
 Nooit volledige HA-stateobjecten opslaan. Knop "Logboek wissen", alleen voor admins.
@@ -518,6 +523,18 @@ StoredConfiguration
 
 Elk model krijgt `to_dict()` en `from_dict()` met defensieve defaults; `from_dict` negeert
 onbekende sleutels en herstelt ontbrekende velden naar de default in plaats van te crashen.
+
+**Uitzondering: onbekend bron- of apparaattype.** Een `type`/`device_type` dat niet in de
+toegestane lijst staat wordt **niet** naar een default gedegradeerd. Een corrupte
+`grid_meter` die als `general_consumption` terugkomt, zou als huishoudelijk verbruik de
+zonneoverschotformule in gaan — precies het gokken dat §2.1 verbiedt, alleen onzichtbaar.
+In plaats daarvan blijft de rij bestaan en geldt:
+
+- het opgeslagen type blijft ongewijzigd staan;
+- `enabled` wordt op `false` gezet;
+- de rij krijgt `invalid_reason = "unknown_type"`, zodat de rekenmotor hem nooit gebruikt
+  en de datakwaliteit hem als `invalid_item` telt;
+- er wordt een logregel geschreven met ernst `warning` en type `invalid_configuration`.
 
 ```python
 @dataclass(slots=True)
@@ -780,24 +797,38 @@ De provider wordt via dependency injection aan de coordinator meegegeven.
 ## 19. Home Assistant-entiteiten
 
 Eén eigen device in het device registry, identifier `(DOMAIN, entry.entry_id)`,
-naam = woningnaam, manufacturer `DomotiApp`, model `Energy Coach`, sw_version `0.1.0`.
-Nooit koppelen aan devices van andere integraties.
+**naam vast `DomotiApp Energy`**, manufacturer `DomotiApp`, model `Energy Coach`,
+sw_version `0.1.0`. Nooit koppelen aan devices van andere integraties.
 
-**Entity-ID's expliciet vastleggen.** Gebruik `_attr_has_entity_name = True` en
-`_attr_translation_key`, plus `_attr_suggested_object_id` om deze exacte ID's te forceren:
+De woningnaam staat in de config entry en in het paneel. Hij mag op het device
+zichtbaar worden gemaakt (bijvoorbeeld in een model- of via-veld), maar hij bepaalt
+**nooit** de entity-ID's — anders krijgt elke klant andere ID's en is de lijst hieronder
+niet vast te leggen.
 
-| Entiteit | device_class | state_class | unit |
-|---|---|---|---|
-| `sensor.domotiapp_energy_score` | — | measurement | — |
-| `sensor.domotiapp_energy_data_quality` | — | measurement | `%` |
-| `sensor.domotiapp_energy_grid_power` | `power` | measurement | `W` |
-| `sensor.domotiapp_energy_solar_surplus` | `power` | measurement | `W` |
-| `sensor.domotiapp_energy_current_advice` | — | — | — |
-| `binary_sensor.domotiapp_energy_peak_risk` | `problem` | — | — |
+**Entity-ID's ontstaan via de normale HA-afleiding**, niet via een geforceerde object-id.
+Gebruik `_attr_has_entity_name = True` en `_attr_translation_key`. HA bouwt de object-id
+dan op als `slugify(devicenaam + " " + Engelse entiteitsnaam)`, zie
+`entity_platform.async_calculate_suggested_object_id`. De Engelse naam komt uit
+`translations/en.json`; HA gebruikt daarvoor bewust de Engelse vertaling
+(`object_id_platform_translations`), zodat de ID's niet met de gebruikerstaal meebewegen.
 
-> De oorspronkelijke opdracht noemde `sensor.domotiapp_data_quality` naast
-> `sensor.domotiapp_energy_score` — twee verschillende prefixen. Dat is hier
-> geüniformeerd naar `domotiapp_energy_*`. Documenteer de exacte ID's in de README.
+| Entiteit | Engelse naam | device_class | state_class | unit |
+|---|---|---|---|---|
+| `sensor.domotiapp_energy_score` | `Score` | — | measurement | — |
+| `sensor.domotiapp_energy_data_quality` | `Data quality` | — | measurement | `%` |
+| `sensor.domotiapp_energy_grid_power` | `Grid power` | `power` | measurement | `W` |
+| `sensor.domotiapp_energy_solar_surplus` | `Solar surplus` | `power` | measurement | `W` |
+| `sensor.domotiapp_energy_current_advice` | `Current advice` | — | — | — |
+| `binary_sensor.domotiapp_energy_peak_risk` | `Peak risk` | `problem` | — | — |
+
+Fase 5 bevat een test die bevestigt dat deze zes ID's daadwerkelijk zo ontstaan.
+
+> Twee dingen die hierbij horen. (1) HA gebruikt `device.name_by_user or device.name`:
+> hernoemt een gebruiker het device vóór de eerste registratie, dan wijken de ID's af.
+> Al geregistreerde entiteiten behouden hun ID. (2) De oorspronkelijke opdracht noemde
+> `sensor.domotiapp_data_quality` naast `sensor.domotiapp_energy_score` — twee
+> verschillende prefixen. Dat is hier geüniformeerd naar `domotiapp_energy_*`.
+> Documenteer de exacte ID's in de README.
 
 Unique ID's: `f"{entry.entry_id}_{key}"`.
 
