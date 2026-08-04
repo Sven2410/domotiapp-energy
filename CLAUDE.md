@@ -1,0 +1,94 @@
+# CLAUDE.md — werkinstructies DomotiApp Energy
+
+## Wat dit project is
+
+Een Home Assistant custom integration (`domotiapp_energy`) die dient als handmatig
+configureerbare energiecoach. Wordt door DomotiTech uitgerold bij klanten via HACS.
+De volledige functionele specificatie staat in **`SPEC.md`** — lees die bij twijfel,
+en wijk er niet van af zonder het expliciet te melden.
+
+Taal: code en README in het Engels, alle zichtbare UI-teksten in het Nederlands,
+overleg met de ontwikkelaar in het Nederlands.
+
+## Doelomgeving
+
+- Home Assistant 2024.12 of nieuwer
+- Python 3.13
+- Geen externe runtime-dependencies (`manifest.json → requirements: []`)
+
+## Harde regels (nooit overtreden)
+
+1. **Geen automatische discovery of entity-matching.** Niet zoeken in het entity- of
+   deviceregister, niet matchen op naam, geen suggesties, geen discoveryflow.
+   Alle koppelingen komen uit expliciete gebruikersselectie in de GUI.
+2. **Geen aansturing.** Geen `hass.services.async_call` naar een ander domein dan
+   `domotiapp_energy`. De integratie meet, rekent, adviseert en waarschuwt — meer niet.
+3. **Geen netwerk.** Geen externe API, cloud, telemetry, analytics, AI-provider of
+   API-sleutel. Alles lokaal.
+4. **Geen YAML-configuratie.** Alles via de UI.
+5. **Geen externe frontendlibraries, geen CDN, geen React, geen build-stap.**
+   Native ES-modules en bestaande Home Assistant-componenten.
+6. **Geen browseropslag.** Geen localStorage, sessionStorage, IndexedDB of cookies.
+   De backendstorage is de enige bron van waarheid.
+7. **Geen hardcoded kleuren.** Uitsluitend Home Assistant themavariabelen.
+   `#026FA1` mag nergens in de code voorkomen.
+8. **Geen mockdata of placeholders in productiecode.**
+
+## Verplichte API-keuzes
+
+| Doel | Gebruik dit | Niet dit |
+|---|---|---|
+| Static files | `hass.http.async_register_static_paths([StaticPathConfig(...)])` | `register_static_path` |
+| Paneel | `panel_custom.async_register_panel` | handmatige frontend-calls |
+| Entry-data | `entry.runtime_data` | `hass.data[DOMAIN]` |
+| Platforms | `async_forward_entry_setups` | `async_setup_platforms` |
+| State-events | `async_track_state_change_event` | `async_track_state_change` |
+| Tijd | `homeassistant.util.dt` | `datetime.now()` |
+| WS-admin | `@websocket_api.require_admin` | eigen check |
+
+WebSocket-commando's en services worden **eenmalig in `async_setup`** geregistreerd,
+nooit in `async_setup_entry` (breekt bij reload).
+
+## Werkwijze
+
+Werk in de fases uit `SPEC.md` §30. Per fase:
+
+1. Bouw de fase af.
+2. Draai `ruff check .` en `ruff format .`
+3. Draai `pytest`
+4. Los alles op tot beide schoon zijn.
+5. Commit met een beschrijvende message, prefix `feat(fase-N):` of `fix:`.
+6. Rapporteer kort wat af is en wat nog open staat.
+
+Begin niet aan een volgende fase voordat de tests van de huidige fase slagen.
+
+## Commando's
+
+```powershell
+# eenmalig
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -e ".[dev]"
+
+# per fase
+ruff check .
+ruff format .
+pytest
+pytest --cov=custom_components/domotiapp_energy --cov-report=term-missing
+```
+
+## Testomgeving
+
+Er draait een Home Assistant-testinstance in Docker met
+`custom_components/domotiapp_energy` als bind-mount. Na een codewijziging herstart de
+ontwikkelaar die container handmatig; je hoeft dat niet zelf te doen, maar meld het
+wel wanneer een wijziging een herstart vereist.
+
+## Stijl van samenwerken
+
+- Meld het expliciet wanneer je van `SPEC.md` afwijkt, en waarom.
+- Verzin geen ontbrekende waarden: als een noodzakelijke technische keuze ontbreekt in
+  `SPEC.md`, stel één gerichte vraag.
+- Rapporteer eerlijk wat nog niet werkt. Een lijst met open punten is waardevoller
+  dan een claim dat alles af is.
+- Geen "voor de volledigheid" toegevoegde features die niet in `SPEC.md` staan.
