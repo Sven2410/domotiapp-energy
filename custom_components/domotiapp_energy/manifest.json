@@ -1,0 +1,14 @@
+{
+  "domain": "domotiapp_energy",
+  "name": "DomotiApp Energy",
+  "version": "0.1.0",
+  "codeowners": ["@Sven2410"],
+  "config_flow": true,
+  "single_config_entry": true,
+  "integration_type": "service",
+  "iot_class": "calculated",
+  "documentation": "https://github.com/Sven2410/domotiapp-energy",
+  "issue_tracker": "https://github.com/Sven2410/domotiapp-energy/issues",
+  "dependencies": ["http", "frontend", "panel_custom", "websocket_api"],
+  "requirements": []
+}

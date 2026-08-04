@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Virtual environments
+.venv/
+venv/
+
+# Tool caches and coverage output
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# Local Home Assistant development instance.
+# Note: docker-compose.dev.yml itself IS tracked; only its generated config is not.
+.ha-dev-config/
+
+# Editors and operating system
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
