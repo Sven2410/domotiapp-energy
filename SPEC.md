@@ -15,15 +15,21 @@
 ## 0. Doelomgeving (vaststaand)
 
 ```text
-Minimale Home Assistant-versie : 2024.12
+Minimale Home Assistant-versie : 2025.6
 Python                          : 3.13
 Doelbrowsers                    : evergreen (Chrome/Safari/Firefox), incl. HA companion app
 Licentie                        : MIT
 ```
 
-Alle gebruikte API's moeten bestaan in HA 2024.12 en niet deprecated zijn in de meest
+Alle gebruikte API's moeten bestaan in HA 2025.6 en niet deprecated zijn in de meest
 recente HA-release. Controleer bij twijfel de actuele developer docs en documenteer de
 keuze in een codecommentaar.
+
+> **Wijziging t.o.v. v0.1.0 van deze spec:** de minimumversie is verhoogd van 2024.12 naar
+> 2025.6. De testsuite draait tegen de nieuwste HA die
+> `pytest-homeassistant-custom-component` meebrengt, niet tegen 2025.6; dat verschil is
+> bewust en staat gedocumenteerd in `.github/workflows/tests.yml`. Elke API in de tabel
+> hieronder is geverifieerd aanwezig in de wheel van `homeassistant==2025.6.0`.
 
 Verplicht te gebruiken (niet de oudere varianten):
 
@@ -188,7 +194,7 @@ Geen `strings.json`. Volledige vertalingen in `translations/nl.json` en `transla
 {
   "name": "DomotiApp Energy",
   "render_readme": true,
-  "homeassistant": "2024.12.0"
+  "homeassistant": "2025.6.0"
 }
 ```
 

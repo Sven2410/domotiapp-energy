@@ -1,0 +1,21 @@
+# Test runner for DomotiApp Energy.
+#
+# Do not invoke this directly; use the wrapper so the arguments and the exit
+# code are passed through correctly:
+#
+#   .\scripts\test.ps1
+#   .\scripts\test.ps1 tests/test_storage.py -k revision
+services:
+  tests:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    image: domotiapp-energy-tests:local
+    working_dir: /app
+    volumes:
+      # The source tree is mounted, so a code change never needs a rebuild.
+      # Only a change to pyproject.toml invalidates the dependency layer.
+      - .:/app
+    environment:
+      PYTHONDONTWRITEBYTECODE: "1"
+    command: ["pytest"]

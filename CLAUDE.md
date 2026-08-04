@@ -12,7 +12,7 @@ overleg met de ontwikkelaar in het Nederlands.
 
 ## Doelomgeving
 
-- Home Assistant 2024.12 of nieuwer
+- Home Assistant 2025.6 of nieuwer
 - Python 3.13
 - Geen externe runtime-dependencies (`manifest.json → requirements: []`)
 
@@ -64,18 +64,28 @@ Begin niet aan een volgende fase voordat de tests van de huidige fase slagen.
 
 ## Commando's
 
-```powershell
-# eenmalig
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -e ".[dev]"
+Linten gebeurt lokaal in `.venv`, **testen gebeurt altijd in de testcontainer.**
+Home Assistant pint `lru-dict==1.3.0`, waarvan geen cp313-wheel voor Windows bestaat;
+`pip install -e ".[dev]"` slaagt daarom niet native op deze machine. Draai `pytest`
+nooit vanuit `.venv`.
 
-# per fase
-ruff check .
-ruff format .
-pytest
-pytest --cov=custom_components/domotiapp_energy --cov-report=term-missing
+```powershell
+# eenmalig: venv voor ruff (geen testdependencies)
+py -3.13 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install ruff
+
+# linten, per fase
+.\.venv\Scripts\ruff.exe check .
+.\.venv\Scripts\ruff.exe format .
+
+# testen, per fase — bouwt het image zo nodig en forwardt alle argumenten
+.\scripts\test.ps1
+.\scripts\test.ps1 tests/test_storage.py -k revision
+.\scripts\test.ps1 --cov=custom_components/domotiapp_energy --cov-report=term-missing
 ```
+
+Het testimage installeert de dependencies in een eigen laag en wordt alleen opnieuw
+gebouwd wanneer `pyproject.toml` verandert; de broncode is een bind-mount.
 
 ## Testomgeving
 

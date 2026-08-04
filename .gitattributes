@@ -1,0 +1,4 @@
+# Normalise line endings so the repository content is identical on every
+# machine. Text files are stored and checked out with LF, which keeps
+# `ruff format --check` and the Linux test container consistent with Windows.
+* text=auto eol=lf
