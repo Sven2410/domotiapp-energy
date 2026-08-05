@@ -33,6 +33,15 @@ overleg met de ontwikkelaar in het Nederlands.
 7. **Geen hardcoded kleuren.** Uitsluitend Home Assistant themavariabelen.
    `#026FA1` mag nergens in de code voorkomen.
 8. **Geen mockdata of placeholders in productiecode.**
+9. **De revision verandert uitsluitend door een expliciete gebruikersactie.**
+   Laden, herberekenen, achtergrondtaken en het wegschrijven van logboekregels
+   verhogen de revision nooit; `async_load` schrijft helemaal niets. Alleen een
+   wijziging aan de configuratie zelf (woning, bronnen, apparaten, voorkeuren)
+   die uit de GUI komt, verhoogt de revision met 1. Anders verloopt de
+   `expected_revision` van de frontend terwijl de gebruiker een formulier
+   invult en wordt een geldige opslagpoging onterecht geweigerd.
+   Afgeleide toestand (zoals de quarantaine van een rij met een onbekend type)
+   wordt in het geheugen berekend, nooit teruggeschreven naar de storage.
 
 ## Verplichte API-keuzes
 

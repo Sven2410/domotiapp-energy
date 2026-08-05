@@ -1,5 +1,6 @@
 """Tests for the models and the configuration store (SPEC.md §24)."""
 
+from copy import deepcopy
 from datetime import timedelta
 from typing import Any
 from unittest.mock import patch
@@ -257,6 +258,25 @@ async def test_repeated_identical_events_bump_the_count(hass: HomeAssistant) -> 
     assert config.logs[0].count == 3
 
 
+async def test_a_logbook_entry_does_not_change_the_revision(
+    hass: HomeAssistant, hass_storage: dict[str, Any]
+) -> None:
+    """A background event is persisted but never expires a frontend edit."""
+    store = ConfigurationStore(hass)
+    config = await store.async_load()
+    revision_before = config.revision
+
+    await store.async_add_log_entry(
+        LOG_EVENT_ADVICE_RECALCULATED, "Advies herberekend", "", subject="coach"
+    )
+
+    assert len(config.logs) == 1
+    assert config.revision == revision_before
+    # The entry did reach the storage file.
+    assert len(hass_storage[STORAGE_KEY]["data"]["logs"]) == 1
+    assert hass_storage[STORAGE_KEY]["data"]["revision"] == revision_before
+
+
 async def test_a_different_subject_creates_a_new_entry(hass: HomeAssistant) -> None:
     """Only identical consecutive events collapse; other subjects do not."""
     store = ConfigurationStore(hass)
@@ -293,7 +313,7 @@ async def test_events_outside_the_dedupe_window_are_logged_again(
 
 
 async def test_clearing_the_logbook(hass: HomeAssistant) -> None:
-    """Clearing empties the logbook and is itself a revision change."""
+    """Clearing empties the logbook without consuming a revision number."""
     store = ConfigurationStore(hass)
     config = await store.async_load()
 
@@ -302,10 +322,11 @@ async def test_clearing_the_logbook(hass: HomeAssistant) -> None:
     )
     revision_before = config.revision
 
-    new_revision = await store.async_clear_logs()
+    await store.async_clear_logs()
 
     assert config.logs == []
-    assert new_revision == revision_before + 1
+    # The logbook is not part of what expected_revision guards (SPEC.md §14).
+    assert config.revision == revision_before
 
 
 async def test_log_entries_are_serialisable(hass: HomeAssistant) -> None:
@@ -637,24 +658,71 @@ def test_a_valid_row_is_not_marked_invalid() -> None:
     assert disabled.is_usable is False
 
 
-async def test_invalid_rows_are_logged_on_load(
+def _broken_configuration() -> dict[str, Any]:
+    """Return a stored payload with one broken source and one broken device."""
+    return {
+        "revision": 3,
+        "sources": [
+            {"id": "source-1", "name": "Slimme meter", "type": "grid_metre"},
+            {"id": "source-2", "name": "Zon", "type": "solar"},
+        ],
+        "devices": [
+            {"id": "device-1", "name": "Warmtepomp", "device_type": "heatpump"}
+        ],
+    }
+
+
+async def test_loading_a_broken_row_does_not_change_the_revision(
     hass: HomeAssistant, hass_storage: dict[str, Any]
 ) -> None:
-    """Loading a configuration with unknown types writes warning log lines."""
-    hass_storage[STORAGE_KEY] = _stored(
-        {
-            "sources": [
-                {"id": "source-1", "name": "Slimme meter", "type": "grid_metre"},
-                {"id": "source-2", "name": "Zon", "type": "solar"},
-            ],
-            "devices": [{"id": "device-1", "name": "Warmtepomp", "type": "heatpump"}],
-        }
-    )
+    """Loading is read-only, even when rows have to be quarantined.
+
+    The revision only ever moves through an explicit user action, so a restart
+    with a damaged configuration must not expire the frontend's
+    expected_revision or rewrite the storage file.
+    """
+    hass_storage[STORAGE_KEY] = _stored(_broken_configuration())
+    stored_before = deepcopy(hass_storage[STORAGE_KEY])
 
     config = await ConfigurationStore(hass).async_load()
 
+    # The rows are quarantined in memory...
     assert [source.id for source in config.invalid_sources] == ["source-1"]
     assert [device.id for device in config.invalid_devices] == ["device-1"]
+    # ...while the revision and the file on disk are untouched.
+    assert config.revision == 3
+    assert config.logs == []
+    assert hass_storage[STORAGE_KEY] == stored_before
+
+
+async def test_a_clean_configuration_is_loaded_without_side_effects(
+    hass: HomeAssistant, hass_storage: dict[str, Any]
+) -> None:
+    """A configuration without unknown types is loaded without any write."""
+    hass_storage[STORAGE_KEY] = _stored(
+        {
+            "revision": 3,
+            "sources": [{"id": "source-1", "type": SOURCE_TYPE_GRID_METER}],
+        }
+    )
+    stored_before = deepcopy(hass_storage[STORAGE_KEY])
+
+    config = await ConfigurationStore(hass).async_load()
+
+    assert config.logs == []
+    assert config.revision == 3
+    assert hass_storage[STORAGE_KEY] == stored_before
+
+
+async def test_invalid_rows_are_reported_when_the_engine_uses_them(
+    hass: HomeAssistant, hass_storage: dict[str, Any]
+) -> None:
+    """The quarantine is logged where it becomes functionally relevant."""
+    hass_storage[STORAGE_KEY] = _stored(_broken_configuration())
+    store = ConfigurationStore(hass)
+    config = await store.async_load()
+
+    await store.async_report_invalid_rows()
 
     logged = [
         entry
@@ -664,23 +732,69 @@ async def test_invalid_rows_are_logged_on_load(
     assert len(logged) == 2
     assert {entry.subject for entry in logged} == {"source-1", "device-1"}
     assert all(entry.severity == SEVERITY_WARNING for entry in logged)
+    # A logbook entry is not a configuration change.
+    assert config.revision == 3
 
 
-async def test_a_clean_configuration_logs_nothing_on_load(
+async def test_repeated_reports_do_not_repeat_the_log_line(
     hass: HomeAssistant, hass_storage: dict[str, Any]
 ) -> None:
-    """A configuration without unknown types is loaded without side effects."""
-    hass_storage[STORAGE_KEY] = _stored(
-        {
-            "revision": 3,
-            "sources": [{"id": "source-1", "type": SOURCE_TYPE_GRID_METER}],
-        }
-    )
+    """Anti-spam: a recurring recalculation reports each row only once."""
+    hass_storage[STORAGE_KEY] = _stored(_broken_configuration())
+    store = ConfigurationStore(hass)
+    config = await store.async_load()
 
-    config = await ConfigurationStore(hass).async_load()
+    for _ in range(5):
+        await store.async_report_invalid_rows()
+
+    assert len(config.logs) == 2
+    assert [entry.count for entry in config.logs] == [1, 1]
+
+
+async def test_a_row_that_breaks_again_is_reported_again(
+    hass: HomeAssistant, hass_storage: dict[str, Any]
+) -> None:
+    """Repairing and re-breaking a row produces a fresh report."""
+    hass_storage[STORAGE_KEY] = _stored(_broken_configuration())
+    store = ConfigurationStore(hass)
+    config = await store.async_load()
+
+    await store.async_report_invalid_rows()
+    assert len(config.logs) == 2
+
+    def _repair(target: StoredConfiguration) -> None:
+        target.sources[0].type = SOURCE_TYPE_GRID_METER
+
+    def _break(target: StoredConfiguration) -> None:
+        target.sources[0].type = "grid_metre"
+
+    await store.async_update(_repair)
+    await store.async_report_invalid_rows()
+    await store.async_update(_break)
+    await store.async_report_invalid_rows()
+
+    reported = [
+        entry
+        for entry in config.logs
+        if entry.event_type == LOG_EVENT_INVALID_CONFIGURATION
+        and entry.subject == "source-1"
+    ]
+    assert sum(entry.count for entry in reported) == 2
+
+
+async def test_a_valid_configuration_reports_nothing(
+    hass: HomeAssistant, hass_storage: dict[str, Any]
+) -> None:
+    """Nothing is logged when there is nothing to quarantine."""
+    hass_storage[STORAGE_KEY] = _stored(
+        {"revision": 3, "sources": [{"id": "source-1", "type": SOURCE_TYPE_GRID_METER}]}
+    )
+    store = ConfigurationStore(hass)
+    config = await store.async_load()
+
+    await store.async_report_invalid_rows()
 
     assert config.logs == []
-    # No log means no write, so the revision is untouched.
     assert config.revision == 3
 
 

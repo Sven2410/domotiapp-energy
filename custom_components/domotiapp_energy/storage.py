@@ -4,12 +4,17 @@ The store owns the single source of truth for the extended configuration: the
 home profile, energy sources, device profiles, preferences and the logbook.
 Only the home name is duplicated in the config entry.
 
-Two invariants make concurrent writes safe:
+Three invariants make concurrent writes safe:
 
 * every write runs under an ``asyncio.Lock``, so writes are serialised;
-* every successful write increments ``revision`` by one. A caller that passes
-  a stale ``expected_revision`` is rejected with :class:`RevisionConflictError`
-  and can reload before retrying (optimistic concurrency, SPEC.md §14).
+* every successful configuration change increments ``revision`` by one. A
+  caller that passes a stale ``expected_revision`` is rejected with
+  :class:`RevisionConflictError` and can reload before retrying (optimistic
+  concurrency, SPEC.md §14);
+* the revision changes only through an explicit user action. Loading writes
+  nothing, and a logbook entry is persisted without touching the revision.
+  Otherwise a background event between opening a form and saving it would
+  expire the frontend's ``expected_revision`` and reject a valid save.
 """
 
 from __future__ import annotations
@@ -110,6 +115,10 @@ class ConfigurationStore:
         )
         self._lock = asyncio.Lock()
         self._config: StoredConfiguration | None = None
+        # Subject id -> the invalid reason already reported for it. Purely in
+        # memory: after a restart every quarantined row is reported once more,
+        # which is what an installer reading a fresh log expects.
+        self._reported_invalid: dict[str, str] = {}
 
     @property
     def config(self) -> StoredConfiguration:
@@ -138,6 +147,12 @@ class ConfigurationStore:
         A missing file yields a default configuration. A file that cannot be
         parsed is reported and also yields defaults, so a damaged install still
         starts instead of blocking Home Assistant.
+
+        Loading performs no write of any kind. The quarantine of a row with an
+        unrecognised type is derived from the stored type on every access
+        (``EnergySource.invalid_reason``), so there is nothing to repair and
+        nothing to persist; the revision survives the load untouched.
+        Quarantined rows are reported by :meth:`async_report_invalid_rows`.
         """
         try:
             raw = await self._store.async_load()
@@ -151,17 +166,29 @@ class ConfigurationStore:
             raw = None
 
         self._config = StoredConfiguration.from_dict(raw)
-        await self._async_report_invalid_rows(self._config)
+        self._reported_invalid.clear()
         return self._config
 
-    async def _async_report_invalid_rows(self, config: StoredConfiguration) -> None:
-        """Log every stored row the engine will refuse to use.
+    async def async_report_invalid_rows(self) -> None:
+        """Report every stored row the engine refuses to use.
 
-        A source or device with an unrecognised type stays in the list but is
-        disabled and marked invalid (SPEC.md §12). Without a visible warning the
+        Call this where the quarantine becomes functionally relevant: at the
+        moment the engine reads the configuration to calculate with it. A
+        source or device with an unrecognised type stays in the list but is
+        disabled and marked invalid (SPEC.md §12); without a visible warning the
         installer would only notice through a silently lower data quality score.
+
+        Anti-spam: each row is reported once per reason, so a recalculation
+        that runs every few seconds does not repeat itself. A row that is
+        repaired and later breaks again is reported afresh.
         """
+        config = self.config
+        still_invalid: set[str] = set()
+
         for source in config.invalid_sources:
+            still_invalid.add(source.id)
+            if not self._mark_reported(source.id, source.invalid_reason):
+                continue
             # No home name, location or entity state in the Home Assistant log
             # (SPEC.md §21); the readable detail goes to the in-app logbook.
             _LOGGER.warning(
@@ -180,6 +207,9 @@ class ConfigurationStore:
             )
 
         for device in config.invalid_devices:
+            still_invalid.add(device.id)
+            if not self._mark_reported(device.id, device.invalid_reason):
+                continue
             _LOGGER.warning(
                 "Device profile %s has unrecognised type %r and is disabled",
                 device.id,
@@ -194,6 +224,21 @@ class ConfigurationStore:
                 severity=SEVERITY_WARNING,
                 subject=device.id,
             )
+
+        # Forget rows that are valid again, so a relapse is reported once more.
+        for subject in self._reported_invalid.keys() - still_invalid:
+            del self._reported_invalid[subject]
+
+    def _mark_reported(self, subject: str, reason: str | None) -> bool:
+        """Return whether this subject still has to be reported for this reason.
+
+        Records the reason as reported on the way out, so the caller only has
+        to act on a ``True``.
+        """
+        if reason is None or self._reported_invalid.get(subject) == reason:
+            return False
+        self._reported_invalid[subject] = reason
+        return True
 
     async def async_update(
         self,
@@ -231,13 +276,17 @@ class ConfigurationStore:
         *,
         severity: str = SEVERITY_INFO,
         subject: str | None = None,
-    ) -> int:
-        """Add a logbook event and return the new revision.
+    ) -> None:
+        """Add a logbook event.
 
         Consecutive identical events (same type and same subject) within
         ``LOG_DEDUPE_WINDOW_MINUTES`` bump the ``count`` of the newest entry
         instead of adding a line, which keeps the logbook readable when a
         recalculation runs repeatedly (SPEC.md §8).
+
+        The logbook is persisted but is not part of what ``expected_revision``
+        guards, so writing an entry leaves the revision alone: most events come
+        from the engine, not from the user.
         """
 
         def _mutate(config: StoredConfiguration) -> None:
@@ -272,25 +321,40 @@ class ConfigurationStore:
             # Logs are newest first, so trimming the tail drops the oldest.
             del config.logs[MAX_LOG_ENTRIES:]
 
-        return await self.async_update(_mutate)
+        await self._async_write_logs(_mutate)
 
-    async def async_clear_logs(self) -> int:
-        """Empty the logbook and return the new revision."""
+    async def async_clear_logs(self) -> None:
+        """Empty the logbook."""
 
         def _mutate(config: StoredConfiguration) -> None:
             config.logs.clear()
 
-        return await self.async_update(_mutate)
+        await self._async_write_logs(_mutate)
+
+    async def _async_write_logs(
+        self, mutate: Callable[[StoredConfiguration], None]
+    ) -> None:
+        """Persist a logbook change under the lock, without a new revision."""
+        async with self._lock:
+            mutate(self.config)
+            await self._async_write(bump_revision=False)
 
     async def async_remove(self) -> None:
         """Delete the stored configuration file and drop the cache."""
         await self._store.async_remove()
         self._config = None
 
-    async def _async_write(self) -> int:
-        """Write the cached configuration. The caller must hold the lock."""
+    async def _async_write(self, *, bump_revision: bool = True) -> int:
+        """Write the cached configuration. The caller must hold the lock.
+
+        Args:
+            bump_revision: Whether this write is a configuration change. Only
+                a change the user asked for consumes a revision number; a
+                logbook write passes ``False``.
+        """
         config = self.config
-        config.revision += 1
+        if bump_revision:
+            config.revision += 1
         # Guard the limit here too: a caller may have appended logs directly.
         del config.logs[MAX_LOG_ENTRIES:]
 
@@ -299,7 +363,8 @@ class ConfigurationStore:
         except (OSError, HomeAssistantError) as err:
             # Keep the in-memory revision in step with what is on disk, so a
             # retry does not skip a number and trip the conflict check.
-            config.revision -= 1
+            if bump_revision:
+                config.revision -= 1
             raise StorageError(f"Could not write {STORAGE_KEY}") from err
 
         return config.revision
