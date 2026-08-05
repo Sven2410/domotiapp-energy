@@ -1,0 +1,181 @@
+"""Phrasing the advice in Dutch (SPEC.md §17).
+
+A coach provider is the last step in the chain: it receives a finished
+:class:`CoachResult` and returns one with the ``explanations`` filled in, so
+the panel's question selector has an answer for every fixed question.
+
+A provider may never invent a value, give a reason other than the reason codes
+the engine produced, control a device, select an entity or call a Home
+Assistant service. :class:`RuleBasedCoachProvider` is the only working
+implementation in 0.1.0; it phrases what it is given and nothing more.
+
+:class:`ExtensionCoachProvider` is the deliberately inactive extension point
+SPEC.md §17 asks for. It contains no provider, no client and no API key, and
+raises when used. There is no network access anywhere in this integration.
+"""
+
+from __future__ import annotations
+
+from typing import Protocol, runtime_checkable
+
+from custom_components.domotiapp_energy.const import (
+    COMPLETENESS_ITEM_DEVICE_PROFILE,
+    COMPLETENESS_ITEM_GRID,
+    COMPLETENESS_ITEM_HOME,
+    COMPLETENESS_ITEM_PRICE,
+    COMPLETENESS_ITEM_SOLAR,
+    COMPLETENESS_ITEM_TIME_WINDOWS,
+    EXPLANATION_KEY_MISSING_DATA,
+    EXPLANATION_KEY_PEAK_RISK,
+    EXPLANATION_KEY_SCORE_BREAKDOWN,
+    EXPLANATION_KEY_USE_DEVICE_NOW,
+    EXPLANATION_KEY_WHY_ADVICE,
+    SCORE_COMPONENT_DATA_QUALITY,
+    SCORE_COMPONENT_FLEXIBILITY,
+    SCORE_COMPONENT_PEAK,
+    SCORE_COMPONENT_PRICE,
+    SCORE_COMPONENT_SOLAR,
+)
+from custom_components.domotiapp_energy.models import CoachResult, EnergyMetrics
+
+from .reason_codes import (
+    REASON_HIGH_GRID_LOAD,
+    REASON_SOLAR_SURPLUS_AVAILABLE,
+)
+
+# Dutch labels for the checklist keys and score components, so an explanation
+# reads as a sentence instead of a list of identifiers.
+_ITEM_LABELS: dict[str, str] = {
+    COMPLETENESS_ITEM_HOME: "de woninggegevens",
+    COMPLETENESS_ITEM_GRID: "een geldige netbron",
+    COMPLETENESS_ITEM_SOLAR: "een geldige zonnebron",
+    COMPLETENESS_ITEM_PRICE: "prijsinformatie",
+    COMPLETENESS_ITEM_DEVICE_PROFILE: "een compleet apparaatprofiel",
+    COMPLETENESS_ITEM_TIME_WINDOWS: "tijdvensters voor flexibele apparaten",
+}
+
+_COMPONENT_LABELS: dict[str, str] = {
+    SCORE_COMPONENT_DATA_QUALITY: "datakwaliteit",
+    SCORE_COMPONENT_PEAK: "netbelasting",
+    SCORE_COMPONENT_SOLAR: "zonnebenutting",
+    SCORE_COMPONENT_PRICE: "prijs",
+    SCORE_COMPONENT_FLEXIBILITY: "flexibiliteit",
+}
+
+
+@runtime_checkable
+class CoachProvider(Protocol):
+    """The contract every coach provider satisfies (SPEC.md §17)."""
+
+    async def async_generate(self, result: CoachResult) -> CoachResult:
+        """Return the result with its explanations filled in."""
+        ...
+
+
+class RuleBasedCoachProvider:
+    """Builds Dutch explanations from the reason codes and the metrics.
+
+    Every sentence is derived from a value the engine already calculated. When
+    a value is unknown the explanation says so rather than filling the gap.
+    """
+
+    async def async_generate(self, result: CoachResult) -> CoachResult:
+        """Return a copy of the result with the explanations filled in."""
+        result.explanations = {
+            EXPLANATION_KEY_WHY_ADVICE: _why_advice(result),
+            EXPLANATION_KEY_USE_DEVICE_NOW: _use_device_now(result),
+            EXPLANATION_KEY_PEAK_RISK: _peak_risk(result.metrics),
+            EXPLANATION_KEY_MISSING_DATA: _missing_data(result.metrics),
+            EXPLANATION_KEY_SCORE_BREAKDOWN: _score_breakdown(result.metrics),
+        }
+        result.missing_data = list(result.metrics.data_quality.missing_items)
+        return result
+
+
+class ExtensionCoachProvider:
+    """The inactive extension point for a future provider (SPEC.md §17).
+
+    Present so a later release can add a different way of phrasing advice
+    without changing the coordinator. It holds no configuration, performs no
+    I/O and is never instantiated by the integration itself.
+    """
+
+    async def async_generate(self, result: CoachResult) -> CoachResult:
+        """Raise: there is no second provider in 0.1.0."""
+        raise NotImplementedError(
+            "No alternative coach provider is available in this release"
+        )
+
+
+def _why_advice(result: CoachResult) -> str:
+    """Explain the primary advice in terms of what was measured."""
+    primary = result.primary_advice
+    if primary is None:
+        return "Er is op dit moment geen advies."
+
+    parts = [primary.message]
+    if primary.measurements:
+        readings = ", ".join(
+            f"{_humanise(key)}: {value}" for key, value in primary.measurements.items()
+        )
+        parts.append(f"Gebaseerd op {readings}.")
+    parts.append(f"Betrouwbaarheid: {primary.confidence}.")
+    return " ".join(parts)
+
+
+def _use_device_now(result: CoachResult) -> str:
+    """Answer whether this is a good moment to run a device."""
+    for item in result.advice:
+        if item.reason_code == REASON_SOLAR_SURPLUS_AVAILABLE:
+            return item.message
+    if any(item.reason_code == REASON_HIGH_GRID_LOAD for item in result.advice):
+        return (
+            "Nu is geen gunstig moment: de netbelasting ligt dicht bij het "
+            "ingestelde maximum."
+        )
+    return (
+        "Er is op dit moment geen aanleiding om een apparaat te verplaatsen of "
+        "juist nu te gebruiken."
+    )
+
+
+def _peak_risk(metrics: EnergyMetrics) -> str:
+    """Answer whether there is a peak load risk right now."""
+    if metrics.grid_load_percent is None:
+        return (
+            "De netbelasting is niet te bepalen. Vul het maximale netvermogen in "
+            "en koppel een netbron."
+        )
+    load = round(metrics.grid_load_percent, 1)
+    if metrics.peak_risk:
+        return (
+            f"Ja. De woning gebruikt {load}% van het ingestelde maximale netvermogen."
+        )
+    return f"Nee. De woning gebruikt {load}% van het ingestelde maximale netvermogen."
+
+
+def _missing_data(metrics: EnergyMetrics) -> str:
+    """List what still has to be configured."""
+    missing = metrics.data_quality.missing_items
+    if not missing:
+        return "Alle gegevens voor een betrouwbaar advies zijn ingevuld."
+
+    listed = ", ".join(_ITEM_LABELS.get(item, item) for item in missing)
+    return f"Nog ontbrekend: {listed}."
+
+
+def _score_breakdown(metrics: EnergyMetrics) -> str:
+    """Show the components behind the energy score."""
+    if metrics.energy_score is None or not metrics.score_components:
+        return "De energiescore is nog niet berekend."
+
+    parts = ", ".join(
+        f"{_COMPONENT_LABELS.get(key, key)} {round(value)}"
+        for key, value in metrics.score_components.items()
+    )
+    return f"De score is {metrics.energy_score}, opgebouwd uit: {parts}."
+
+
+def _humanise(key: str) -> str:
+    """Turn a measurement key into readable Dutch."""
+    return key.replace("_", " ")

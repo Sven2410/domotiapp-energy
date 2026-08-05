@@ -428,9 +428,37 @@ SCORE_WEIGHT_FLEXIBILITY: Final = 0.10
 PEAK_COMPONENT_FULL_BELOW_PERCENT: Final = 50.0
 # A fixed contract has no price signal, so the price component is neutral.
 PRICE_COMPONENT_FIXED_CONTRACT: Final = 50.0
+# SPEC.md §16 fixes the solar component at 0 when the surplus is unknown, and
+# the price component at 50 when no price signal exists. It leaves open what a
+# component worth is when it simply cannot be determined (no maximum grid power
+# entered, a dynamic contract without thresholds). Those use the same neutral
+# value as "no price signal": scoring them 0 would punish an incomplete
+# configuration twice, since data quality already carries 30% of the weight.
+COMPONENT_NEUTRAL: Final = PRICE_COMPONENT_FIXED_CONTRACT
+COMPONENT_MIN: Final = 0.0
+COMPONENT_MAX: Final = 100.0
+
+# Keys under EnergyMetrics.score_components, so the coach can show the
+# breakdown behind "Hoe is mijn energiescore berekend?".
+SCORE_COMPONENT_DATA_QUALITY: Final = "data_quality_component"
+SCORE_COMPONENT_PEAK: Final = "peak_component"
+SCORE_COMPONENT_SOLAR: Final = "solar_component"
+SCORE_COMPONENT_PRICE: Final = "price_component"
+SCORE_COMPONENT_FLEXIBILITY: Final = "flexibility_component"
 
 SCORE_MIN: Final = 0
 SCORE_MAX: Final = 100
+
+# --- Calculation conventions (SPEC.md §16) ----------------------------------
+
+PERCENT_MAX: Final = 100.0
+
+# Internal sign convention for a home battery, mirroring the grid convention
+# (positive = drawn from the grid): positive means charging, so the battery is
+# consuming, and negative means discharging. SPEC.md §16 states that a charging
+# battery counts as consumption but does not fix the sign; the installer aligns
+# their entity with invert_value.
+BATTERY_POSITIVE_MEANS_CHARGING: Final = True
 
 # --- Coordinator (SPEC.md §18) ----------------------------------------------
 
@@ -461,6 +489,18 @@ SUGGESTED_OBJECT_IDS: Final[dict[str, str]] = {
 MAX_STATE_LENGTH: Final = 255
 # Keep the advice attributes well under the recorder/state-machine budget.
 MAX_ADVICE_ITEMS_IN_ATTRIBUTES: Final = 5
+
+# --- Advice ordering (SPEC.md §16 "Sorteervolgorde") ------------------------
+
+# 1) safety 2) peak load 3) hard time limits 4) solar 5) price 6) general.
+# 0.1.0 has no safety reason code of its own; missing essential data takes that
+# rank, because every other advice below it would rest on incomplete input.
+ADVICE_RANK_SAFETY: Final = 1
+ADVICE_RANK_PEAK: Final = 2
+ADVICE_RANK_TIME_LIMIT: Final = 3
+ADVICE_RANK_SOLAR: Final = 4
+ADVICE_RANK_PRICE: Final = 5
+ADVICE_RANK_GENERAL: Final = 6
 
 # --- Coach question selector (SPEC.md §8 "Energiecoach") --------------------
 
