@@ -155,7 +155,16 @@ een `input_number` zetten om een herberekening te forceren. Het leest `HA_URL` e
 py -3.13 .\scripts\ha_check.py                 # toon de zes entiteiten
 py -3.13 .\scripts\ha_check.py --set -5700     # zet de netmeter en toon opnieuw
 py -3.13 .\scripts\ha_check.py --json          # ruwe states, om zelf door te spitten
+
+# WebSocket-commando's, eventueel als een andere gebruiker
+py -3.13 .\scripts\ha_check.py --ws domotiapp_energy/config/get
+py -3.13 .\scripts\ha_check.py --ws domotiapp_energy/sources/create --data '{...}'
+py -3.13 .\scripts\ha_check.py --ws domotiapp_energy/config/get --as READONLY
 ```
+
+`--as SUFFIX` pakt `HA_TOKEN_<SUFFIX>` uit `.env`, zodat de rechtencontrole met een
+niet-admin token aantoonbaar is. `--ws` verstuurt uitsluitend `domotiapp_energy/*` en
+`auth/current_user`; dat laatste om te bewijzen bij wélke gebruiker een token hoort.
 
 **Dit is een verificatiehulpmiddel, geen vervanging van de testsuite.** Een fase is pas
 klaar wanneer `pytest` slaagt; dit script vangt wat de testharnas per definitie niet ziet
