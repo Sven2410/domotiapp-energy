@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from typing import Final
 
+from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
+
 # --- Identity (SPEC.md §3) --------------------------------------------------
 
 DOMAIN: Final = "domotiapp_energy"
@@ -128,6 +130,8 @@ STRATEGIES: Final[tuple[str, ...]] = (
     STRATEGY_MAX_SELF_CONSUMPTION,
 )
 
+MIN_PEAK_WARNING_PERCENT: Final = 0
+MAX_PEAK_WARNING_PERCENT: Final = 100
 DEFAULT_PEAK_WARNING_PERCENT: Final = 80
 DEFAULT_MIN_SOLAR_SURPLUS_W: Final = 500
 DEFAULT_STRATEGY: Final = STRATEGY_BALANCED
@@ -195,6 +199,23 @@ UNITS: Final[tuple[str, ...]] = (
 )
 
 DEFAULT_SCALE_FACTOR: Final = 1.0
+
+# Multiplier from the explicitly chosen unit to the unit the engine calculates
+# in: power in W, energy in Wh, price in EUR/kWh, current in A, ratio in %.
+# Applied only on the basis of this choice, never on the Home Assistant
+# unit_of_measurement or the entity name (SPEC.md §15). "none" means the value
+# is taken as-is.
+UNIT_CONVERSION_FACTORS: Final[dict[str, float]] = {
+    UNIT_W: 1.0,
+    UNIT_KW: 1000.0,
+    UNIT_A: 1.0,
+    UNIT_WH: 1.0,
+    UNIT_KWH: 1000.0,
+    UNIT_EUR_KWH: 1.0,
+    UNIT_CT_KWH: 0.01,
+    UNIT_PERCENT: 1.0,
+    UNIT_NONE: 1.0,
+}
 
 METER_MODE_SINGLE_SIGNED: Final = "single_signed"
 METER_MODE_SEPARATE: Final = "separate_import_export"
@@ -292,6 +313,42 @@ DEFAULT_MIN_SAVINGS_EUR: Final = 0.0
 DEFAULT_MAX_ADVICE_COUNT: Final = 3
 MIN_ADVICE_COUNT: Final = 1
 MAX_ADVICE_COUNT: Final = 5
+
+# --- Reading entity values (SPEC.md §15) ------------------------------------
+
+# Clock arithmetic, used wherever a stored "HH:MM" is compared or measured.
+MINUTES_PER_HOUR: Final = 60
+HOURS_PER_DAY: Final = 24
+MINUTES_PER_DAY: Final = MINUTES_PER_HOUR * HOURS_PER_DAY
+MAX_HOUR: Final = HOURS_PER_DAY - 1
+MAX_MINUTE: Final = MINUTES_PER_HOUR - 1
+
+# States that carry no measurement. A state is refused rather than treated as
+# zero: a heat pump that is unavailable is not a heat pump using 0 W.
+UNUSABLE_ENTITY_STATES: Final[frozenset[str]] = frozenset(
+    {STATE_UNKNOWN, STATE_UNAVAILABLE, "none", ""}
+)
+
+# --- Validation (SPEC.md §15) -----------------------------------------------
+
+# Stable codes on a ValidationIssue. The GUI may render its own text per code;
+# the Dutch message on the issue is the fallback.
+VALIDATION_REQUIRED: Final = "required"
+VALIDATION_OUT_OF_RANGE: Final = "out_of_range"
+VALIDATION_INVALID_CHOICE: Final = "invalid_choice"
+VALIDATION_INVALID_TIME_WINDOW: Final = "invalid_time_window"
+VALIDATION_UNKNOWN_TYPE: Final = INVALID_REASON_UNKNOWN_TYPE
+# Not an error: SPEC.md §8 requires a warning, never a block, when the entered
+# maximum grid power exceeds phases x 230 V x main fuse.
+VALIDATION_ABOVE_THEORETICAL_MAXIMUM: Final = "above_theoretical_maximum"
+VALIDATION_CODES: Final[tuple[str, ...]] = (
+    VALIDATION_REQUIRED,
+    VALIDATION_OUT_OF_RANGE,
+    VALIDATION_INVALID_CHOICE,
+    VALIDATION_INVALID_TIME_WINDOW,
+    VALIDATION_UNKNOWN_TYPE,
+    VALIDATION_ABOVE_THEORETICAL_MAXIMUM,
+)
 
 # --- Logbook (SPEC.md §8 "Logboek") -----------------------------------------
 

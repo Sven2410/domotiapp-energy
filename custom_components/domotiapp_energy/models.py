@@ -61,11 +61,14 @@ from .const import (
     INVALID_REASON_UNKNOWN_TYPE,
     MAX_ADVICE_COUNT,
     MAX_DAY_OF_WEEK,
+    MAX_HOUR,
     MAX_MAIN_FUSE_A,
+    MAX_MINUTE,
     METER_MODES,
     MIN_ADVICE_COUNT,
     MIN_DAY_OF_WEEK,
     MIN_MAIN_FUSE_A,
+    MINUTES_PER_HOUR,
     NOISY_BY_DEFAULT_DEVICE_TYPES,
     NOMINAL_VOLTAGE_PER_PHASE,
     POSITIVE_MEANS_OPTIONS,
@@ -81,10 +84,8 @@ from .const import (
     VALUE_SOURCES,
 )
 
-# Clock bounds, used when normalising a "HH:MM" time string.
+# A "HH:MM" or "HH:MM:SS" string needs at least an hour and a minute part.
 _TIME_PARTS_REQUIRED: Final = 2
-_MAX_HOUR: Final = 23
-_MAX_MINUTE: Final = 59
 
 
 # --- Defensive coercion helpers ---------------------------------------------
@@ -112,8 +113,11 @@ def _as_bool(value: Any, default: bool) -> bool:
     return value if isinstance(value, bool) else default
 
 
-def _as_number(value: Any) -> float | None:
+def as_finite_float(value: Any) -> float | None:
     """Return a finite float, or None.
+
+    Public because :mod:`.validators` reads entity states with exactly these
+    rules: a measurement is either a usable finite number or it is refused.
 
     Booleans are rejected explicitly: ``bool`` is a subclass of ``int``, so
     ``True`` would otherwise silently become ``1.0``.
@@ -134,7 +138,7 @@ def _as_number(value: Any) -> float | None:
 
 def _as_float(value: Any, default: float, *, minimum: float | None = None) -> float:
     """Return a finite float clamped to a lower bound, or the default."""
-    number = _as_number(value)
+    number = as_finite_float(value)
     if number is None:
         return default
     if minimum is not None and number < minimum:
@@ -146,7 +150,7 @@ def _as_optional_float(
     value: Any, *, minimum: float | None = None, maximum: float | None = None
 ) -> float | None:
     """Return a finite float within bounds, or None."""
-    number = _as_number(value)
+    number = as_finite_float(value)
     if number is None:
         return None
     if minimum is not None and number < minimum:
@@ -164,7 +168,7 @@ def _as_int(
     maximum: int | None = None,
 ) -> int:
     """Return an int clamped to the allowed range, or the default."""
-    number = _as_number(value)
+    number = as_finite_float(value)
     if number is None:
         return default
     result = int(number)
@@ -179,7 +183,7 @@ def _as_optional_int(
     value: Any, *, minimum: int | None = None, maximum: int | None = None
 ) -> int | None:
     """Return an int within bounds, or None when it is unusable."""
-    number = _as_number(value)
+    number = as_finite_float(value)
     if number is None:
         return None
     result = int(number)
@@ -207,9 +211,23 @@ def _as_time(value: Any, default: str | None = None) -> str | None:
         minute = int(parts[1])
     except ValueError:
         return default
-    if not (0 <= hour <= _MAX_HOUR and 0 <= minute <= _MAX_MINUTE):
+    if not (0 <= hour <= MAX_HOUR and 0 <= minute <= MAX_MINUTE):
         return default
     return f"{hour:02d}:{minute:02d}"
+
+
+def minutes_since_midnight(value: str | None) -> int | None:
+    """Return "HH:MM" as minutes past midnight, or None when unusable.
+
+    Public because every module that compares two stored times has to agree on
+    this conversion: comparing the strings directly only works by accident of
+    zero padding.
+    """
+    normalised = _as_time(value)
+    if normalised is None:
+        return None
+    hour, minute = normalised.split(":")
+    return int(hour) * MINUTES_PER_HOUR + int(minute)
 
 
 def _as_days_of_week(value: Any) -> list[int]:
@@ -965,7 +983,7 @@ def _as_number_mapping(value: Any) -> dict[str, float]:
     return {
         key: number
         for key, raw in mapping.items()
-        if isinstance(key, str) and (number := _as_number(raw)) is not None
+        if isinstance(key, str) and (number := as_finite_float(raw)) is not None
     }
 
 
@@ -976,7 +994,7 @@ def _as_measurements(value: Any) -> dict[str, float | str]:
     for key, raw in mapping.items():
         if not isinstance(key, str):
             continue
-        number = _as_number(raw)
+        number = as_finite_float(raw)
         if number is not None:
             measurements[key] = number
         elif (text := _as_optional_str(raw)) is not None:
