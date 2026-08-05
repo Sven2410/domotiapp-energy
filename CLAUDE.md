@@ -123,6 +123,30 @@ py -3.13 -m venv .venv
 Het testimage installeert de dependencies in een eigen laag en wordt alleen opnieuw
 gebouwd wanneer `pyproject.toml` verandert; de broncode is een bind-mount.
 
+### Frontendtests (JavaScript)
+
+`pytest` kan geen JavaScript uitvoeren. De paneelcode heeft daarom een eigen testlaag:
+jsdom plus de ingebouwde testrunner van Node.
+
+```powershell
+npm install     # eenmalig
+npm test        # tests/frontend/*.test.mjs
+```
+
+**Dit is de enige dev-dependency van het project en raakt de integratie niet.**
+`custom_components/` verscheept geen JavaScript-afhankelijkheden en heeft geen buildstap
+(CLAUDE.md-regel 5); `package.json` bestaat uitsluitend voor deze tests.
+
+**Vertrouw niet op de cascade van jsdom.** jsdom implementeert CSS maar gedeeltelijk, dus
+een vraag als "wint een eigen `display`-regel van `[hidden]`?" kun je er niet mee
+beantwoorden — en dat was precies de vraag waar fase 7a op stukliep. Toets in plaats
+daarvan **ons eigen contract**: `setVisible()` uit `core/dom.js` zet de klasse
+`is-hidden`, en het stylesheet zet daar `display: none !important` achter. Verberg nooit
+iets met alleen het `hidden`-attribuut.
+
+Een frontendwijziging is pas geverifieerd wanneer een test faalt zónder de fix. Draai bij
+een bugfix eerst de test tegen de oude code.
+
 ### Versieverschil tussen tests en de draaiende HA (bewuste keuze, niet oplossen)
 
 | | Python | Home Assistant |

@@ -29,6 +29,11 @@ htmlcov/
 .env.*
 !.env.example
 
+# Frontend test tooling. package.json and package-lock.json ARE tracked; the
+# installed packages are not. The integration itself ships no JavaScript
+# dependencies and has no build step.
+node_modules/
+
 # Editors and operating system
 .idea/
 .vscode/

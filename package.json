@@ -1,0 +1,14 @@
+{
+  "name": "domotiapp-energy-frontend-tests",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Test-only tooling for the DomotiApp Energy panel. The integration itself ships no JavaScript dependencies and needs no build step.",
+  "license": "MIT",
+  "scripts": {
+    "test": "node --test \"tests/frontend/**/*.test.mjs\""
+  },
+  "devDependencies": {
+    "jsdom": "^26.1.0"
+  }
+}

@@ -20,7 +20,7 @@
  */
 
 import { createApi, describeError } from './core/api.js';
-import { el } from './core/dom.js';
+import { el, setVisible } from './core/dom.js';
 import { createState } from './core/state.js';
 import { onTap } from './core/tap.js';
 import { coachTab } from './tabs/coach.js';
@@ -52,6 +52,19 @@ const TABS = [
 const ADVICE_ENTITY = 'sensor.domotiapp_energy_current_advice';
 
 const STYLES = `
+  /*
+   * Hiding, and the reason this rule is not the browser's own.
+   *
+   * The user-agent sheet has [hidden] { display: none }, but every rule below
+   * that sets display is an author declaration and therefore wins in the
+   * cascade. Setting .hidden alone left tab panels, tab buttons, notices and
+   * the banner permanently on screen in phase 7a. Both selectors are listed so
+   * a Home Assistant component that sets the attribute itself is hidden too.
+   */
+  [hidden],
+  .is-hidden {
+    display: none !important;
+  }
   :host {
     display: block;
     padding: 16px;
@@ -284,7 +297,7 @@ class DomotiAppEnergyPanel extends HTMLElement {
     style.textContent = STYLES;
 
     this._banner = el('div', { class: 'banner' });
-    this._banner.hidden = true;
+    setVisible(this._banner, false);
     this._bannerText = el('span');
     this._banner.appendChild(this._bannerText);
 
@@ -336,7 +349,7 @@ class DomotiAppEnergyPanel extends HTMLElement {
     instance.element.id = `panel-${id}`;
     instance.element.setAttribute('role', 'tabpanel');
     instance.element.setAttribute('aria-labelledby', `tab-${id}`);
-    instance.element.hidden = true;
+    setVisible(instance.element, false);
     this._tabHost.appendChild(instance.element);
     this._tabs.set(id, instance);
     return instance;
@@ -359,7 +372,7 @@ class DomotiAppEnergyPanel extends HTMLElement {
     // the backend refuses their writes regardless (SPEC.md §14).
     for (const tab of TABS) {
       const visible = state.isAdmin || !tab.adminOnly;
-      this._tabButtons.get(tab.id).hidden = !visible;
+      setVisible(this._tabButtons.get(tab.id), visible);
       if (!visible && this._activeTab === tab.id) {
         this._activeTab = TABS[0].id;
       }
@@ -373,7 +386,7 @@ class DomotiAppEnergyPanel extends HTMLElement {
 
     const active = this._ensureTab(this._activeTab);
     for (const [id, instance] of this._tabs) {
-      instance.element.hidden = id !== this._activeTab;
+      setVisible(instance.element, id === this._activeTab);
     }
     active.update(state);
 
@@ -389,7 +402,7 @@ class DomotiAppEnergyPanel extends HTMLElement {
   _showBanner(text, tone = 'info') {
     this._bannerText.textContent = text || '';
     this._banner.dataset.tone = tone;
-    this._banner.hidden = !text;
+    setVisible(this._banner, Boolean(text));
   }
 
   // --- Loading --------------------------------------------------------------

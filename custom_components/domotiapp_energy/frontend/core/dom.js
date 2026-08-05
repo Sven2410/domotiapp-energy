@@ -9,6 +9,34 @@
  * throw away focus, scroll position and any half-typed input.
  */
 
+/**
+ * The class that hides an element, and the only way this panel hides anything.
+ *
+ * The bare `hidden` attribute is not enough. `[hidden] { display: none }` lives
+ * in the user-agent stylesheet, and in the cascade a normal author declaration
+ * beats a normal user-agent one whatever its specificity — so any rule of ours
+ * that sets `display` silently defeats it. That is not a theoretical risk: it
+ * left every tab panel, every tab button, four notices and the status banner
+ * permanently on screen in phase 7a.
+ *
+ * So visibility is *our* contract: a class we set, backed by an `!important`
+ * rule we own. `hidden` is still set alongside it, because it is what removes
+ * the element from the accessibility tree (SPEC.md §23).
+ */
+export const HIDDEN_CLASS = 'is-hidden';
+
+/**
+ * Show or hide an element.
+ *
+ * Use this everywhere, including on elements that have no `display` rule of
+ * their own today. One added rule in the stylesheet would otherwise turn such
+ * an element into a silent bug months later.
+ */
+export function setVisible(element, visible) {
+  element.classList.toggle(HIDDEN_CLASS, !visible);
+  element.hidden = !visible;
+}
+
 /** Create an element, set properties and append children in one call. */
 export function el(tag, options = {}, children = []) {
   const node = document.createElement(tag);
@@ -57,7 +85,7 @@ export function card(title) {
 export function statRow(label, { unit = '', empty = 'Niet beschikbaar' } = {}) {
   const valueNode = el('span', { class: 'stat-value', text: empty });
   const hintNode = el('span', { class: 'stat-hint' });
-  hintNode.hidden = true;
+  setVisible(hintNode, false);
 
   const element = el('div', { class: 'stat-row' }, [
     el('span', { class: 'stat-label', text: label }),
@@ -72,7 +100,7 @@ export function statRow(label, { unit = '', empty = 'Niet beschikbaar' } = {}) {
       valueNode.textContent = missing ? empty : `${value}${unit}`;
       valueNode.classList.toggle('is-empty', missing);
       hintNode.textContent = hint || '';
-      hintNode.hidden = !hint;
+      setVisible(hintNode, Boolean(hint));
     },
   };
 }
@@ -87,18 +115,24 @@ export function notice(icon) {
   const iconNode = el('ha-icon', { attrs: { icon, 'aria-hidden': 'true' } });
   const textNode = el('span', { class: 'notice-text' });
   const element = el('div', { class: 'notice' }, [iconNode, textNode]);
-  element.hidden = true;
+  setVisible(element, false);
 
   return {
     element,
-    /** Show this text, or hide the line entirely when text is falsy. */
+    /**
+     * Show this text, or hide the whole line when the text is falsy.
+     *
+     * The icon is hidden together with the text, never on its own: an icon
+     * left behind without its sentence carries meaning by picture alone, which
+     * SPEC.md §23 forbids.
+     */
     set(text, { icon: newIcon = null, tone = 'info' } = {}) {
       textNode.textContent = text || '';
       if (newIcon) {
         iconNode.setAttribute('icon', newIcon);
       }
       element.dataset.tone = tone;
-      element.hidden = !text;
+      setVisible(element, Boolean(text));
     },
   };
 }

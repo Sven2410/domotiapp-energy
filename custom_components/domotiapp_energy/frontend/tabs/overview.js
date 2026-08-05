@@ -18,6 +18,7 @@ import {
   formatNumber,
   formatTimestamp,
   notice,
+  setVisible,
   statRow,
 } from '../core/dom.js';
 
@@ -104,6 +105,10 @@ export const overviewTab = {
     });
     const warningsList = el('ul', { class: 'warning-list' });
     const noWarnings = notice('mdi:check-circle-outline');
+    // Hidden until the first calculation arrives: an empty list under a
+    // heading reads as "something failed to load".
+    setVisible(warningsTitle, false);
+    setVisible(warningsList, false);
     adviceCard.body.append(
       adviceTitle,
       adviceMessage,
@@ -157,7 +162,8 @@ export const overviewTab = {
         }
       }
 
-      warningsList.hidden = warnings.length === 0;
+      setVisible(warningsList, warnings.length > 0);
+      setVisible(warningsTitle, warnings.length > 0);
       noWarnings.set(
         warnings.length === 0 ? 'Er zijn op dit moment geen waarschuwingen.' : '',
         { tone: 'success' },

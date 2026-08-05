@@ -1222,6 +1222,27 @@ Rapporteer kort na elke fase wat af is.
 - Bevestig dat er nergens entity-matching, scoring op naam of discovery plaatsvindt.
 - Bevestig dat er geen mock- of placeholderdata in productiecode staat.
 
+**De frontendcontrole is niet langer alleen grep.** Fase 7a liet zien waarom: drie bugs
+(tabbladen die stapelden, rechten die niet verborgen, iconen zonder tekst) kwamen alle
+drie uit dezelfde CSS-cascaderegel, terwijl parsen, importeren, HTTP-controles en de
+volledige pytest-suite groen stonden. Geen van die controles bouwde ooit een DOM op.
+
+Vanaf fase 7a geldt daarom:
+
+- de paneelcode heeft een eigen testlaag (`npm test`, jsdom + `node --test`), die in
+  `tests.yml` naast `pytest` draait;
+- zichtbaarheid loopt uitsluitend via `setVisible()` uit `core/dom.js`, dat de klasse
+  `is-hidden` zet; het `hidden`-attribuut alleen is niet genoeg, omdat elke eigen
+  `display`-regel het in de cascade verslaat;
+- de tests toetsen dat klassecontract, niet de cascade van jsdom — die is te
+  onvolledig om erop te bouwen;
+- een frontendfix telt pas als geverifieerd wanneer de bijbehorende test aantoonbaar
+  faalt op de code van vóór de fix.
+
+Alleen een echte browser toetst de werkelijke cascade. Een headless-browsertest
+(Playwright) is de aanbevolen laatste controle vóór de eerste klantuitrol; die staat
+bewust buiten deze fasering.
+
 Wanneer een frontendfunctie te groot blijkt: bouw eerst een functionele eenvoudige variant
 in plaats van een visueel uitgebreide, niet-werkende mock-up.
 

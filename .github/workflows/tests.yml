@@ -43,3 +43,18 @@ jobs:
 
       - name: Pytest
         run: pytest --cov=custom_components/domotiapp_energy --cov-report=term-missing
+
+      # The panel is JavaScript, so pytest cannot see it. Phase 7a shipped three
+      # visibility bugs that every Python check passed straight over; these tests
+      # build the panel in a DOM and assert what it actually shows.
+      - name: Set up Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install frontend test dependencies
+        run: npm ci
+
+      - name: Frontend tests
+        run: npm test
