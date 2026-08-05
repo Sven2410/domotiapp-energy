@@ -42,6 +42,7 @@ from custom_components.domotiapp_energy.validators import is_within_window
 
 from .reason_codes import (
     REASON_HIGH_ENERGY_PRICE,
+    REASON_HIGH_GRID_EXPORT,
     REASON_HIGH_GRID_LOAD,
     REASON_LOW_ENERGY_PRICE,
     REASON_MISSING_REQUIRED_DATA,
@@ -51,9 +52,15 @@ from .reason_codes import (
 
 # Rank per reason code, following the sort order in SPEC.md §16. Anything not
 # listed sorts as general optimisation.
+#
+# Both peak variants share the peak rank: they describe the same risk and can
+# never occur together, because the grid power is either positive or negative.
+# The export variant ranking above solar surplus matters, though — both advise
+# using power now, and the more urgent reason has to be the primary one.
 _ADVICE_RANKS: dict[str, int] = {
     REASON_MISSING_REQUIRED_DATA: ADVICE_RANK_SAFETY,
     REASON_HIGH_GRID_LOAD: ADVICE_RANK_PEAK,
+    REASON_HIGH_GRID_EXPORT: ADVICE_RANK_PEAK,
     REASON_SOLAR_SURPLUS_AVAILABLE: ADVICE_RANK_SOLAR,
     REASON_LOW_ENERGY_PRICE: ADVICE_RANK_PRICE,
     REASON_HIGH_ENERGY_PRICE: ADVICE_RANK_PRICE,
@@ -137,9 +144,38 @@ def _advise_missing_data(context: _Context) -> list[AdviceItem]:
 
 
 def _advise_peak_risk(context: _Context) -> list[AdviceItem]:
-    """Warn when the grid load approaches the configured maximum."""
+    """Warn when the grid load approaches the configured maximum.
+
+    The risk is the same in both directions — the main fuse does not care which
+    way the current flows — but the advice is not. A home exporting 10 kW is
+    over its limit, and telling it to postpone its appliances would push it
+    further over: it has to *use* more, not less (SPEC.md §16).
+    """
     if not context.metrics.peak_risk or context.metrics.grid_load_percent is None:
         return []
+
+    grid_power = context.metrics.grid_power_w or 0.0
+    measurements: dict[str, float | str] = {
+        "netbelasting_procent": round(context.metrics.grid_load_percent, 1),
+        "netvermogen_w": grid_power,
+    }
+
+    if grid_power < 0:
+        return [
+            AdviceItem(
+                id=REASON_HIGH_GRID_EXPORT,
+                title="Teruglevering hoog",
+                message=(
+                    "De teruglevering ligt dicht bij de ingestelde maximale "
+                    "woningbelasting. Schakel indien mogelijk juist extra "
+                    "verbruikers in om het overschot zelf te benutten."
+                ),
+                severity=SEVERITY_WARNING,
+                reason_code=REASON_HIGH_GRID_EXPORT,
+                confidence=CONFIDENCE_HIGH,
+                measurements=measurements,
+            )
+        ]
 
     return [
         AdviceItem(
@@ -152,10 +188,7 @@ def _advise_peak_risk(context: _Context) -> list[AdviceItem]:
             severity=SEVERITY_WARNING,
             reason_code=REASON_HIGH_GRID_LOAD,
             confidence=CONFIDENCE_HIGH,
-            measurements={
-                "netbelasting_procent": round(context.metrics.grid_load_percent, 1),
-                "netvermogen_w": context.metrics.grid_power_w or 0.0,
-            },
+            measurements=measurements,
         )
     ]
 

@@ -33,6 +33,7 @@ from custom_components.domotiapp_energy.engine.providers import (
 )
 from custom_components.domotiapp_energy.engine.reason_codes import (
     REASON_HIGH_ENERGY_PRICE,
+    REASON_HIGH_GRID_EXPORT,
     REASON_HIGH_GRID_LOAD,
     REASON_LOW_ENERGY_PRICE,
     REASON_MISSING_REQUIRED_DATA,
@@ -161,6 +162,86 @@ async def test_no_peak_risk_produces_no_peak_advice(hass: HomeAssistant) -> None
     advice = Advisor().generate(_config(), _metrics(peak_risk=False))
 
     assert REASON_HIGH_GRID_LOAD not in _codes(advice)
+
+
+async def test_overload_by_export_advises_using_power_not_postponing_it(
+    hass: HomeAssistant,
+) -> None:
+    """Exporting past the limit gets its own code and the opposite advice.
+
+    The fuse limits both directions, so the warning is identical — but a home
+    that is already pushing 10 kW into the grid has to use more, not less.
+    Telling it to postpone its appliances would deepen the overload
+    (SPEC.md §16).
+    """
+    metrics = _metrics(grid_power_w=-10000.0, grid_load_percent=173.9, peak_risk=True)
+
+    advice = Advisor().generate(_config(), metrics)
+
+    assert advice[0].reason_code == REASON_HIGH_GRID_EXPORT
+    assert advice[0].severity == SEVERITY_WARNING
+    assert advice[0].measurements["netbelasting_procent"] == 173.9
+    assert advice[0].measurements["netvermogen_w"] == -10000.0
+    assert "extra verbruikers in" in advice[0].message
+    # The import wording must not leak into the export case.
+    assert "uit" not in advice[0].message.split("Schakel")[0]
+    assert REASON_HIGH_GRID_LOAD not in _codes(advice)
+
+
+async def test_overload_by_import_keeps_the_original_advice(
+    hass: HomeAssistant,
+) -> None:
+    """Drawing past the limit is unchanged: postpone the large consumers."""
+    metrics = _metrics(grid_power_w=10000.0, grid_load_percent=173.9, peak_risk=True)
+
+    advice = Advisor().generate(_config(), metrics)
+
+    assert advice[0].reason_code == REASON_HIGH_GRID_LOAD
+    assert "Stel extra grootverbruikers indien mogelijk uit" in advice[0].message
+    assert REASON_HIGH_GRID_EXPORT not in _codes(advice)
+
+
+async def test_the_two_peak_directions_never_occur_together(
+    hass: HomeAssistant,
+) -> None:
+    """Grid power has one sign, so exactly one of the two can fire."""
+    for grid_power in (-8000.0, 8000.0):
+        codes = _codes(
+            Advisor().generate(
+                _config(),
+                _metrics(
+                    grid_power_w=grid_power, grid_load_percent=139.1, peak_risk=True
+                ),
+            )
+        )
+        assert (REASON_HIGH_GRID_LOAD in codes) != (REASON_HIGH_GRID_EXPORT in codes)
+
+
+async def test_export_overload_outranks_the_solar_surplus_advice(
+    hass: HomeAssistant,
+) -> None:
+    """Both say "use power now", so the more urgent one has to lead.
+
+    They can genuinely co-occur: heavy export means a large surplus. The peak
+    rank puts the overload first, so the primary advice is the one that
+    explains the risk rather than the opportunity.
+    """
+    config = _config()
+    config.devices = [_device()]
+    metrics = _metrics(
+        grid_power_w=-9000.0,
+        grid_load_percent=156.5,
+        peak_risk=True,
+        solar_surplus_w=9000.0,
+    )
+
+    codes = _codes(Advisor().generate(config, metrics))
+
+    assert codes[0] == REASON_HIGH_GRID_EXPORT
+    assert REASON_SOLAR_SURPLUS_AVAILABLE in codes
+    assert codes.index(REASON_HIGH_GRID_EXPORT) < codes.index(
+        REASON_SOLAR_SURPLUS_AVAILABLE
+    )
 
 
 # --- Solar surplus ----------------------------------------------------------
@@ -867,16 +948,60 @@ async def test_the_provider_advises_against_using_a_device_during_a_peak(
     assert "geen gunstig moment" in generated.explanations["use_device_now"]
 
 
+async def test_the_provider_advises_using_a_device_during_an_export_peak(
+    hass: HomeAssistant,
+) -> None:
+    """Overloading by export is the peak where using power *is* the answer."""
+    advice = AdviceItem(
+        id="a1",
+        title="Teruglevering hoog",
+        message="Schakel juist extra verbruikers in.",
+        severity=SEVERITY_WARNING,
+        reason_code=REASON_HIGH_GRID_EXPORT,
+        confidence=CONFIDENCE_HIGH,
+    )
+    result = CoachResult(
+        primary_advice=advice,
+        advice=[advice],
+        metrics=_metrics(grid_power_w=-9000.0),
+    )
+
+    generated = await RuleBasedCoachProvider().async_generate(result)
+
+    answer = generated.explanations["use_device_now"]
+    assert answer.startswith("Ja.")
+    assert "geen gunstig moment" not in answer
+
+
 async def test_the_provider_reports_the_peak_situation(
     hass: HomeAssistant,
 ) -> None:
     """The peak answer states the measured load, not a judgement of its own."""
-    result = CoachResult(metrics=_metrics(grid_load_percent=87.0, peak_risk=True))
+    result = CoachResult(
+        metrics=_metrics(grid_power_w=5000.0, grid_load_percent=87.0, peak_risk=True)
+    )
 
     generated = await RuleBasedCoachProvider().async_generate(result)
 
     assert generated.explanations["peak_risk"].startswith("Ja.")
     assert "87.0%" in generated.explanations["peak_risk"]
+    assert "gebruikt" in generated.explanations["peak_risk"]
+
+
+async def test_the_provider_describes_an_export_peak_as_feeding_back(
+    hass: HomeAssistant,
+) -> None:
+    """A home that is exporting is not "using" its maximum."""
+    result = CoachResult(
+        metrics=_metrics(grid_power_w=-10000.0, grid_load_percent=173.9, peak_risk=True)
+    )
+
+    generated = await RuleBasedCoachProvider().async_generate(result)
+
+    answer = generated.explanations["peak_risk"]
+    assert answer.startswith("Ja.")
+    assert "levert terug" in answer
+    assert "gebruikt" not in answer
 
 
 async def test_the_provider_says_when_the_load_is_unknown(

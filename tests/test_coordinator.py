@@ -18,6 +18,7 @@ from datetime import timedelta
 from typing import Any
 from unittest.mock import patch
 
+import pytest
 from freezegun.api import FrozenDateTimeFactory
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
@@ -34,6 +35,7 @@ from custom_components.domotiapp_energy.const import (
     DOMAIN,
     DUPLICATE_SUBJECT_PREFIX,
     LOG_EVENT_INVALID_CONFIGURATION,
+    LOG_EVENT_PEAK_RISK_DETECTED,
     LOG_EVENT_SOLAR_SURPLUS_DETECTED,
     METER_MODE_SINGLE_SIGNED,
     POSITIVE_MEANS_IMPORT,
@@ -420,6 +422,34 @@ async def test_a_calculation_reports_an_unknown_type_and_a_duplicate_source(
 
     # Neither of the two grid meters is used, so there is no grid power at all.
     assert entry.runtime_data.coordinator.data.metrics.grid_power_w is None
+
+
+@pytest.mark.parametrize(
+    ("grid_state", "expected"),
+    [("5000", "gebruikt"), ("-10000", "levert terug met")],
+)
+async def test_the_peak_logbook_line_follows_the_direction(
+    hass: HomeAssistant,
+    hass_storage: dict[str, Any],
+    grid_state: str,
+    expected: str,
+) -> None:
+    """A home that is exporting past the limit is not "using" its maximum."""
+    hass.states.async_set(GRID_ENTITY, grid_state)
+    config = StoredConfiguration(
+        home=HomeProfile(main_fuse_a=25, max_grid_power_w=5750.0),
+        sources=[_grid_source()],
+    )
+    entry = await _setup(hass, hass_storage, config)
+
+    peak_logs = [
+        log
+        for log in entry.runtime_data.store.config.logs
+        if log.event_type == LOG_EVENT_PEAK_RISK_DETECTED
+    ]
+
+    assert len(peak_logs) == 1
+    assert expected in peak_logs[0].message
 
 
 async def test_a_solar_surplus_is_recorded_in_the_logbook(

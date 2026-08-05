@@ -19,7 +19,13 @@ REASON_MISSING_REQUIRED_DATA: Final = "missing_required_data"
 REASON_INVALID_ENTITY_STATE: Final = "invalid_entity_state"
 
 REASON_SOLAR_SURPLUS_AVAILABLE: Final = "solar_surplus_available"
+# Overload caused by drawing from the grid: postpone consumers.
 REASON_HIGH_GRID_LOAD: Final = "high_grid_load"
+# Overload caused by feeding back into the grid. The main fuse limits both
+# directions, so the risk is identical, but the action is the opposite one:
+# advising a home that exports 10 kW to postpone its appliances would push it
+# further into the overload it is already in (SPEC.md §16).
+REASON_HIGH_GRID_EXPORT: Final = "high_grid_export"
 REASON_LOW_ENERGY_PRICE: Final = "low_energy_price"
 REASON_HIGH_ENERGY_PRICE: Final = "high_energy_price"
 REASON_FLEXIBLE_DEVICE_AVAILABLE: Final = "flexible_device_available"
@@ -32,6 +38,7 @@ REASON_CODES: Final[tuple[str, ...]] = (
     REASON_MISSING_REQUIRED_DATA,
     REASON_SOLAR_SURPLUS_AVAILABLE,
     REASON_HIGH_GRID_LOAD,
+    REASON_HIGH_GRID_EXPORT,
     REASON_LOW_ENERGY_PRICE,
     REASON_HIGH_ENERGY_PRICE,
     REASON_FLEXIBLE_DEVICE_AVAILABLE,

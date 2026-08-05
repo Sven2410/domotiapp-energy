@@ -39,6 +39,7 @@ from custom_components.domotiapp_energy.const import (
 from custom_components.domotiapp_energy.models import CoachResult, EnergyMetrics
 
 from .reason_codes import (
+    REASON_HIGH_GRID_EXPORT,
     REASON_HIGH_GRID_LOAD,
     REASON_SOLAR_SURPLUS_AVAILABLE,
 )
@@ -128,6 +129,13 @@ def _use_device_now(result: CoachResult) -> str:
     for item in result.advice:
         if item.reason_code == REASON_SOLAR_SURPLUS_AVAILABLE:
             return item.message
+    if any(item.reason_code == REASON_HIGH_GRID_EXPORT for item in result.advice):
+        # Overloading by export is the one peak situation where using more is
+        # the right answer.
+        return (
+            "Ja. De woning levert veel terug aan het net; dat overschot kun je "
+            "nu beter zelf gebruiken."
+        )
     if any(item.reason_code == REASON_HIGH_GRID_LOAD for item in result.advice):
         return (
             "Nu is geen gunstig moment: de netbelasting ligt dicht bij het "
@@ -140,18 +148,27 @@ def _use_device_now(result: CoachResult) -> str:
 
 
 def _peak_risk(metrics: EnergyMetrics) -> str:
-    """Answer whether there is a peak load risk right now."""
+    """Answer whether there is a peak load risk right now.
+
+    The verb follows the direction of the flow: a home that is exporting is not
+    "using" its maximum, and saying so would misdescribe the very situation the
+    question is about.
+    """
     if metrics.grid_load_percent is None:
         return (
             "De netbelasting is niet te bepalen. Vul het maximale netvermogen in "
             "en koppel een netbron."
         )
+
     load = round(metrics.grid_load_percent, 1)
-    if metrics.peak_risk:
-        return (
-            f"Ja. De woning gebruikt {load}% van het ingestelde maximale netvermogen."
-        )
-    return f"Nee. De woning gebruikt {load}% van het ingestelde maximale netvermogen."
+    exporting = metrics.grid_power_w is not None and metrics.grid_power_w < 0
+    direction = "levert terug met" if exporting else "gebruikt"
+    verdict = "Ja" if metrics.peak_risk else "Nee"
+
+    return (
+        f"{verdict}. De woning {direction} {load}% van het ingestelde maximale "
+        f"netvermogen."
+    )
 
 
 def _missing_data(metrics: EnergyMetrics) -> str:

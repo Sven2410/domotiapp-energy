@@ -283,10 +283,15 @@ class EnergyCoordinator(DataUpdateCoordinator[CoachResult]):
         flooding the logbook.
         """
         if metrics.peak_risk and metrics.grid_load_percent is not None:
+            # The verb follows the direction of the flow: the fuse limits both,
+            # but a home that is exporting is not "using" its maximum
+            # (SPEC.md §16).
+            exporting = metrics.grid_power_w is not None and metrics.grid_power_w < 0
+            direction = "levert terug met" if exporting else "gebruikt"
             await self._store.async_add_log_entry(
                 LOG_EVENT_PEAK_RISK_DETECTED,
                 "Piekbelasting gesignaleerd",
-                f"De woning gebruikt {metrics.grid_load_percent:.0f}% van het "
+                f"De woning {direction} {metrics.grid_load_percent:.0f}% van het "
                 f"ingestelde maximale netvermogen. Dat ligt op of boven de "
                 f"waarschuwingsgrens van {config.home.peak_warning_percent}%.",
                 severity=SEVERITY_WARNING,

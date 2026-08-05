@@ -573,10 +573,14 @@ Stabiele reason codes in `engine/reason_codes.py` (constants, geen losse strings
 
 ```text
 missing_required_data · solar_surplus_available · high_grid_load
-low_energy_price · high_energy_price · flexible_device_available
-outside_allowed_window · quiet_hours_active · invalid_entity_state
-insufficient_savings · neutral_energy_situation
+high_grid_export · low_energy_price · high_energy_price
+flexible_device_available · outside_allowed_window · quiet_hours_active
+invalid_entity_state · insufficient_savings · neutral_energy_situation
 ```
+
+> `high_grid_export` is toegevoegd t.o.v. de oorspronkelijke elf codes: overbelasting
+> door teruglevering vraagt om het tegenovergestelde advies van overbelasting door
+> afname. Zie §16.
 
 UI-teksten worden opgebouwd op basis van deze codes. UUID4 voor handmatig toegevoegde
 bronnen en apparaten.
@@ -732,6 +736,14 @@ met `missing_required_data`.
 
 `peak_risk = grid_load_percent >= peak_warning_percent`
 
+**De richting bepaalt het advies, niet de waarschuwing.** `peak_risk` staat in beide
+richtingen aan — het risico is echt, de zekering begrenst afname en teruglevering
+gelijk. Het advies verschilt wel: bij afname moet er minder verbruikt worden, bij
+teruglevering juist méér, want het overschot zelf gebruiken is precies wat de belasting
+verlaagt. Eén gezamenlijke tekst zou bij teruglevering adviseren de belasting te
+verergeren. Zie de twee aparte reason codes in de adviesregels hieronder; ze sluiten
+elkaar uit, omdat `grid_power_w` niet tegelijk positief en negatief kan zijn.
+
 ### Datakwaliteit (0–100)
 Gewogen checklist, transparant en testbaar:
 
@@ -794,7 +806,8 @@ het een DomotiApp-indicator is voor de actuele mogelijkheid om energie slim te g
 | Situatie | Reason code | Tekst |
 |---|---|---|
 | Essentiële data ontbreekt | `missing_required_data` | Vul de ontbrekende energiegegevens aan om een betrouwbaar advies te ontvangen. |
-| Netbelasting boven waarschuwingsgrens | `high_grid_load` | Het actuele netvermogen ligt dicht bij de ingestelde maximale woningbelasting. Stel extra grootverbruikers indien mogelijk uit. |
+| Netbelasting boven waarschuwingsgrens door **afname** | `high_grid_load` | Het actuele netvermogen ligt dicht bij de ingestelde maximale woningbelasting. Stel extra grootverbruikers indien mogelijk uit. |
+| Netbelasting boven waarschuwingsgrens door **teruglevering** | `high_grid_export` | De teruglevering ligt dicht bij de ingestelde maximale woningbelasting. Schakel indien mogelijk juist extra verbruikers in om het overschot zelf te benutten. |
 | Voldoende zonneoverschot + flexibel apparaat binnen venster | `solar_surplus_available` | Er is momenteel zonneoverschot beschikbaar. Dit is een gunstig moment om [apparaatnaam] te gebruiken. |
 | Prijs onder lage grens | `low_energy_price` | De actuele energieprijs is relatief laag. Flexibele apparaten kunnen nu voordeliger worden gebruikt. |
 | Prijs boven hoge grens | `high_energy_price` | De actuele energieprijs is relatief hoog. Stel flexibel energiegebruik indien mogelijk uit. |
