@@ -27,7 +27,7 @@ import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Final, Self
+from typing import Any, Final, Self, cast
 
 from homeassistant.util import dt as dt_util
 
@@ -56,6 +56,7 @@ from .const import (
     DEFAULT_STRATEGY,
     DEVICE_ENTITY_BINDING_KEYS,
     DEVICE_TYPES,
+    EXCLUSIVE_SOURCE_TYPES,
     INFLEXIBLE_BY_DEFAULT_DEVICE_TYPES,
     INITIAL_REVISION,
     INVALID_REASON_UNKNOWN_TYPE,
@@ -86,6 +87,19 @@ from .const import (
 
 # A "HH:MM" or "HH:MM:SS" string needs at least an hour and a minute part.
 _TIME_PARTS_REQUIRED: Final = 2
+
+
+class _TypeDefault:
+    """Marker for "no explicit choice was made for this flag"."""
+
+    __slots__ = ()
+
+
+# Sentinel default for the boolean flags whose default depends on the device
+# type. A plain ``False`` cannot express this: it is indistinguishable from an
+# installer who deliberately switched the flag off. The cast keeps the field
+# annotation ``bool``, which is what it always is once __post_init__ has run.
+TYPE_DEFAULT: Final[bool] = cast(bool, _TypeDefault())
 
 
 # --- Defensive coercion helpers ---------------------------------------------
@@ -541,11 +555,23 @@ class DeviceProfile:
     latest_finish: str | None = None
     days_of_week: list[int] = field(default_factory=lambda: list(ALL_DAYS_OF_WEEK))
     notes: str | None = None
-    is_noisy: bool = False
-    is_flexible: bool = True
+    # Left as TYPE_DEFAULT unless the installer chose a value; __post_init__
+    # then resolves it from the device type, so a directly constructed profile
+    # gets the same defaults as one rebuilt from storage.
+    is_noisy: bool = TYPE_DEFAULT
+    is_flexible: bool = TYPE_DEFAULT
     # Optional entity links, keyed by DEVICE_ENTITY_BINDING_KEYS. A key is
     # absent when unset; it is never stored as an empty string.
     entity_links: dict[str, str] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        """Resolve the flags that depend on the device type (SPEC.md §8)."""
+        if self.is_noisy is TYPE_DEFAULT:
+            self.is_noisy = self.device_type in NOISY_BY_DEFAULT_DEVICE_TYPES
+        if self.is_flexible is TYPE_DEFAULT:
+            self.is_flexible = (
+                self.device_type not in INFLEXIBLE_BY_DEFAULT_DEVICE_TYPES
+            )
 
     def to_dict(self) -> dict[str, Any]:
         """Return the device as a flat JSON-serialisable mapping."""
@@ -601,13 +627,10 @@ class DeviceProfile:
             latest_finish=_as_time(data.get("latest_finish")),
             days_of_week=_as_days_of_week(data.get("days_of_week")),
             notes=_as_optional_str(data.get("notes")),
-            is_noisy=_as_bool(
-                data.get("is_noisy"), device_type in NOISY_BY_DEFAULT_DEVICE_TYPES
-            ),
-            is_flexible=_as_bool(
-                data.get("is_flexible"),
-                device_type not in INFLEXIBLE_BY_DEFAULT_DEVICE_TYPES,
-            ),
+            # Absent or unusable leaves the sentinel in place, so __post_init__
+            # applies the type default. The rule lives in one place only.
+            is_noisy=_as_bool(data.get("is_noisy"), TYPE_DEFAULT),
+            is_flexible=_as_bool(data.get("is_flexible"), TYPE_DEFAULT),
             entity_links={
                 key: entity_id
                 for key in DEVICE_ENTITY_BINDING_KEYS
@@ -825,6 +848,24 @@ class StoredConfiguration:
     def invalid_devices(self) -> list[DeviceProfile]:
         """Return the devices the engine must never use."""
         return [device for device in self.devices if device.invalid_reason is not None]
+
+    @property
+    def duplicate_exclusive_sources(self) -> dict[str, list[EnergySource]]:
+        """Return the usable rows per source type that occurs more than once.
+
+        A grid meter and a price source may exist only once (SPEC.md §8). Two
+        of either is a configuration mistake with no correct resolution: the
+        readings do not add up, and choosing one of them would be a guess. The
+        engine therefore uses neither, so both rows are reported here.
+        """
+        by_type: dict[str, list[EnergySource]] = {}
+        for source in self.sources:
+            if source.is_usable and source.type in EXCLUSIVE_SOURCE_TYPES:
+                by_type.setdefault(source.type, []).append(source)
+
+        return {
+            source_type: rows for source_type, rows in by_type.items() if len(rows) > 1
+        }
 
 
 def _as_sequence(value: Any) -> list[Mapping[str, Any]]:

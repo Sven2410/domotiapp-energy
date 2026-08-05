@@ -39,6 +39,7 @@ from .const import (
     MIN_ADVICE_COUNT,
     MIN_MAIN_FUSE_A,
     MIN_PEAK_WARNING_PERCENT,
+    MINUTES_PER_DAY,
     POSITIVE_MEANS_OPTIONS,
     PRIORITIES,
     SEVERITY_ERROR,
@@ -476,10 +477,11 @@ def validate_device_profile(device: DeviceProfile) -> list[ValidationIssue]:
 def _validate_time_window(device: DeviceProfile) -> list[ValidationIssue]:
     """Check the allowed time window of a device.
 
-    SPEC.md §24 lists ``latest_finish`` before ``earliest_start`` as an invalid
-    configuration. A window across midnight is supported for quiet hours
-    (SPEC.md §16) but not for a device window: for a device the two ends also
-    have to fit the run duration, which is undecidable once the window may wrap.
+    ``latest_finish`` before ``earliest_start`` is a window that crosses
+    midnight, exactly as it is for the quiet hours (SPEC.md §16). A dishwasher
+    allowed to run from 22:00 to 06:00 is the normal case, not an error. Only a
+    window whose ends are equal is refused: that is either empty or a full day
+    and there is no way to tell which was meant.
     """
     start = device.earliest_start
     finish = device.latest_finish
@@ -509,17 +511,17 @@ def _validate_time_window(device: DeviceProfile) -> list[ValidationIssue]:
             )
         ]
 
-    if finish_minutes <= start_minutes:
+    if finish_minutes == start_minutes:
         return [
             ValidationIssue(
                 "latest_finish",
                 VALIDATION_INVALID_TIME_WINDOW,
-                "De laatste eindtijd moet na de vroegste starttijd liggen.",
+                "De starttijd en eindtijd mogen niet gelijk zijn.",
             )
         ]
 
     if device.duration_minutes is not None and (
-        device.duration_minutes > finish_minutes - start_minutes
+        device.duration_minutes > window_length_minutes(start_minutes, finish_minutes)
     ):
         return [
             ValidationIssue(
@@ -530,6 +532,24 @@ def _validate_time_window(device: DeviceProfile) -> list[ValidationIssue]:
         ]
 
     return []
+
+
+def window_length_minutes(start_minutes: int, finish_minutes: int) -> int:
+    """Return how long a time window lasts, wrapping past midnight if needed."""
+    return (finish_minutes - start_minutes) % MINUTES_PER_DAY
+
+
+def is_within_window(now_minutes: int, start_minutes: int, finish_minutes: int) -> bool:
+    """Return whether a moment falls inside a window that may cross midnight.
+
+    Shared by the device time windows and the quiet hours so both interpret
+    "22:00 to 06:00" the same way (SPEC.md §16). The start is inclusive and the
+    finish exclusive, so two adjacent windows never both contain a moment.
+    """
+    if start_minutes < finish_minutes:
+        return start_minutes <= now_minutes < finish_minutes
+    # The window wraps: it runs from the start to midnight and on to the finish.
+    return now_minutes >= start_minutes or now_minutes < finish_minutes
 
 
 def validate_preferences(preferences: UserPreferences) -> list[ValidationIssue]:

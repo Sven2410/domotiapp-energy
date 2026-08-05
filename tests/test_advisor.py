@@ -276,6 +276,78 @@ async def test_a_device_inside_its_window_is_suggested(
     assert REASON_SOLAR_SURPLUS_AVAILABLE in _codes(Advisor().generate(config, metrics))
 
 
+async def test_a_midnight_window_covers_the_evening(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """A 22:00-06:00 device is eligible at 23:30 (SPEC.md §16)."""
+    freezer.move_to(local(23, 30))
+    config = _config(min_solar_surplus_w=500.0)
+    config.preferences = UserPreferences(allow_advice_during_quiet_hours=True)
+    config.devices.append(_device(earliest_start="22:00", latest_finish="06:00"))
+    metrics = _metrics(solar_surplus_w=1500.0)
+
+    assert REASON_SOLAR_SURPLUS_AVAILABLE in _codes(Advisor().generate(config, metrics))
+
+
+async def test_a_midnight_window_covers_the_small_hours(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """The same window still applies after midnight."""
+    freezer.move_to(local(3, 0))
+    config = _config(min_solar_surplus_w=500.0)
+    config.preferences = UserPreferences(allow_advice_during_quiet_hours=True)
+    config.devices.append(_device(earliest_start="22:00", latest_finish="06:00"))
+    metrics = _metrics(solar_surplus_w=1500.0)
+
+    assert REASON_SOLAR_SURPLUS_AVAILABLE in _codes(Advisor().generate(config, metrics))
+
+
+async def test_a_midnight_window_excludes_the_day(
+    hass: HomeAssistant,
+) -> None:
+    """At midday the 22:00-06:00 device is outside its window."""
+    config = _config(min_solar_surplus_w=500.0)
+    config.devices.append(_device(earliest_start="22:00", latest_finish="06:00"))
+    metrics = _metrics(solar_surplus_w=1500.0)
+
+    assert REASON_SOLAR_SURPLUS_AVAILABLE not in _codes(
+        Advisor().generate(config, metrics)
+    )
+
+
+async def test_quiet_hours_still_silence_a_noisy_midnight_device(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """Being inside its own window does not lift the quiet hours rule."""
+    freezer.move_to(local(23, 30))
+    config = _config(min_solar_surplus_w=500.0)
+    config.preferences = UserPreferences(
+        quiet_hours_start="22:00", quiet_hours_end="07:00"
+    )
+    config.devices.append(_device(earliest_start="22:00", latest_finish="06:00"))
+    metrics = _metrics(solar_surplus_w=1500.0)
+
+    assert REASON_SOLAR_SURPLUS_AVAILABLE not in _codes(
+        Advisor().generate(config, metrics)
+    )
+
+
+async def test_a_window_with_equal_ends_is_never_open(
+    hass: HomeAssistant,
+) -> None:
+    """An ambiguous window is refused rather than read as a full day."""
+    config = _config(min_solar_surplus_w=500.0)
+    device = _device()
+    device.earliest_start = "12:00"
+    device.latest_finish = "12:00"
+    config.devices.append(device)
+    metrics = _metrics(solar_surplus_w=1500.0)
+
+    assert REASON_SOLAR_SURPLUS_AVAILABLE not in _codes(
+        Advisor().generate(config, metrics)
+    )
+
+
 async def test_a_device_without_a_window_is_always_eligible(
     hass: HomeAssistant,
 ) -> None:

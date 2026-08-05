@@ -31,6 +31,8 @@ from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    DUPLICATE_SUBJECT_PREFIX,
+    INVALID_REASON_DUPLICATE_SOURCE,
     LOG_DEDUPE_WINDOW_MINUTES,
     LOG_EVENT_INVALID_CONFIGURATION,
     MAX_LOG_ENTRIES,
@@ -184,6 +186,28 @@ class ConfigurationStore:
         """
         config = self.config
         still_invalid: set[str] = set()
+
+        for source_type, rows in config.duplicate_exclusive_sources.items():
+            # Reported per type rather than per row: the problem is that there
+            # are several, not that any single one is wrong.
+            subject = f"{DUPLICATE_SUBJECT_PREFIX}{source_type}"
+            still_invalid.add(subject)
+            if not self._mark_reported(subject, INVALID_REASON_DUPLICATE_SOURCE):
+                continue
+            _LOGGER.warning(
+                "Multiple enabled sources of type %r; none of them is used",
+                source_type,
+            )
+            await self.async_add_log_entry(
+                LOG_EVENT_INVALID_CONFIGURATION,
+                "Meerdere bronnen van hetzelfde type",
+                f"Er zijn {len(rows)} ingeschakelde bronnen van het type "
+                f"'{source_type}'. Deze waarden zijn niet op te tellen en er is "
+                f"niet te bepalen welke de juiste is, dus geen van beide wordt "
+                f"gebruikt. Schakel er één uit of verwijder er één.",
+                severity=SEVERITY_WARNING,
+                subject=subject,
+            )
 
         for source in config.invalid_sources:
             still_invalid.add(source.id)

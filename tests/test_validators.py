@@ -2,8 +2,9 @@
 
 The validation list from SPEC.md §24 is the contract for this file: valid and
 invalid entities, negative power, scale factors, missing attributes, invalid
-time windows, latest_finish before earliest_start, an invalid main fuse,
-max_grid_power_w = 0, and the unit conversions kW->W and ct->EUR.
+time windows, a latest_finish before earliest_start evaluated as a window across
+midnight, an invalid main fuse, max_grid_power_w = 0, and the unit conversions
+kW->W and ct->EUR.
 """
 
 from typing import Any
@@ -52,12 +53,14 @@ from custom_components.domotiapp_energy.validators import (
     ReadResult,
     ValidationIssue,
     has_errors,
+    is_within_window,
     read_entity_value,
     validate_configuration,
     validate_device_profile,
     validate_energy_source,
     validate_home_profile,
     validate_preferences,
+    window_length_minutes,
 )
 
 ENTITY_ID = "sensor.grid_power"
@@ -630,8 +633,8 @@ def test_a_device_without_a_time_window_is_not_an_error() -> None:
     assert validate_device_profile(device) == []
 
 
-def test_latest_finish_before_earliest_start_is_rejected() -> None:
-    """The explicit case from SPEC.md §24."""
+def test_latest_finish_before_earliest_start_is_a_midnight_window() -> None:
+    """22:00-06:00 is the normal Dutch scenario, not an error (SPEC.md §16)."""
     device = DeviceProfile(
         id="d1",
         device_type=DEVICE_TYPE_DISHWASHER,
@@ -639,15 +642,40 @@ def test_latest_finish_before_earliest_start_is_rejected() -> None:
         latest_finish="06:00",
     )
 
+    assert validate_device_profile(device) == []
+
+
+def test_a_run_fitting_inside_a_midnight_window_is_accepted() -> None:
+    """The window is eight hours long, so a three hour cycle fits."""
+    device = DeviceProfile(
+        id="d1",
+        device_type=DEVICE_TYPE_DISHWASHER,
+        duration_minutes=180,
+        earliest_start="22:00",
+        latest_finish="06:00",
+    )
+
+    assert validate_device_profile(device) == []
+
+
+def test_a_run_too_long_for_a_midnight_window_is_rejected() -> None:
+    """The length wraps as (finish - start) mod 1440, so ten hours does not fit."""
+    device = DeviceProfile(
+        id="d1",
+        device_type=DEVICE_TYPE_DISHWASHER,
+        duration_minutes=600,
+        earliest_start="22:00",
+        latest_finish="06:00",
+    )
+
     issues = validate_device_profile(device)
 
-    assert _fields(issues) == {"latest_finish"}
+    assert _fields(issues) == {"duration_minutes"}
     assert VALIDATION_INVALID_TIME_WINDOW in _codes(issues)
-    assert has_errors(issues) is True
 
 
 def test_an_equal_start_and_finish_is_rejected() -> None:
-    """A window of zero length can never hold a run."""
+    """Zero length or a full day: there is no way to tell which was meant."""
     device = DeviceProfile(
         id="d1",
         device_type=DEVICE_TYPE_DISHWASHER,
@@ -655,7 +683,46 @@ def test_an_equal_start_and_finish_is_rejected() -> None:
         latest_finish="09:00",
     )
 
-    assert has_errors(validate_device_profile(device)) is True
+    issues = validate_device_profile(device)
+
+    assert _fields(issues) == {"latest_finish"}
+    assert has_errors(issues) is True
+
+
+@pytest.mark.parametrize(
+    ("now", "expected"),
+    [
+        (22 * 60, True),  # exactly at the start, inclusive
+        (23 * 60 + 30, True),  # before midnight
+        (0, True),  # midnight itself
+        (5 * 60 + 59, True),  # just before the end
+        (6 * 60, False),  # exactly at the end, exclusive
+        (12 * 60, False),  # the middle of the day
+    ],
+)
+def test_a_midnight_window_contains_the_right_moments(now: int, expected: bool) -> None:
+    """The shared window helper wraps past midnight (SPEC.md §16)."""
+    assert is_within_window(now, 22 * 60, 6 * 60) is expected
+
+
+@pytest.mark.parametrize(
+    ("now", "expected"),
+    [
+        (9 * 60, True),
+        (10 * 60, True),
+        (11 * 60, False),
+        (8 * 60, False),
+    ],
+)
+def test_a_same_day_window_contains_the_right_moments(now: int, expected: bool) -> None:
+    """A window that does not wrap uses the plain comparison."""
+    assert is_within_window(now, 9 * 60, 11 * 60) is expected
+
+
+def test_window_length_wraps_past_midnight() -> None:
+    """22:00 to 06:00 is eight hours, not minus sixteen."""
+    assert window_length_minutes(22 * 60, 6 * 60) == 8 * 60
+    assert window_length_minutes(9 * 60, 11 * 60) == 2 * 60
 
 
 def test_half_a_time_window_is_rejected() -> None:
@@ -813,12 +880,18 @@ def test_validating_a_whole_configuration_groups_issues_per_subject() -> None:
         EnergySource(id="s2", type="grid_metre"),
     ]
     devices = [
-        DeviceProfile(id="d1", device_type=DEVICE_TYPE_DISHWASHER),
+        # A window across midnight is fine; equal ends are not.
         DeviceProfile(
-            id="d2",
+            id="d1",
             device_type=DEVICE_TYPE_DISHWASHER,
             earliest_start="22:00",
             latest_finish="06:00",
+        ),
+        DeviceProfile(
+            id="d2",
+            device_type=DEVICE_TYPE_DISHWASHER,
+            earliest_start="09:00",
+            latest_finish="09:00",
         ),
     ]
 

@@ -331,6 +331,9 @@ export_entity_id  : (alleen bij separate_import_export)
 
 Deze keuze wordt expliciet opgeslagen. Nooit afleiden of gokken.
 
+`grid_meter` en `current_price` mogen hoogstens één ingeschakelde bron per type hebben;
+zie §16 voor wat er gebeurt wanneer er toch meerdere staan.
+
 ### Apparaten
 Lijst met naam · type · configuratiestatus · prioriteit · bedieningsniveau ·
 datakwaliteit · bewerken · verwijderen.
@@ -350,6 +353,8 @@ nominal_power_w · energy_per_cycle_kwh · duration_minutes
 earliest_start · latest_finish · days_of_week · notes
 ```
 
+- `earliest_start` / `latest_finish`: samen een tijdvenster. Een `latest_finish` die
+  eerder valt dan `earliest_start` betekent een venster over middernacht (zie §16).
 - `priority` ∈ `low` | `normal` | `high` | `critical`
 - `control_mode` ∈ `monitor_only` | `advice_only` | `approval_required` | `automatic`
   → backend behandelt in 0.1.0 alles behalve `monitor_only` als `advice_only`
@@ -744,6 +749,30 @@ score = 0.30 × data_quality_score
 Afronden op hele getallen. Componentwaarden meegeven in het resultaat zodat de
 vraagselector "Hoe is mijn energiescore berekend?" ze kan tonen.
 
+**Onbekend versus niet van toepassing (verplicht onderscheid).** Een component die
+geen waarde kan krijgen scoort niet automatisch neutraal:
+
+- **Niet van toepassing** — het signaal bestaat in deze situatie niet en zou ook na
+  volledig configureren niet ontstaan. Enige geval in 0.1.0: de prijscomponent bij een
+  **vast contract**. Deze scoort `50`, zodat een correct ingerichte woning met een vast
+  contract niet gestraft wordt voor iets wat niet bestaat.
+- **Onbekend** — het signaal bestaat wel, maar is niet geconfigureerd of niet te lezen:
+  geen `max_grid_power_w` (peakcomponent), geen bruikbare netbron, onbekend
+  zonneoverschot, of een **dynamisch** contract zonder geldige prijsbron of zonder
+  prijsgrenzen. Deze scoren `0`.
+
+Zonder dit onderscheid houdt een halfingevulde configuratie een comfortabele score en
+meet de energiescore vooral hoe weinig er is ingevuld.
+
+**Meerdere bronnen van hetzelfde type.** `solar`, `general_consumption` en
+`home_battery` tellen op: twee omvormers produceren samen meer. `grid_meter` en
+`current_price` mogen **hoogstens één keer** voorkomen. Twee ingeschakelde bronnen van
+zo'n type is een configuratiefout, geen situatie om uit te kiezen — de waarden zijn niet
+op te tellen en er is niet te bepalen welke de juiste is. Gedrag: **geen van beide
+gebruiken**, `reason_code = missing_required_data`, beide rijen tellen als `invalid_item`
+in de datakwaliteit, en één logregel `invalid_configuration` per type via dezelfde
+anti-spamroute als §12.
+
 Presenteer dit **niet** als wetenschappelijke efficiëntiescore. README en UI leggen uit dat
 het een DomotiApp-indicator is voor de actuele mogelijkheid om energie slim te gebruiken.
 
@@ -766,6 +795,13 @@ Aanvullende regels die expliciet vastliggen:
 - Stille uren: apparaten met `is_noisy = true` worden niet geadviseerd tussen
   `quiet_hours_start` en `quiet_hours_end` tenzij `allow_advice_during_quiet_hours = true`.
   Ondersteun een venster dat middernacht overschrijdt (bv. 22:00–07:00).
+- **Apparaattijdvensters overschrijden middernacht op precies dezelfde manier.** Is
+  `latest_finish` eerder dan `earliest_start`, dan loopt het venster door tot de volgende
+  dag: een vaatwasser van 22:00 tot 06:00 is het normale scenario en moet instelbaar zijn.
+  Begin inclusief, einde exclusief. Een venster waarvan begin en einde gelijk zijn is
+  ongeldig (leeg of een volledige dag — niet te bepalen welke). De vensterlengte, en
+  daarmee de controle of `duration_minutes` erin past, is
+  `(einde − begin) mod 1440`.
 - Tijdvensters en stille uren worden geëvalueerd in de HA-tijdzone via `dt_util.now()`.
 - Er is altijd exact één hoofdadvies; bij geen enkele treffer is dat
   `neutral_energy_situation`.
@@ -951,14 +987,18 @@ limiet van 200 logs · onbekende velden defensief verwerken · migratiefunctie a
 aanroepbaar.
 
 **Validatie:** geldige/ongeldige entities · negatieve vermogens · scale factors ·
-ontbrekende attributes · ongeldige tijdvensters · `latest_finish` vóór `earliest_start` ·
-ongeldige hoofdzekering · `max_grid_power_w = 0` · eenheidsconversie kW→W en ct→EUR.
+ontbrekende attributes · ongeldige tijdvensters (halve vensters, gelijke begin- en
+eindtijd) · `latest_finish` vóór `earliest_start` wordt correct als middernachtvenster
+geëvalueerd, inclusief de controle of `duration_minutes` erin past · ongeldige
+hoofdzekering · `max_grid_power_w = 0` · eenheidsconversie kW→W en ct→EUR.
 
 **Rekenmotor:** signed netmeter (beide `positive_means`) · separate import/export ·
 zonneoverschot via netmeter · zonneoverschot via verbruik · geen betrouwbare berekening →
 `None` + `missing_required_data` · piekwaarschuwing · lage prijs · hoge prijs ·
 prijsadvies onderdrukt bij vast contract · stille uren incl. venster over middernacht ·
-adviesprioriteit/sortering · neutrale situatie · datakwaliteit per checklist-item ·
+apparaattijdvenster over middernacht · twee ingeschakelde netmeters → geen van beide
+gebruikt · adviesprioriteit/sortering · neutrale situatie · datakwaliteit per
+checklist-item · scorecomponent onbekend → 0 versus niet van toepassing → 50 ·
 energiescore met vaste invoer → vaste uitkomst.
 
 **WebSocket:** lezen als normale gebruiker · schrijven als admin · schrijven geweigerd voor

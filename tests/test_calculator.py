@@ -278,6 +278,159 @@ async def test_the_unit_of_each_source_is_applied(hass: HomeAssistant) -> None:
     assert Calculator(hass).build_snapshot(config).grid_power_w == 1500.0
 
 
+# --- Duplicate sources of an exclusive type ---------------------------------
+
+
+async def test_two_grid_meters_are_both_refused(hass: HomeAssistant) -> None:
+    """Neither is used: picking one would be a guess (SPEC.md §16)."""
+    hass.states.async_set("sensor.grid_a", "1500")
+    hass.states.async_set("sensor.grid_b", "1600")
+    config = _config()
+    first = _grid_meter("sensor.grid_a")
+    first.id = "meter-a"
+    second = _grid_meter("sensor.grid_b")
+    second.id = "meter-b"
+    config.sources.extend([first, second])
+
+    snapshot = Calculator(hass).build_snapshot(config)
+
+    assert snapshot.grid_power_w is None
+    assert snapshot.invalid_source_ids == ["meter-a", "meter-b"]
+    assert REASON_MISSING_REQUIRED_DATA in snapshot.reason_codes
+
+
+async def test_two_price_sources_are_both_refused(hass: HomeAssistant) -> None:
+    """The same rule applies to the price source."""
+    hass.states.async_set("sensor.price_a", "0.20")
+    hass.states.async_set("sensor.price_b", "0.25")
+    config = _config(contract_type=CONTRACT_TYPE_DYNAMIC)
+    for index, entity in enumerate(("sensor.price_a", "sensor.price_b")):
+        price = _source(SOURCE_TYPE_CURRENT_PRICE, entity)
+        price.id = f"price-{index}"
+        price.binding = EntityBinding(entity_id=entity, unit=UNIT_EUR_KWH)
+        config.sources.append(price)
+
+    snapshot = Calculator(hass).build_snapshot(config)
+
+    assert snapshot.current_price_eur_kwh is None
+    assert snapshot.invalid_source_ids == ["price-0", "price-1"]
+
+
+async def test_duplicate_meters_count_as_invalid_items(
+    hass: HomeAssistant,
+) -> None:
+    """Both rows show up in the data quality result."""
+    hass.states.async_set("sensor.grid_a", "1500")
+    hass.states.async_set("sensor.grid_b", "1600")
+    config = _config()
+    first = _grid_meter("sensor.grid_a")
+    first.id = "meter-a"
+    second = _grid_meter("sensor.grid_b")
+    second.id = "meter-b"
+    config.sources.extend([first, second])
+
+    metrics = Calculator(hass).calculate(config)
+
+    assert metrics.data_quality.invalid_items == ["meter-a", "meter-b"]
+    assert COMPLETENESS_ITEM_GRID in metrics.data_quality.missing_items
+
+
+async def test_a_disabled_duplicate_leaves_the_other_usable(
+    hass: HomeAssistant,
+) -> None:
+    """Switching one off is exactly how the installer resolves this."""
+    hass.states.async_set("sensor.grid_a", "1500")
+    hass.states.async_set("sensor.grid_b", "1600")
+    config = _config()
+    first = _grid_meter("sensor.grid_a")
+    first.id = "meter-a"
+    second = _grid_meter("sensor.grid_b", enabled=False)
+    second.id = "meter-b"
+    config.sources.extend([first, second])
+
+    snapshot = Calculator(hass).build_snapshot(config)
+
+    assert snapshot.grid_power_w == 1500.0
+    assert snapshot.invalid_source_ids == []
+
+
+async def test_a_quarantined_duplicate_does_not_block_the_other(
+    hass: HomeAssistant,
+) -> None:
+    """A row with an unrecognised type is not a second grid meter."""
+    hass.states.async_set("sensor.grid_a", "1500")
+    config = _config()
+    meter = _grid_meter("sensor.grid_a")
+    meter.id = "meter-a"
+    config.sources.append(meter)
+    config.sources.append(EnergySource(id="broken", type="grid_metre"))
+
+    assert Calculator(hass).build_snapshot(config).grid_power_w == 1500.0
+
+
+async def test_both_exclusive_types_duplicated_at_once(
+    hass: HomeAssistant,
+) -> None:
+    """Two problems of the same kind still record one reason code."""
+    config = _config(contract_type=CONTRACT_TYPE_DYNAMIC)
+    for index in range(2):
+        meter = _grid_meter(f"sensor.grid_{index}")
+        meter.id = f"meter-{index}"
+        config.sources.append(meter)
+        price = _source(SOURCE_TYPE_CURRENT_PRICE, f"sensor.price_{index}")
+        price.id = f"price-{index}"
+        config.sources.append(price)
+
+    snapshot = Calculator(hass).build_snapshot(config)
+
+    assert snapshot.grid_power_w is None
+    assert snapshot.current_price_eur_kwh is None
+    assert snapshot.reason_codes == [REASON_MISSING_REQUIRED_DATA]
+    assert sorted(snapshot.invalid_source_ids) == [
+        "meter-0",
+        "meter-1",
+        "price-0",
+        "price-1",
+    ]
+
+
+async def test_two_sources_failing_the_same_way_share_one_reason_code(
+    hass: HomeAssistant,
+) -> None:
+    """Reason codes are a set of causes, not a list per row."""
+    hass.states.async_set("sensor.pv_east", "unavailable")
+    hass.states.async_set("sensor.pv_west", "unavailable")
+    config = _config()
+    config.sources.append(_source(SOURCE_TYPE_SOLAR, "sensor.pv_east"))
+    second = _source(SOURCE_TYPE_SOLAR, "sensor.pv_west")
+    second.id = "solar-2"
+    config.sources.append(second)
+
+    snapshot = Calculator(hass).build_snapshot(config)
+
+    assert snapshot.solar_power_w is None
+    assert snapshot.reason_codes == [REASON_INVALID_ENTITY_STATE]
+    assert snapshot.invalid_source_ids == ["solar-1", "solar-2"]
+
+
+async def test_two_solar_sources_are_not_a_duplicate_problem(
+    hass: HomeAssistant,
+) -> None:
+    """Additive types are explicitly allowed to occur more than once."""
+    hass.states.async_set("sensor.pv_east", "1200")
+    hass.states.async_set("sensor.pv_west", "800")
+    config = _config()
+    config.sources.append(_source(SOURCE_TYPE_SOLAR, "sensor.pv_east"))
+    second = _source(SOURCE_TYPE_SOLAR, "sensor.pv_west")
+    second.id = "solar-2"
+    config.sources.append(second)
+
+    snapshot = Calculator(hass).build_snapshot(config)
+
+    assert snapshot.solar_power_w == 2000.0
+    assert snapshot.invalid_source_ids == []
+
+
 # --- Solar surplus ----------------------------------------------------------
 
 
@@ -735,10 +888,10 @@ async def test_a_fixed_contract_scores_a_neutral_price(
     assert metrics.score_components[SCORE_COMPONENT_PRICE] == 50.0
 
 
-async def test_a_dynamic_contract_without_a_price_is_neutral(
+async def test_a_dynamic_contract_without_a_price_scores_zero(
     hass: HomeAssistant,
 ) -> None:
-    """An undeterminable component is neutral, not zero."""
+    """Unknown is not the same as not applicable (SPEC.md §16)."""
     config = _config(
         contract_type=CONTRACT_TYPE_DYNAMIC,
         low_price_threshold_eur_kwh=0.15,
@@ -747,7 +900,46 @@ async def test_a_dynamic_contract_without_a_price_is_neutral(
 
     metrics = Calculator(hass).calculate(config)
 
-    assert metrics.score_components[SCORE_COMPONENT_PRICE] == 50.0
+    assert metrics.score_components[SCORE_COMPONENT_PRICE] == 0.0
+
+
+async def test_a_dynamic_contract_without_thresholds_scores_zero(
+    hass: HomeAssistant,
+) -> None:
+    """A price without thresholds to judge it by is just as unknown."""
+    hass.states.async_set("sensor.price", "0.20")
+    config = _config(contract_type=CONTRACT_TYPE_DYNAMIC)
+    price = _source(SOURCE_TYPE_CURRENT_PRICE, "sensor.price")
+    price.binding = EntityBinding(entity_id="sensor.price", unit=UNIT_EUR_KWH)
+    config.sources.append(price)
+
+    metrics = Calculator(hass).calculate(config)
+
+    assert metrics.score_components[SCORE_COMPONENT_PRICE] == 0.0
+
+
+async def test_an_unknown_grid_load_scores_no_peak_points(
+    hass: HomeAssistant,
+) -> None:
+    """The grid load is always applicable, so not knowing it scores zero."""
+    config = _config()
+    config.home.max_grid_power_w = None
+
+    metrics = Calculator(hass).calculate(config)
+
+    assert metrics.grid_load_percent is None
+    assert metrics.score_components[SCORE_COMPONENT_PEAK] == 0.0
+
+
+async def test_a_half_configured_installation_scores_poorly(
+    hass: HomeAssistant,
+) -> None:
+    """The whole point of the distinction: no comfortable score for nothing."""
+    metrics = Calculator(hass).calculate(StoredConfiguration())
+
+    # Data quality 0, peak unknown 0, solar unknown 0, price not applicable 50
+    # on the default fixed contract, no flexible device 0 -> 0.15 x 50 = 7.5.
+    assert metrics.energy_score == 8
 
 
 async def test_a_price_below_the_low_threshold_scores_full(

@@ -22,6 +22,7 @@ from custom_components.domotiapp_energy.const import (
     DEFAULT_SCALE_FACTOR,
     DEVICE_TYPE_DISHWASHER,
     DEVICE_TYPE_HEAT_PUMP,
+    DUPLICATE_SUBJECT_PREFIX,
     INITIAL_REVISION,
     INVALID_REASON_UNKNOWN_TYPE,
     LOG_DEDUPE_WINDOW_MINUTES,
@@ -511,6 +512,44 @@ def test_device_defaults_depend_on_the_device_type() -> None:
     assert dishwasher.priority == DEFAULT_PRIORITY
 
 
+def test_type_defaults_also_apply_to_a_directly_constructed_device() -> None:
+    """The rule lives in __post_init__, not only in from_dict.
+
+    A heat pump built by hand must not come out flexible: the engine would
+    then offer to move something that cannot be moved.
+    """
+    dishwasher = DeviceProfile(id="d1", device_type=DEVICE_TYPE_DISHWASHER)
+    heat_pump = DeviceProfile(id="d2", device_type=DEVICE_TYPE_HEAT_PUMP)
+
+    assert dishwasher.is_noisy is True
+    assert dishwasher.is_flexible is True
+    assert heat_pump.is_noisy is False
+    assert heat_pump.is_flexible is False
+
+
+def test_an_explicit_flag_survives_the_type_default() -> None:
+    """A choice the installer made is never overwritten by the type default."""
+    quiet_dishwasher = DeviceProfile(
+        id="d1", device_type=DEVICE_TYPE_DISHWASHER, is_noisy=False
+    )
+    flexible_heat_pump = DeviceProfile.from_dict(
+        {"id": "d2", "device_type": DEVICE_TYPE_HEAT_PUMP, "is_flexible": True}
+    )
+
+    assert quiet_dishwasher.is_noisy is False
+    assert flexible_heat_pump.is_flexible is True
+
+
+def test_the_type_default_survives_a_round_trip() -> None:
+    """Resolved flags are written out as real booleans, never as the marker."""
+    heat_pump = DeviceProfile(id="d2", device_type=DEVICE_TYPE_HEAT_PUMP)
+
+    stored = heat_pump.to_dict()
+
+    assert stored["is_flexible"] is False
+    assert DeviceProfile.from_dict(stored).is_flexible is False
+
+
 def test_device_entity_links_are_omitted_when_unset() -> None:
     """An unset entity link is absent, never an empty string (SPEC.md §8)."""
     device = DeviceProfile.from_dict(
@@ -780,6 +819,89 @@ async def test_a_row_that_breaks_again_is_reported_again(
         and entry.subject == "source-1"
     ]
     assert sum(entry.count for entry in reported) == 2
+
+
+async def test_duplicate_exclusive_sources_are_reported(
+    hass: HomeAssistant, hass_storage: dict[str, Any]
+) -> None:
+    """Two enabled grid meters are a configuration problem worth logging."""
+    hass_storage[STORAGE_KEY] = _stored(
+        {
+            "revision": 3,
+            "sources": [
+                {"id": "meter-a", "name": "Meter A", "type": SOURCE_TYPE_GRID_METER},
+                {"id": "meter-b", "name": "Meter B", "type": SOURCE_TYPE_GRID_METER},
+            ],
+        }
+    )
+    store = ConfigurationStore(hass)
+    config = await store.async_load()
+
+    await store.async_report_invalid_rows()
+
+    logged = [
+        entry
+        for entry in config.logs
+        if entry.event_type == LOG_EVENT_INVALID_CONFIGURATION
+    ]
+    # One line about the type, not one per row.
+    assert len(logged) == 1
+    assert logged[0].subject == f"{DUPLICATE_SUBJECT_PREFIX}{SOURCE_TYPE_GRID_METER}"
+    assert logged[0].severity == SEVERITY_WARNING
+    assert config.revision == 3
+
+
+async def test_repeated_duplicate_reports_are_not_repeated(
+    hass: HomeAssistant, hass_storage: dict[str, Any]
+) -> None:
+    """The duplicate report uses the same anti-spam route as the others."""
+    hass_storage[STORAGE_KEY] = _stored(
+        {
+            "sources": [
+                {"id": "meter-a", "type": SOURCE_TYPE_GRID_METER},
+                {"id": "meter-b", "type": SOURCE_TYPE_GRID_METER},
+            ]
+        }
+    )
+    store = ConfigurationStore(hass)
+    config = await store.async_load()
+
+    for _ in range(5):
+        await store.async_report_invalid_rows()
+
+    assert len(config.logs) == 1
+    assert config.logs[0].count == 1
+
+
+async def test_resolving_a_duplicate_stops_the_reports(
+    hass: HomeAssistant, hass_storage: dict[str, Any]
+) -> None:
+    """Switching one off resolves it, and a relapse is reported afresh."""
+    hass_storage[STORAGE_KEY] = _stored(
+        {
+            "sources": [
+                {"id": "meter-a", "type": SOURCE_TYPE_GRID_METER},
+                {"id": "meter-b", "type": SOURCE_TYPE_GRID_METER},
+            ]
+        }
+    )
+    store = ConfigurationStore(hass)
+    config = await store.async_load()
+
+    await store.async_report_invalid_rows()
+
+    def _disable(target: StoredConfiguration) -> None:
+        target.sources[1].enabled = False
+
+    def _enable(target: StoredConfiguration) -> None:
+        target.sources[1].enabled = True
+
+    await store.async_update(_disable)
+    await store.async_report_invalid_rows()
+    await store.async_update(_enable)
+    await store.async_report_invalid_rows()
+
+    assert sum(entry.count for entry in config.logs) == 2
 
 
 async def test_a_valid_configuration_reports_nothing(

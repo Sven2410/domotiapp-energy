@@ -26,7 +26,6 @@ from custom_components.domotiapp_energy.const import (
     CONFIDENCE_HIGH,
     CONFIDENCE_MEDIUM,
     CONTRACT_TYPE_DYNAMIC,
-    MINUTES_PER_DAY,
     MINUTES_PER_HOUR,
     PRIORITIES,
     SEVERITY_INFO,
@@ -39,6 +38,7 @@ from custom_components.domotiapp_energy.models import (
     StoredConfiguration,
     minutes_since_midnight,
 )
+from custom_components.domotiapp_energy.validators import is_within_window
 
 from .reason_codes import (
     REASON_HIGH_ENERGY_PRICE,
@@ -299,16 +299,20 @@ def _priority_rank(device: DeviceProfile) -> int:
 
 
 def _within_window(device: DeviceProfile, now_minutes: int) -> bool:
-    """Return whether now falls inside the device's allowed time window."""
+    """Return whether now falls inside the device's allowed time window.
+
+    A window whose end precedes its start crosses midnight (22:00 to 06:00),
+    the same reading the quiet hours use.
+    """
     if not device.has_time_window:
         # No window means no restriction, not "never".
         return True
 
     start = minutes_since_midnight(device.earliest_start)
     finish = minutes_since_midnight(device.latest_finish)
-    if start is None or finish is None:
+    if start is None or finish is None or start == finish:
         return False
-    return start <= now_minutes <= finish
+    return is_within_window(now_minutes, start, finish)
 
 
 def _silenced_by_quiet_hours(device: DeviceProfile, context: _Context) -> bool:
@@ -328,11 +332,7 @@ def _in_quiet_hours(config: StoredConfiguration, hour: int, minute: int) -> bool
     if start is None or end is None or start == end:
         return False
 
-    now_minutes = (hour * MINUTES_PER_HOUR + minute) % MINUTES_PER_DAY
-    if start < end:
-        return start <= now_minutes < end
-    # The window wraps: it runs from start to midnight and on to end.
-    return now_minutes >= start or now_minutes < end
+    return is_within_window(hour * MINUTES_PER_HOUR + minute, start, end)
 
 
 # --- Savings and filtering --------------------------------------------------

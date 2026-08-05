@@ -18,15 +18,17 @@ Internal conventions, both mirroring each other:
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
 from custom_components.domotiapp_energy.const import (
+    ADDITIVE_SOURCE_TYPES,
     COMPONENT_MAX,
     COMPONENT_MIN,
-    COMPONENT_NEUTRAL,
+    COMPONENT_UNKNOWN,
     CONFIDENCE_HIGH,
     CONFIDENCE_LOW,
     CONFIDENCE_MEDIUM,
@@ -66,14 +68,7 @@ from custom_components.domotiapp_energy.validators import read_entity_value
 from .completeness import evaluate_completeness
 from .reason_codes import REASON_MISSING_REQUIRED_DATA
 
-# Source types whose readings add up when more than one is configured: two
-# inverters produce more solar together. A grid meter and a price sensor do
-# not add up, so for those the first usable source wins.
-_ADDITIVE_SOURCE_TYPES = (
-    SOURCE_TYPE_SOLAR,
-    SOURCE_TYPE_GENERAL_CONSUMPTION,
-    SOURCE_TYPE_HOME_BATTERY,
-)
+_LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -158,22 +153,34 @@ class Calculator:
         """Read every usable source, grouped by what it measures."""
         readings = _Readings(values={}, invalid_source_ids=[], reason_codes=[])
 
+        duplicated = config.duplicate_exclusive_sources
+        for source_type, rows in duplicated.items():
+            # Two grid meters or two price sources do not add up, and picking
+            # one of them would be a guess (SPEC.md §2.1). Neither is used and
+            # both are reported, so the panel can mark them and the data
+            # quality counts them as invalid items.
+            readings.invalid_source_ids.extend(row.id for row in rows)
+            if REASON_MISSING_REQUIRED_DATA not in readings.reason_codes:
+                readings.reason_codes.append(REASON_MISSING_REQUIRED_DATA)
+            _LOGGER.warning(
+                "Multiple enabled sources of type %r; none of them is used",
+                source_type,
+            )
+
         for source in config.sources:
-            if not source.is_usable:
+            if not source.is_usable or source.type in duplicated:
                 continue
 
             value = self._read_source(source, readings)
             if value is None:
                 continue
 
-            if source.type in _ADDITIVE_SOURCE_TYPES:
+            if source.type in ADDITIVE_SOURCE_TYPES:
                 readings.values[source.type] = (
                     readings.values.get(source.type, 0.0) + value
                 )
             else:
-                # First usable source wins: a second grid meter or price sensor
-                # is a configuration mistake, not a value to add up.
-                readings.values.setdefault(source.type, value)
+                readings.values[source.type] = value
 
         return readings
 
@@ -333,9 +340,13 @@ def _score_components(
 
 
 def _peak_component(load_percent: float | None) -> float:
-    """Return 100 below half load, dropping linearly to 0 at full load."""
+    """Return 100 below half load, dropping linearly to 0 at full load.
+
+    An unknown load scores zero: the grid load is always applicable, so not
+    knowing it means it was not configured (SPEC.md §16).
+    """
     if load_percent is None:
-        return COMPONENT_NEUTRAL
+        return COMPONENT_UNKNOWN
     if load_percent <= PEAK_COMPONENT_FULL_BELOW_PERCENT:
         return COMPONENT_MAX
     if load_percent >= PERCENT_MAX:
@@ -360,7 +371,13 @@ def _solar_component(config: StoredConfiguration, snapshot: EnergySnapshot) -> f
 
 
 def _price_component(config: StoredConfiguration, snapshot: EnergySnapshot) -> float:
-    """Return 100 at or below the low price, 0 at or above the high price."""
+    """Return 100 at or below the low price, 0 at or above the high price.
+
+    A fixed contract has no price to react to, so the component is neutral: it
+    is not applicable rather than unknown. A dynamic contract without a
+    readable price or without thresholds *is* unknown, and scores zero
+    (SPEC.md §16).
+    """
     if config.home.contract_type != CONTRACT_TYPE_DYNAMIC:
         return PRICE_COMPONENT_FIXED_CONTRACT
 
@@ -368,7 +385,7 @@ def _price_component(config: StoredConfiguration, snapshot: EnergySnapshot) -> f
     low = config.home.low_price_threshold_eur_kwh
     high = config.home.high_price_threshold_eur_kwh
     if price is None or low is None or high is None or high <= low:
-        return COMPONENT_NEUTRAL
+        return COMPONENT_UNKNOWN
 
     if price <= low:
         return COMPONENT_MAX

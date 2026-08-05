@@ -82,6 +82,12 @@ ATTR_ITEM: Final = "item"
 # type is unrecognised keeps that type verbatim: substituting a known type
 # would feed the calculations a guess, which SPEC.md §2.1 forbids.
 INVALID_REASON_UNKNOWN_TYPE: Final = "unknown_type"
+# Reported against a source type rather than a single row: several enabled
+# sources of a type that may occur only once (EXCLUSIVE_SOURCE_TYPES).
+INVALID_REASON_DUPLICATE_SOURCE: Final = "duplicate_source"
+# Prefix for the logbook subject of such a report, so the anti-spam key of a
+# duplicate type can never collide with a source or device id.
+DUPLICATE_SUBJECT_PREFIX: Final = "duplicate:"
 
 ERR_NOT_FOUND: Final = "not_found"
 ERR_DUPLICATE_ID: Final = "duplicate_id"
@@ -169,6 +175,22 @@ SOURCE_TYPES: Final[tuple[str, ...]] = (
     SOURCE_TYPE_SOLAR_FORECAST,
     SOURCE_TYPE_HOME_BATTERY,
     SOURCE_TYPE_GENERAL_CONSUMPTION,
+)
+
+# Source types whose readings add up when several are configured: two
+# inverters really do produce more solar together.
+ADDITIVE_SOURCE_TYPES: Final[tuple[str, ...]] = (
+    SOURCE_TYPE_SOLAR,
+    SOURCE_TYPE_GENERAL_CONSUMPTION,
+    SOURCE_TYPE_HOME_BATTERY,
+)
+
+# Source types that may occur at most once. Two enabled grid meters or two
+# price sources do not add up and there is no way to tell which one is meant,
+# so the engine uses neither rather than picking one (SPEC.md §2.1).
+EXCLUSIVE_SOURCE_TYPES: Final[tuple[str, ...]] = (
+    SOURCE_TYPE_GRID_METER,
+    SOURCE_TYPE_CURRENT_PRICE,
 )
 
 VALUE_SOURCE_STATE: Final = "state"
@@ -426,17 +448,21 @@ SCORE_WEIGHT_FLEXIBILITY: Final = 0.10
 
 # Peak component is 100 below this load percentage and drops linearly to 0 at 100%.
 PEAK_COMPONENT_FULL_BELOW_PERCENT: Final = 50.0
-# A fixed contract has no price signal, so the price component is neutral.
-PRICE_COMPONENT_FIXED_CONTRACT: Final = 50.0
-# SPEC.md §16 fixes the solar component at 0 when the surplus is unknown, and
-# the price component at 50 when no price signal exists. It leaves open what a
-# component worth is when it simply cannot be determined (no maximum grid power
-# entered, a dynamic contract without thresholds). Those use the same neutral
-# value as "no price signal": scoring them 0 would punish an incomplete
-# configuration twice, since data quality already carries 30% of the weight.
-COMPONENT_NEUTRAL: Final = PRICE_COMPONENT_FIXED_CONTRACT
 COMPONENT_MIN: Final = 0.0
 COMPONENT_MAX: Final = 100.0
+
+# A component distinguishes "not applicable" from "unknown" (SPEC.md §16).
+#
+# Not applicable: the situation genuinely has no such signal, and no amount of
+# configuring would produce one. A fixed contract has no price to react to, so
+# the price component is neutral and the score is not dragged down by it.
+COMPONENT_NOT_APPLICABLE: Final = 50.0
+PRICE_COMPONENT_FIXED_CONTRACT: Final = COMPONENT_NOT_APPLICABLE
+# Unknown: the signal exists but was not configured or could not be read. That
+# scores zero. Scoring it neutral would leave a half-configured installation
+# with a comfortable number, which would make the energy score mostly a measure
+# of how little has been filled in.
+COMPONENT_UNKNOWN: Final = COMPONENT_MIN
 
 # Keys under EnergyMetrics.score_components, so the coach can show the
 # breakdown behind "Hoe is mijn energiescore berekend?".
