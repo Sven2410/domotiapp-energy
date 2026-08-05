@@ -7,6 +7,7 @@ Values are taken directly from SPEC.md; section references are noted per block.
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Final
 
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
@@ -147,6 +148,19 @@ DEFAULT_PEAK_WARNING_PERCENT: Final = 80
 DEFAULT_MIN_SOLAR_SURPLUS_W: Final = 500
 DEFAULT_STRATEGY: Final = STRATEGY_BALANCED
 
+# --- Net metering (SPEC.md §8 "Woning" and §16) -----------------------------
+#
+# Dutch net metering ("saldering") ends in one step on 2027-01-01, with no
+# taper. Until then a fed-in kWh is worth the full retail price, so using your
+# own surplus earns nothing extra — except the feed-in cost it avoids.
+#
+# The date is a setting rather than a check against the calendar in code: a
+# customer may have a different contract, and a date can be moved to test both
+# regimes. It is a date and not a switch so the changeover happens by itself,
+# instead of requiring a visit to every customer on New Year's Day 2027.
+# ``None`` means this home does not have net metering at all.
+DEFAULT_NET_METERING_UNTIL: Final = date(2027, 1, 1)
+
 # --- Control levels (SPEC.md §2.2 and §8 "Apparaten") -----------------------
 
 CONTROL_MONITOR_ONLY: Final = "monitor_only"
@@ -162,6 +176,44 @@ CONTROL_MODES: Final[tuple[str, ...]] = (
 # In 0.1.0 everything except monitor_only is forced to advice_only.
 DEFAULT_CONTROL_MODE: Final = CONTROL_ADVICE_ONLY
 CONTROL_LEVEL_0_1_0: Final = CONTROL_ADVICE_ONLY
+
+# Control modes that only make sense on hardware that can actually be driven.
+# Used for the warning when the intent exceeds what the capabilities allow.
+CONTROLLING_MODES: Final[tuple[str, ...]] = (
+    CONTROL_APPROVAL_REQUIRED,
+    CONTROL_AUTOMATIC,
+)
+
+# --- Capabilities (what the hardware can do, SPEC.md §12) -------------------
+#
+# Three different kinds of truth live near each other and must not be merged:
+#
+#   capabilities      what the hardware can do        — a property of the device
+#   control_mode      what the installer wants        — an intention
+#   control_forbidden what was agreed with this        — an agreement, and the
+#                     customer, whatever the hardware    only one with a reason
+#
+# Registering only in 0.1.0: nothing is ever driven (SPEC.md §2.2). The fields
+# exist now because they belong in the forms of phase 8, and adding them later
+# would mean revisiting every device at every customer.
+
+CAPABILITY_READ: Final = "read"
+CAPABILITY_SWITCH: Final = "switch"
+CAPABILITY_SET_POWER_LIMIT: Final = "set_power_limit"
+CAPABILITY_SET_CURRENT: Final = "set_current"
+CAPABILITIES: Final[tuple[str, ...]] = (
+    CAPABILITY_READ,
+    CAPABILITY_SWITCH,
+    CAPABILITY_SET_POWER_LIMIT,
+    CAPABILITY_SET_CURRENT,
+)
+
+# Everything that is more than reading a value.
+CONTROL_CAPABILITIES: Final[tuple[str, ...]] = (
+    CAPABILITY_SWITCH,
+    CAPABILITY_SET_POWER_LIMIT,
+    CAPABILITY_SET_CURRENT,
+)
 
 # --- Energy sources (SPEC.md §8 "Energiebronnen") ---------------------------
 
@@ -365,6 +417,12 @@ VALIDATION_OUT_OF_RANGE: Final = "out_of_range"
 VALIDATION_INVALID_CHOICE: Final = "invalid_choice"
 VALIDATION_INVALID_TIME_WINDOW: Final = "invalid_time_window"
 VALIDATION_UNKNOWN_TYPE: Final = INVALID_REASON_UNKNOWN_TYPE
+# The intended control mode needs hardware that cannot do it. A warning, not a
+# block: the installer may be describing a device they are about to replace.
+VALIDATION_CAPABILITY_MISSING: Final = "capability_missing"
+# Control was ruled out for this installation. The only hard block among the
+# three: an agreement not to touch something outranks any later intention.
+VALIDATION_CONTROL_FORBIDDEN: Final = "control_forbidden"
 # Not an error: SPEC.md §8 requires a warning, never a block, when the entered
 # maximum grid power exceeds phases x 230 V x main fuse.
 VALIDATION_ABOVE_THEORETICAL_MAXIMUM: Final = "above_theoretical_maximum"
@@ -375,6 +433,8 @@ VALIDATION_CODES: Final[tuple[str, ...]] = (
     VALIDATION_INVALID_TIME_WINDOW,
     VALIDATION_UNKNOWN_TYPE,
     VALIDATION_ABOVE_THEORETICAL_MAXIMUM,
+    VALIDATION_CAPABILITY_MISSING,
+    VALIDATION_CONTROL_FORBIDDEN,
 )
 
 # --- Logbook (SPEC.md §8 "Logboek") -----------------------------------------

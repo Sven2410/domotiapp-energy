@@ -26,7 +26,7 @@ import math
 import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Final, Self, cast
 
 from homeassistant.util import dt as dt_util
@@ -34,6 +34,7 @@ from homeassistant.util import dt as dt_util
 from .const import (
     ALL_DAYS_OF_WEEK,
     ALLOWED_PHASES,
+    CAPABILITIES,
     CONFIDENCE_LEVELS,
     CONFIDENCE_LOW,
     CONTRACT_TYPES,
@@ -47,6 +48,7 @@ from .const import (
     DEFAULT_MAX_ADVICE_COUNT,
     DEFAULT_MIN_SAVINGS_EUR,
     DEFAULT_MIN_SOLAR_SURPLUS_W,
+    DEFAULT_NET_METERING_UNTIL,
     DEFAULT_PEAK_WARNING_PERCENT,
     DEFAULT_PHASES,
     DEFAULT_PRIORITY,
@@ -276,6 +278,24 @@ def _as_days_of_week(value: Any) -> list[int]:
     return sorted(days) if days else list(ALL_DAYS_OF_WEEK)
 
 
+def _as_date(value: Any) -> date | None:
+    """Parse a "YYYY-MM-DD" string into a date, or return None.
+
+    Dates are stored as ISO strings for the same reason times are stored as
+    ``"HH:MM"``: the storage file has to stay readable and diffable.
+    """
+    if isinstance(value, date) and not isinstance(value, datetime):
+        return value
+    if isinstance(value, datetime):
+        return value.date()
+    if not isinstance(value, str):
+        return None
+    try:
+        return date.fromisoformat(value.strip())
+    except ValueError:
+        return None
+
+
 def _as_datetime(value: Any) -> datetime | None:
     """Parse an ISO 8601 timestamp, or return None."""
     if isinstance(value, datetime):
@@ -288,6 +308,19 @@ def _as_datetime(value: Any) -> datetime | None:
 def _as_mapping(value: Any) -> Mapping[str, Any]:
     """Return a mapping; anything else becomes an empty one."""
     return value if isinstance(value, Mapping) else {}
+
+
+def _as_capabilities(value: Any) -> list[str]:
+    """Return the recognised capability tokens, in a stable order.
+
+    Unknown tokens are dropped rather than kept: unlike a source or device
+    *type*, a capability we do not recognise describes nothing we could act on
+    later, so keeping it would only make the list lie about what was checked.
+    """
+    if not isinstance(value, (list, tuple, set)):
+        return []
+    chosen = {token for token in value if token in CAPABILITIES}
+    return [token for token in CAPABILITIES if token in chosen]
 
 
 def _as_str_list(value: Any) -> list[str]:
@@ -381,6 +414,13 @@ class HomeProfile:
     feed_in_price_eur_kwh: float | None = None
     low_price_threshold_eur_kwh: float | None = None
     high_price_threshold_eur_kwh: float | None = None
+    # What the supplier charges per fed-in kWh. A per-kWh amount, not the
+    # monthly band several suppliers bill: the advice is about one appliance
+    # cycle, so only the marginal cost is meaningful (SPEC.md §8).
+    feed_in_cost_eur_kwh: float | None = None
+    # Net metering applies while today is before this date; None means this
+    # home has none at all (SPEC.md §16).
+    net_metering_until: date | None = DEFAULT_NET_METERING_UNTIL
     min_solar_surplus_w: float = DEFAULT_MIN_SOLAR_SURPLUS_W
     default_strategy: str = DEFAULT_STRATEGY
     # Fixed to advice_only in 0.1.0; the field exists so a later release can
@@ -400,6 +440,10 @@ class HomeProfile:
             "feed_in_price_eur_kwh": self.feed_in_price_eur_kwh,
             "low_price_threshold_eur_kwh": self.low_price_threshold_eur_kwh,
             "high_price_threshold_eur_kwh": self.high_price_threshold_eur_kwh,
+            "feed_in_cost_eur_kwh": self.feed_in_cost_eur_kwh,
+            "net_metering_until": (
+                self.net_metering_until.isoformat() if self.net_metering_until else None
+            ),
             "min_solar_surplus_w": self.min_solar_surplus_w,
             "default_strategy": self.default_strategy,
             "control_level": self.control_level,
@@ -439,6 +483,18 @@ class HomeProfile:
             high_price_threshold_eur_kwh=_as_optional_float(
                 data.get("high_price_threshold_eur_kwh")
             ),
+            feed_in_cost_eur_kwh=_as_optional_float(
+                data.get("feed_in_cost_eur_kwh"), minimum=0.0
+            ),
+            # Key absent means an older file that predates the field, and gets
+            # the default. An explicit null is a deliberate "no net metering"
+            # and must survive: collapsing the two would silently give every
+            # home net metering back on the next load.
+            net_metering_until=(
+                _as_date(data.get("net_metering_until"))
+                if "net_metering_until" in data
+                else DEFAULT_NET_METERING_UNTIL
+            ),
             min_solar_surplus_w=_as_float(
                 data.get("min_solar_surplus_w"),
                 DEFAULT_MIN_SOLAR_SURPLUS_W,
@@ -450,6 +506,17 @@ class HomeProfile:
             # Whatever is stored, 0.1.0 only ever runs in advice_only.
             control_level=CONTROL_LEVEL_0_1_0,
         )
+
+    def is_net_metering_active(self, today: date) -> bool:
+        """Return whether net metering still applies on this date.
+
+        The date is passed in rather than read from the clock, so the engine
+        stays a pure function of its input and both regimes are testable
+        without moving time.
+        """
+        if self.net_metering_until is None:
+            return False
+        return today < self.net_metering_until
 
     @property
     def theoretical_max_grid_power_w(self) -> float | None:
@@ -482,6 +549,14 @@ class EnergySource:
     import_entity_id: str | None = None
     export_entity_id: str | None = None
     notes: str | None = None
+    # What this hardware can do. Registering only in 0.1.0 (SPEC.md §12); an
+    # empty list means nobody said, not that it can do nothing. A controllable
+    # inverter belongs here rather than as a second device profile on the same
+    # hardware.
+    capabilities: list[str] = field(default_factory=list)
+    # What was agreed with this customer, whatever the hardware can do.
+    control_forbidden: bool = False
+    control_forbidden_reason: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Return the source as a flat JSON-serialisable mapping."""
@@ -491,6 +566,9 @@ class EnergySource:
             "type": self.type,
             "enabled": self.enabled,
             "invalid_reason": self.invalid_reason,
+            "capabilities": list(self.capabilities),
+            "control_forbidden": self.control_forbidden,
+            "control_forbidden_reason": self.control_forbidden_reason,
             **self.binding.to_dict(),
             "meter_mode": self.meter_mode,
             "positive_means": self.positive_means,
@@ -522,6 +600,11 @@ class EnergySource:
             import_entity_id=_as_optional_str(data.get("import_entity_id")),
             export_entity_id=_as_optional_str(data.get("export_entity_id")),
             notes=_as_optional_str(data.get("notes")),
+            capabilities=_as_capabilities(data.get("capabilities")),
+            control_forbidden=_as_bool(data.get("control_forbidden"), False),
+            control_forbidden_reason=_as_optional_str(
+                data.get("control_forbidden_reason")
+            ),
         )
 
     @property
@@ -575,6 +658,13 @@ class DeviceProfile:
     # gets the same defaults as one rebuilt from storage.
     is_noisy: bool = TYPE_DEFAULT
     is_flexible: bool = TYPE_DEFAULT
+    # What this hardware can do, as opposed to control_mode, which is what the
+    # installer wants from it. Registering only in 0.1.0 (SPEC.md §12).
+    capabilities: list[str] = field(default_factory=list)
+    # What was agreed with this customer. Outranks any later intention, which
+    # is why it is the one thing validation blocks on rather than warns about.
+    control_forbidden: bool = False
+    control_forbidden_reason: str | None = None
     # Optional entity links, keyed by DEVICE_ENTITY_BINDING_KEYS. A key is
     # absent when unset; it is never stored as an empty string.
     entity_links: dict[str, str] = field(default_factory=dict)
@@ -608,6 +698,9 @@ class DeviceProfile:
             "notes": self.notes,
             "is_noisy": self.is_noisy,
             "is_flexible": self.is_flexible,
+            "capabilities": list(self.capabilities),
+            "control_forbidden": self.control_forbidden,
+            "control_forbidden_reason": self.control_forbidden_reason,
             **self.entity_links,
         }
 
@@ -646,6 +739,11 @@ class DeviceProfile:
             # applies the type default. The rule lives in one place only.
             is_noisy=_as_bool(data.get("is_noisy"), TYPE_DEFAULT),
             is_flexible=_as_bool(data.get("is_flexible"), TYPE_DEFAULT),
+            capabilities=_as_capabilities(data.get("capabilities")),
+            control_forbidden=_as_bool(data.get("control_forbidden"), False),
+            control_forbidden_reason=_as_optional_str(
+                data.get("control_forbidden_reason")
+            ),
             entity_links={
                 key: entity_id
                 for key in DEVICE_ENTITY_BINDING_KEYS

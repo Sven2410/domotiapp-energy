@@ -75,6 +75,10 @@ class _Context:
     metrics: EnergyMetrics
     now_minutes: int
     quiet_hours: bool
+    # Whether net metering still applies today. Read once here so every rule
+    # sees the same answer, and so the date is evaluated in the Home Assistant
+    # timezone like every other time decision (SPEC.md §16).
+    net_metering: bool
 
 
 class Advisor:
@@ -95,6 +99,7 @@ class Advisor:
             metrics=metrics,
             now_minutes=now.hour * MINUTES_PER_HOUR + now.minute,
             quiet_hours=_in_quiet_hours(config, now.hour, now.minute),
+            net_metering=config.home.is_net_metering_active(now.date()),
         )
 
         advice = [
@@ -205,18 +210,30 @@ def _advise_solar_surplus(context: _Context) -> list[AdviceItem]:
     if device is None:
         return []
 
+    savings = _solar_savings(context, device)
+    message = (
+        f"Er is momenteel zonneoverschot beschikbaar. Dit is een gunstig "
+        f"moment om {device.name} te gebruiken."
+    )
+    if context.net_metering and savings == 0:
+        # Saying "gunstig moment" while showing a saving of EUR 0,00 reads as a
+        # contradiction. It is not: the advice is about using your own surplus,
+        # and under net metering that simply earns nothing extra.
+        message += (
+            " Zolang de salderingsregeling geldt levert dit geen extra "
+            "besparing op, maar het overschot zelf gebruiken blijft de meest "
+            "efficiënte keuze."
+        )
+
     return [
         AdviceItem(
             id=f"{REASON_SOLAR_SURPLUS_AVAILABLE}:{device.id}",
             title="Zonneoverschot beschikbaar",
-            message=(
-                f"Er is momenteel zonneoverschot beschikbaar. Dit is een gunstig "
-                f"moment om {device.name} te gebruiken."
-            ),
+            message=message,
             severity=SEVERITY_INFO,
             reason_code=REASON_SOLAR_SURPLUS_AVAILABLE,
             confidence=context.metrics.solar_surplus_confidence,
-            estimated_savings_eur=_solar_savings(context, device),
+            estimated_savings_eur=savings,
             related_device_ids=[device.id],
             measurements={"zonneoverschot_w": round(surplus, 1)},
         )
@@ -374,9 +391,22 @@ def _in_quiet_hours(config: StoredConfiguration, hour: int, minute: int) -> bool
 def _solar_savings(context: _Context, device: DeviceProfile) -> float | None:
     """Return what using surplus instead of grid power saves, or None.
 
-    Using a kWh of surplus yourself avoids importing it at the import price and
-    forgoes the feed-in payment for it, so the saving is the difference. SPEC.md
-    does not put a formula on this; without both prices nothing is claimed.
+    One formula covers both regimes (SPEC.md §16)::
+
+        saving = energy x (import - effective_feed_in + feed_in_cost)
+
+    Using a kWh yourself avoids importing it, forgoes whatever feeding it in
+    would have been worth, and avoids the cost of feeding it in.
+
+    Under net metering a fed-in kWh is worth the full retail price, so
+    ``import - effective_feed_in`` cancels out and only the avoided feed-in cost
+    remains — which is exactly right: until 2027 there is nothing extra to earn
+    beyond the cost your supplier charges for feeding in. After that the feed-in
+    tariff takes over and the difference becomes real.
+
+    Returns ``0.0`` rather than ``None`` when the sum works out to nothing: that
+    is a calculated answer, not an unknown one, and the advice stays visible
+    because the reason to run the appliance now still holds.
     """
     energy = device.energy_per_cycle_kwh
     if energy is None:
@@ -388,11 +418,21 @@ def _solar_savings(context: _Context, device: DeviceProfile) -> float | None:
         if home.contract_type == CONTRACT_TYPE_DYNAMIC
         else home.fixed_import_price_eur_kwh
     )
-    if import_price is None or home.feed_in_price_eur_kwh is None:
+    if import_price is None:
         return None
 
-    saving = energy * (import_price - home.feed_in_price_eur_kwh)
-    return round(saving, 2) if saving > 0 else None
+    if context.net_metering:
+        # Fed in and taken back at the same price, so only the feed-in cost is
+        # avoided. No feed-in tariff is needed to work this out.
+        effective_feed_in = import_price
+    elif home.feed_in_price_eur_kwh is None:
+        return None
+    else:
+        effective_feed_in = home.feed_in_price_eur_kwh
+
+    feed_in_cost = home.feed_in_cost_eur_kwh or 0.0
+    saving = energy * (import_price - effective_feed_in + feed_in_cost)
+    return round(max(saving, 0.0), 2)
 
 
 def _filter_by_savings(
@@ -400,12 +440,22 @@ def _filter_by_savings(
 ) -> list[AdviceItem]:
     """Drop advice whose calculated saving is below the threshold.
 
-    Advice without a calculable saving is never filtered: safety, peak,
-    missing data and neutral advice always survive (SPEC.md §8).
+    Two kinds of advice are never filtered. Advice without a calculable saving —
+    safety, peak, missing data, neutral — because the threshold says nothing
+    about it (SPEC.md §8). And advice whose saving works out to zero or less,
+    because that is a different statement: the reason to run the appliance now
+    still holds, there is simply nothing extra to earn. Under net metering that
+    is the normal case, and filtering it would leave the panel almost silent
+    for a year while its advice was perfectly sound.
+
+    So the threshold applies to exactly one situation: there is money in this,
+    but not enough to bother the customer with.
     """
     minimum = config.preferences.min_savings_eur
     return [
         item
         for item in advice
-        if item.estimated_savings_eur is None or item.estimated_savings_eur >= minimum
+        if item.estimated_savings_eur is None
+        or item.estimated_savings_eur <= 0
+        or item.estimated_savings_eur >= minimum
     ]

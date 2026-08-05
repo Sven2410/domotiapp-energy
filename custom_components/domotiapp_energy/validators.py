@@ -29,7 +29,9 @@ from homeassistant.core import HomeAssistant, State
 from .const import (
     ALLOWED_PHASES,
     CONTRACT_TYPES,
+    CONTROL_CAPABILITIES,
     CONTROL_MODES,
+    CONTROLLING_MODES,
     MAX_ADVICE_COUNT,
     MAX_MAIN_FUSE_A,
     MAX_PEAK_WARNING_PERCENT,
@@ -50,6 +52,8 @@ from .const import (
     UNITS,
     UNUSABLE_ENTITY_STATES,
     VALIDATION_ABOVE_THEORETICAL_MAXIMUM,
+    VALIDATION_CAPABILITY_MISSING,
+    VALIDATION_CONTROL_FORBIDDEN,
     VALIDATION_INVALID_CHOICE,
     VALIDATION_INVALID_TIME_WINDOW,
     VALIDATION_OUT_OF_RANGE,
@@ -378,6 +382,8 @@ def validate_energy_source(source: EnergySource) -> list[ValidationIssue]:
             )
         )
 
+    issues.extend(_validate_control(source))
+
     if source.type == SOURCE_TYPE_GRID_METER:
         issues.extend(_validate_grid_meter(source))
     elif source.binding.entity_id is None:
@@ -498,7 +504,64 @@ def validate_device_profile(device: DeviceProfile) -> list[ValidationIssue]:
                 )
             )
 
+    issues.extend(_validate_control(device))
     issues.extend(_validate_time_window(device))
+    return issues
+
+
+def _validate_control(row: DeviceProfile | EnergySource) -> list[ValidationIssue]:
+    """Check the intended control against what is possible and what is allowed.
+
+    Three kinds of truth meet here, and they are deliberately not merged:
+    ``capabilities`` is what the hardware can do, ``control_mode`` is what the
+    installer wants, and ``control_forbidden`` is what was agreed with this
+    customer. Only the last one blocks.
+    """
+    issues: list[ValidationIssue] = []
+    control_mode = getattr(row, "control_mode", None)
+    wants_control = control_mode in CONTROLLING_MODES
+
+    if row.control_forbidden and wants_control:
+        # The one hard block in this file. An agreement not to touch something
+        # outranks any intention someone types in later, so this is an error
+        # and not a warning.
+        issues.append(
+            ValidationIssue(
+                "control_mode",
+                VALIDATION_CONTROL_FORBIDDEN,
+                "Voor deze installatie is aansturing uitgesloten. Kies "
+                "'alleen monitoren' of 'alleen adviseren'.",
+            )
+        )
+    elif wants_control and not any(
+        capability in CONTROL_CAPABILITIES for capability in row.capabilities
+    ):
+        # A warning, not a block: the installer may be describing hardware they
+        # are about to replace, and 0.1.0 controls nothing either way.
+        issues.append(
+            ValidationIssue(
+                "capabilities",
+                VALIDATION_CAPABILITY_MISSING,
+                "Dit bedieningsniveau vraagt om aansturing, maar er is geen "
+                "besturingsmogelijkheid aangevinkt. Controleer wat deze "
+                "apparatuur werkelijk ondersteunt.",
+                severity=SEVERITY_WARNING,
+            )
+        )
+
+    if row.control_forbidden and row.control_forbidden_reason is None:
+        # Without the reason the flag is unreadable in two years, which is the
+        # whole point of recording it.
+        issues.append(
+            ValidationIssue(
+                "control_forbidden_reason",
+                VALIDATION_REQUIRED,
+                "Noteer waarom aansturing hier is uitgesloten, zodat de reden "
+                "later terug te vinden is.",
+                severity=SEVERITY_WARNING,
+            )
+        )
+
     return issues
 
 

@@ -301,6 +301,11 @@ Duidelijke lege statussen wanneer nog niets is ingesteld.
 - `contract_type` — `fixed` | `dynamic`
 - `fixed_import_price_eur_kwh`
 - `feed_in_price_eur_kwh`
+- `feed_in_cost_eur_kwh` — terugleverkosten **per kWh**. De veldhulptekst moet dat
+  expliciet zeggen: verschillende leveranciers rekenen een vast maandbedrag per staffel,
+  en dat is hier niet de bedoeling. Het advies gaat over één apparaatcyclus, dus alleen
+  de marginale kosten zijn zinvol.
+- `net_metering_until` — nullable datum, default `2027-01-01`. Zie §16.
 - `low_price_threshold_eur_kwh`
 - `high_price_threshold_eur_kwh`
 - `min_solar_surplus_w` (default 500)
@@ -325,7 +330,13 @@ Velden:
 ```text
 id (uuid4) · name · type · enabled · entity_id · value_source · attribute_name
 unit · scale_factor · invert_value · notes
+capabilities · control_forbidden · control_forbidden_reason
 ```
+
+De laatste drie staan óók op een bron en niet alleen op een apparaat. Een omvormer die
+uitgelezen én begrensd kan worden (SolarEdge) is in dit model een bron; zonder deze
+velden zou hij twee keer ingevoerd moeten worden, als bron én als apparaat, op één stuk
+hardware. Zie §12 voor wat de velden betekenen.
 
 - `value_source` ∈ `state` | `attribute`; `attribute_name` alleen zichtbaar bij `attribute`.
 - **Toegestane `unit`-waarden** (enum, geen vrije tekst):
@@ -373,6 +384,7 @@ Algemene velden:
 id (uuid4) · name · device_type · enabled · priority · location · control_mode
 nominal_power_w · energy_per_cycle_kwh · duration_minutes
 earliest_start · latest_finish · days_of_week · notes
+capabilities · control_forbidden · control_forbidden_reason
 ```
 
 - `earliest_start` / `latest_finish`: samen een tijdvenster. Een `latest_finish` die
@@ -405,9 +417,19 @@ min_savings_eur · max_advice_count (1–5)
 show_technical_explanation · show_estimated_savings · show_confidence
 ```
 
-**Verduidelijking `min_savings_eur`:** deze drempel filtert **uitsluitend** adviezen waarvoor
-een `estimated_savings_eur` is berekend. Adviezen zonder berekenbare besparing
-(veiligheid, piek, ontbrekende data, neutraal) worden nooit weggefilterd.
+**Verduidelijking `min_savings_eur`:** deze drempel filtert **uitsluitend** adviezen
+waarvoor een `estimated_savings_eur` is berekend **die boven nul uitkomt**. Twee soorten
+advies blijven altijd staan:
+
+- advies zonder berekenbare besparing (veiligheid, piek, ontbrekende data, neutraal),
+  want daar zegt de drempel niets over;
+- advies waarvan de besparing op nul of lager uitkomt. Dat is een andere uitspraak: de
+  reden om het apparaat nu te draaien geldt onverkort, er valt alleen niets extra's te
+  verdienen. Onder saldering is dat het normale geval, en wegfilteren zou het paneel een
+  jaar lang bijna stil maken terwijl het advies volkomen juist is.
+
+De drempel geldt dus voor precies één situatie: er zit geld in, maar te weinig om de
+klant mee lastig te vallen.
 
 ### Energiecoach
 Huidige situatie · hoofdadvies · max. vijf aanvullende adviezen · reden per advies ·
@@ -577,6 +599,39 @@ class AdviceItem:
     related_device_ids: list[str] = field(default_factory=list)
     measurements: dict[str, float | str] = field(default_factory=dict)
 ```
+
+**Drie soorten waarheid over aansturing, die niet door elkaar mogen lopen.** Ze staan
+zowel op `EnergySource` als op `DeviceProfile`:
+
+| Veld | Beschrijft | Soort waarheid |
+|---|---|---|
+| `capabilities` | wat de hardware kán | eigenschap van het apparaat |
+| `control_mode` | wat de installateur wíl | intentie |
+| `control_forbidden` (+ `_reason`) | wat is afgesproken met déze klant | afspraak |
+
+`capabilities` is een lijst uit de vaste verzameling `read`, `switch`,
+`set_power_limit`, `set_current`. Een lege lijst betekent *niet opgegeven*, niet *kan
+niets*. Een token dat niet in de verzameling staat wordt weggegooid — anders zou de lijst
+beweren dat er iets gecontroleerd is wat niet gecontroleerd is. Dat wijkt bewust af van
+de behandeling van een onbekend `type`, dat juist bewaard blijft: een onbekend type
+beschrijft een rij die bestaat, een onbekende capability beschrijft niets waar we ooit
+op kunnen handelen.
+
+**In 0.1.0 zijn deze velden puur registrerend**: er wordt niets aangestuurd (§2.2). Ze
+staan er nu omdat ze in de formulieren van fase 8 horen en later toevoegen betekent bij
+elke klant elk apparaat opnieuw langslopen.
+
+Validatie kent hier één harde blokkade en twee waarschuwingen:
+
+- `control_forbidden = true` met een `control_mode` die aanstuurt (`approval_required`
+  of `automatic`) is een **fout**, geen waarschuwing. Een afspraak om iets niet aan te
+  raken gaat boven elke intentie die iemand later invult. Dit is de enige harde blokkade
+  in `validators.py`.
+- Een aansturende `control_mode` zonder besturingscapability is een **waarschuwing**: de
+  installateur beschrijft misschien hardware die hij gaat vervangen.
+- `control_forbidden = true` zonder reden is een **waarschuwing**. Zonder die reden is de
+  vlag over twee jaar onleesbaar, en dat is precies waar hij voor bestaat. De reden hoort
+  zichtbaar te zijn in het apparaatoverzicht van fase 8.
 
 Stabiele reason codes in `engine/reason_codes.py` (constants, geen losse strings):
 
@@ -829,6 +884,41 @@ anti-spamroute als §12.
 
 Presenteer dit **niet** als wetenschappelijke efficiëntiescore. README en UI leggen uit dat
 het een DomotiApp-indicator is voor de actuele mogelijkheid om energie slim te gebruiken.
+
+### Saldering en de besparingsformule
+
+De salderingsregeling stopt in één keer op **2027-01-01**, zonder afbouw. Tot die datum
+is een teruggeleverde kWh de volle leveringsprijs waard, dus zelf verbruiken levert
+niets extra's op — behalve de terugleverkosten die je ermee vermijdt.
+
+Eén formule dekt beide regimes:
+
+```text
+besparing = energie_per_cyclus × (importprijs − effectieve_terugleververgoeding
+                                  + terugleverkosten)
+
+effectieve_terugleververgoeding = importprijs           tijdens saldering
+                                = feed_in_price         daarna
+```
+
+Tijdens saldering valt `importprijs − importprijs` weg en blijft
+`energie × terugleverkosten` over. Daarna neemt het terugleveringstarief het over en
+wordt het verschil echt. Er staat dus **geen datumtak in de rekenkern**.
+
+De omslag is een instelling (`net_metering_until`) en geen controle tegen de kalender in
+code: een klant kan een afwijkend contract hebben, en een datum is te verzetten om beide
+regimes te testen. Het is een **datum en geen schakelaar**, zodat de omslag vanzelf
+gebeurt in plaats van een bezoek aan elke klant op 1 januari 2027 te vereisen. `None`
+betekent dat deze woning helemaal geen saldering heeft.
+
+Een besparing die op nul of lager uitkomt wordt als `0.0` gerapporteerd, niet als
+"onbekend": dat is een berekend antwoord. Levert de som nul op terwijl saldering nog
+loopt, dan zegt de adviestekst er expliciet bij dat dit aan de salderingsregeling ligt —
+"een gunstig moment" naast € 0,00 leest anders als een tegenspraak.
+
+Dit raakt de energiescore niet: `price_component` kijkt naar de actuele prijs tegen de
+prijsgrenzen en `solar_component` naar het overschot, en geen van beide gebruikt de
+terugleververgoeding.
 
 ### Adviesregels
 

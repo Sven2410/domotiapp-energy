@@ -1,7 +1,7 @@
 """Tests for the models and the configuration store (SPEC.md §24)."""
 
 from copy import deepcopy
-from datetime import timedelta
+from datetime import date, timedelta
 from typing import Any
 from unittest.mock import patch
 
@@ -11,6 +11,9 @@ from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
 from custom_components.domotiapp_energy.const import (
+    CAPABILITY_READ,
+    CAPABILITY_SET_POWER_LIMIT,
+    CAPABILITY_SWITCH,
     CONTROL_ADVICE_ONLY,
     CONTROL_MONITOR_ONLY,
     DEFAULT_CONTRACT_TYPE,
@@ -1129,3 +1132,114 @@ async def test_timestamps_use_home_assistant_time(hass: HomeAssistant) -> None:
 
     assert config.logs[0].timestamp.tzinfo is not None
     assert abs((dt_util.utcnow() - config.logs[0].timestamp).total_seconds()) < 5
+
+
+# --- Capability, agreement and net metering (SPEC.md §12 and §16) -----------
+
+
+def test_capabilities_and_the_agreement_survive_a_round_trip() -> None:
+    """Both new fields make it through storage on a source and on a device."""
+    source = EnergySource.from_dict(
+        {
+            "id": "s1",
+            "type": SOURCE_TYPE_GRID_METER,
+            "capabilities": [CAPABILITY_SET_POWER_LIMIT, CAPABILITY_READ],
+            "control_forbidden": True,
+            "control_forbidden_reason": "Afspraak met de klant.",
+        }
+    )
+    device = DeviceProfile.from_dict(
+        {
+            "id": "d1",
+            "device_type": DEVICE_TYPE_DISHWASHER,
+            "capabilities": [CAPABILITY_SWITCH],
+        }
+    )
+
+    restored_source = EnergySource.from_dict(source.to_dict())
+    restored_device = DeviceProfile.from_dict(device.to_dict())
+
+    # Stored in the canonical order, not the order they were typed in.
+    assert restored_source.capabilities == [CAPABILITY_READ, CAPABILITY_SET_POWER_LIMIT]
+    assert restored_source.control_forbidden is True
+    assert restored_source.control_forbidden_reason == "Afspraak met de klant."
+    assert restored_device.capabilities == [CAPABILITY_SWITCH]
+    assert restored_device.control_forbidden is False
+
+
+def test_an_unrecognised_capability_is_dropped() -> None:
+    """Unlike a type, a capability we do not know describes nothing usable.
+
+    Keeping it would make the list claim something was checked when it was not.
+    """
+    device = DeviceProfile.from_dict(
+        {
+            "id": "d1",
+            "device_type": DEVICE_TYPE_DISHWASHER,
+            "capabilities": [CAPABILITY_READ, "beam_me_up", 42],
+        }
+    )
+
+    assert device.capabilities == [CAPABILITY_READ]
+
+
+def test_a_row_without_capabilities_claims_nothing() -> None:
+    """An empty list means nobody said, not that the hardware can do nothing."""
+    device = DeviceProfile.from_dict(
+        {"id": "d1", "device_type": DEVICE_TYPE_DISHWASHER}
+    )
+
+    assert device.capabilities == []
+
+
+def test_net_metering_defaults_to_the_statutory_end_date() -> None:
+    """A file written before the field existed gets the default."""
+    home = HomeProfile.from_dict({"home_name": "Oude woning"})
+
+    assert home.net_metering_until == date(2027, 1, 1)
+
+
+def test_an_explicit_null_net_metering_date_survives_a_reload() -> None:
+    """Clearing the field must not hand the home net metering back.
+
+    from_dict cannot otherwise tell "key absent, use the default" from "the
+    installer cleared this on purpose", and the second reading is the one that
+    would silently undo their choice on the next load.
+    """
+    home = HomeProfile.from_dict({"net_metering_until": None})
+
+    assert home.net_metering_until is None
+    assert HomeProfile.from_dict(home.to_dict()).net_metering_until is None
+
+
+def test_the_net_metering_date_round_trips_as_an_iso_string() -> None:
+    """Stored as YYYY-MM-DD, for the same reason times are stored as HH:MM."""
+    home = HomeProfile(net_metering_until=date(2028, 7, 1))
+
+    assert home.to_dict()["net_metering_until"] == "2028-07-01"
+    assert HomeProfile.from_dict(home.to_dict()).net_metering_until == date(2028, 7, 1)
+
+
+def test_net_metering_is_active_up_to_but_not_on_the_end_date() -> None:
+    """The regime ends *on* the date, so that day itself is already after."""
+    home = HomeProfile(net_metering_until=date(2027, 1, 1))
+
+    assert home.is_net_metering_active(date(2026, 12, 31)) is True
+    assert home.is_net_metering_active(date(2027, 1, 1)) is False
+
+
+def test_no_date_means_no_net_metering() -> None:
+    """None is a real answer here, not a missing one."""
+    home = HomeProfile(net_metering_until=None)
+
+    assert home.is_net_metering_active(date(2020, 1, 1)) is False
+
+
+def test_the_feed_in_cost_round_trips_and_refuses_a_negative() -> None:
+    """A negative feed-in cost is not a cost; it falls back to unknown."""
+    assert HomeProfile.from_dict(
+        {"feed_in_cost_eur_kwh": 0.11}
+    ).feed_in_cost_eur_kwh == (0.11)
+    assert HomeProfile.from_dict({"feed_in_cost_eur_kwh": -1}).feed_in_cost_eur_kwh is (
+        None
+    )

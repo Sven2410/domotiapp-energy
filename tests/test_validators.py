@@ -14,8 +14,16 @@ import pytest
 from homeassistant.core import HomeAssistant
 
 from custom_components.domotiapp_energy.const import (
+    CAPABILITY_READ,
+    CAPABILITY_SET_CURRENT,
+    CAPABILITY_SET_POWER_LIMIT,
     CONTRACT_TYPE_DYNAMIC,
+    CONTROL_ADVICE_ONLY,
+    CONTROL_AUTOMATIC,
     DEVICE_TYPE_DISHWASHER,
+    DEVICE_TYPE_EV_CHARGER,
+    DEVICE_TYPE_GENERIC_MONITOR,
+    DEVICE_TYPE_GENERIC_SCHEDULABLE,
     MAX_ADVICE_COUNT,
     METER_MODE_SEPARATE,
     METER_MODE_SINGLE_SIGNED,
@@ -32,6 +40,8 @@ from custom_components.domotiapp_energy.const import (
     UNIT_NONE,
     UNIT_W,
     VALIDATION_ABOVE_THEORETICAL_MAXIMUM,
+    VALIDATION_CAPABILITY_MISSING,
+    VALIDATION_CONTROL_FORBIDDEN,
     VALIDATION_INVALID_TIME_WINDOW,
     VALIDATION_OUT_OF_RANGE,
     VALIDATION_REQUIRED,
@@ -966,3 +976,136 @@ def test_validation_issue_severity_defaults_to_error() -> None:
 
     assert issue.severity == SEVERITY_ERROR
     assert issue.is_error is True
+
+
+# --- Capability, intent and agreement (SPEC.md §12) -------------------------
+
+
+async def test_wanting_control_without_the_capability_warns(
+    hass: HomeAssistant,
+) -> None:
+    """Intent beyond what the hardware can do is a warning, not a block.
+
+    The installer may be describing hardware they are about to replace, and
+    0.1.0 controls nothing either way.
+    """
+    device = DeviceProfile.from_dict(
+        {
+            "id": "d1",
+            "name": "Enphase",
+            "device_type": DEVICE_TYPE_GENERIC_MONITOR,
+            "control_mode": CONTROL_AUTOMATIC,
+            "capabilities": [CAPABILITY_READ],
+        }
+    )
+
+    issues = validate_device_profile(device)
+    capability_issues = [
+        issue for issue in issues if issue.code == VALIDATION_CAPABILITY_MISSING
+    ]
+
+    assert len(capability_issues) == 1
+    assert capability_issues[0].severity == SEVERITY_WARNING
+    assert not has_errors(issues)
+
+
+async def test_control_capability_satisfies_the_intent(hass: HomeAssistant) -> None:
+    """Hardware that can be driven raises nothing."""
+    device = DeviceProfile.from_dict(
+        {
+            "id": "d1",
+            "name": "Easee",
+            "device_type": DEVICE_TYPE_EV_CHARGER,
+            "control_mode": CONTROL_AUTOMATIC,
+            "capabilities": [CAPABILITY_READ, CAPABILITY_SET_CURRENT],
+        }
+    )
+
+    assert validate_device_profile(device) == []
+
+
+async def test_a_forbidden_device_may_not_be_set_to_automatic(
+    hass: HomeAssistant,
+) -> None:
+    """The one hard block: an agreement outranks any later intention.
+
+    A customer with medical equipment, or a specific arrangement, must stay
+    off limits whatever anyone types into control_mode afterwards.
+    """
+    device = DeviceProfile.from_dict(
+        {
+            "id": "d1",
+            "name": "SolarEdge",
+            "device_type": DEVICE_TYPE_GENERIC_SCHEDULABLE,
+            "control_mode": CONTROL_AUTOMATIC,
+            "capabilities": [CAPABILITY_READ, CAPABILITY_SET_POWER_LIMIT],
+            "control_forbidden": True,
+            "control_forbidden_reason": "Medische apparatuur in de woning.",
+        }
+    )
+
+    issues = validate_device_profile(device)
+    forbidden = [
+        issue for issue in issues if issue.code == VALIDATION_CONTROL_FORBIDDEN
+    ]
+
+    assert len(forbidden) == 1
+    assert forbidden[0].severity == SEVERITY_ERROR
+    # An error, so the row is refused rather than merely flagged.
+    assert has_errors(issues)
+
+
+async def test_a_forbidden_device_may_still_advise(hass: HomeAssistant) -> None:
+    """Advising is not controlling, so advice_only stays allowed."""
+    device = DeviceProfile.from_dict(
+        {
+            "id": "d1",
+            "name": "SolarEdge",
+            "device_type": DEVICE_TYPE_GENERIC_SCHEDULABLE,
+            "control_mode": CONTROL_ADVICE_ONLY,
+            "control_forbidden": True,
+            "control_forbidden_reason": "Afspraak met de klant.",
+        }
+    )
+
+    assert validate_device_profile(device) == []
+
+
+async def test_a_forbidden_row_without_a_reason_warns(hass: HomeAssistant) -> None:
+    """The reason is the point: without it the flag is unreadable in two years."""
+    device = DeviceProfile.from_dict(
+        {
+            "id": "d1",
+            "name": "SolarEdge",
+            "device_type": DEVICE_TYPE_GENERIC_SCHEDULABLE,
+            "control_forbidden": True,
+        }
+    )
+
+    issues = validate_device_profile(device)
+
+    assert [issue.field for issue in issues] == ["control_forbidden_reason"]
+    assert not has_errors(issues)
+
+
+async def test_a_source_carries_the_same_agreement(hass: HomeAssistant) -> None:
+    """A controllable inverter is a source, so the flag belongs there too.
+
+    Without it a SolarEdge that can be read *and* limited would have to be
+    entered twice, as a source and as a device, on one piece of hardware.
+    """
+    source = EnergySource.from_dict(
+        {
+            "id": "s1",
+            "name": "SolarEdge",
+            "type": SOURCE_TYPE_SOLAR,
+            "entity_id": "sensor.solaredge",
+            "capabilities": [CAPABILITY_READ, CAPABILITY_SET_POWER_LIMIT],
+            "control_forbidden": True,
+        }
+    )
+
+    issues = validate_energy_source(source)
+
+    assert [issue.code for issue in issues] == [VALIDATION_REQUIRED]
+    assert issues[0].field == "control_forbidden_reason"

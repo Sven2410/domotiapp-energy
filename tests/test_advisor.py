@@ -5,7 +5,7 @@ suppressed on a fixed contract, quiet hours including a window across midnight,
 advice priority and sorting, the neutral situation, and the savings threshold.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -56,10 +56,19 @@ _COMPLETE = DataQualityResult(score=100, completed_items=["all"], missing_items=
 
 
 def _config(**home_overrides: Any) -> StoredConfiguration:
-    """Return a configuration whose home profile is complete."""
-    return StoredConfiguration(
-        home=HomeProfile(main_fuse_a=25, max_grid_power_w=5750.0, **home_overrides)
-    )
+    """Return a configuration whose home profile is complete.
+
+    Net metering is **off** unless a test switches it on. These tests describe
+    the world from 2027 onwards, where a fed-in kWh is worth the feed-in tariff
+    and self-consumption has real value. The net-metering regime has its own
+    tests further down, because it makes a different claim entirely.
+    """
+    defaults: dict[str, Any] = {
+        "main_fuse_a": 25,
+        "max_grid_power_w": 5750.0,
+        "net_metering_until": None,
+    }
+    return StoredConfiguration(home=HomeProfile(**(defaults | home_overrides)))
 
 
 def _metrics(**overrides: Any) -> EnergyMetrics:
@@ -91,6 +100,13 @@ def _codes(advice: list[AdviceItem]) -> list[str]:
 
 
 TIME_ZONE = "Europe/Amsterdam"
+
+
+def local_on(day: date, hour: int = 12) -> datetime:
+    """Return the UTC instant at which TIME_ZONE reads this hour on this date."""
+    return datetime(
+        day.year, day.month, day.day, hour, tzinfo=ZoneInfo(TIME_ZONE)
+    ).astimezone(UTC)
 
 
 def local(hour: int, minute: int = 0) -> datetime:
@@ -716,10 +732,15 @@ async def test_a_dynamic_contract_prices_the_saving_at_the_live_price(
     assert advice[0].estimated_savings_eur == 0.50
 
 
-async def test_no_saving_is_claimed_when_feeding_in_pays_better(
+async def test_a_saving_that_works_out_negative_is_reported_as_zero(
     hass: HomeAssistant,
 ) -> None:
-    """A negative saving is not a saving, so nothing is claimed."""
+    """Feeding in pays better, so there is nothing to gain — but not nothing to say.
+
+    Zero is a calculated answer, not an unknown one. The advice survives,
+    because the reason to run the appliance on your own surplus still holds;
+    only the money is absent.
+    """
     config = _config(
         min_solar_surplus_w=500.0,
         contract_type=CONTRACT_TYPE_FIXED,
@@ -729,7 +750,111 @@ async def test_no_saving_is_claimed_when_feeding_in_pays_better(
     config.devices.append(_device())
     metrics = _metrics(solar_surplus_w=1500.0)
 
-    assert Advisor().generate(config, metrics)[0].estimated_savings_eur is None
+    advice = Advisor().generate(config, metrics)
+
+    assert advice[0].reason_code == REASON_SOLAR_SURPLUS_AVAILABLE
+    assert advice[0].estimated_savings_eur == 0.0
+
+
+# --- Net metering (SPEC.md §16) ---------------------------------------------
+
+
+def _net_metering_config(**home_overrides: Any) -> StoredConfiguration:
+    """Return a configuration where net metering is still running."""
+    defaults: dict[str, Any] = {
+        "min_solar_surplus_w": 500.0,
+        "contract_type": CONTRACT_TYPE_FIXED,
+        "fixed_import_price_eur_kwh": 0.30,
+        "feed_in_price_eur_kwh": 0.05,
+        "net_metering_until": date(2027, 1, 1),
+    }
+    config = _config(**(defaults | home_overrides))
+    config.devices.append(_device(energy_per_cycle_kwh=2.0))
+    return config
+
+
+async def test_net_metering_leaves_nothing_extra_to_earn(hass: HomeAssistant) -> None:
+    """Under net metering a fed-in kWh is worth the full price, so the saving is nil.
+
+    The old formula claimed 2 x (0.30 - 0.05) = EUR 0.50 here, which the
+    customer never sees on their bill while netting applies.
+    """
+    config = _net_metering_config()
+    metrics = _metrics(solar_surplus_w=1500.0)
+
+    advice = Advisor().generate(config, metrics)
+
+    assert advice[0].reason_code == REASON_SOLAR_SURPLUS_AVAILABLE
+    assert advice[0].estimated_savings_eur == 0.0
+
+
+async def test_net_metering_still_saves_the_feed_in_cost(hass: HomeAssistant) -> None:
+    """A supplier that charges for feeding in makes self-consumption pay again."""
+    config = _net_metering_config(feed_in_cost_eur_kwh=0.11)
+    metrics = _metrics(solar_surplus_w=1500.0)
+
+    # 2 kWh x EUR 0.11 avoided feed-in cost.
+    assert Advisor().generate(config, metrics)[0].estimated_savings_eur == 0.22
+
+
+async def test_the_same_home_earns_the_full_difference_after_the_changeover(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """One day later the regime flips by itself, with no setting changed."""
+    config = _net_metering_config()
+    metrics = _metrics(solar_surplus_w=1500.0)
+
+    freezer.move_to(local_on(date(2026, 12, 31)))
+    assert Advisor().generate(config, metrics)[0].estimated_savings_eur == 0.0
+
+    # 2 kWh x (0.30 - 0.05) = EUR 0.50.
+    freezer.move_to(local_on(date(2027, 1, 1)))
+    assert Advisor().generate(config, metrics)[0].estimated_savings_eur == 0.50
+
+
+async def test_net_metering_needs_no_feed_in_tariff_to_calculate(
+    hass: HomeAssistant,
+) -> None:
+    """While netting applies the feed-in tariff does not enter the sum at all."""
+    config = _net_metering_config(feed_in_price_eur_kwh=None, feed_in_cost_eur_kwh=0.05)
+    metrics = _metrics(solar_surplus_w=1500.0)
+
+    assert Advisor().generate(config, metrics)[0].estimated_savings_eur == 0.10
+
+
+async def test_a_zero_saving_says_why_it_is_zero(hass: HomeAssistant) -> None:
+    """A "gunstig moment" beside EUR 0,00 contradicts itself unless explained."""
+    config = _net_metering_config()
+    metrics = _metrics(solar_surplus_w=1500.0)
+
+    message = Advisor().generate(config, metrics)[0].message
+
+    assert "gunstig moment" in message
+    assert "salderingsregeling" in message
+
+
+async def test_a_real_saving_is_not_explained_away(hass: HomeAssistant) -> None:
+    """The extra sentence appears only when there is genuinely nothing to earn."""
+    config = _net_metering_config(feed_in_cost_eur_kwh=0.11)
+    metrics = _metrics(solar_surplus_w=1500.0)
+
+    assert "salderingsregeling" not in Advisor().generate(config, metrics)[0].message
+
+
+async def test_a_zero_saving_survives_the_savings_threshold(
+    hass: HomeAssistant,
+) -> None:
+    """The threshold must not silence a panel for a whole year (SPEC.md §8).
+
+    With the corrected formula almost every solar advice is worth EUR 0.00
+    until 2027. Filtering those would leave the customer with a product that
+    says nothing, while the advice itself is perfectly sound.
+    """
+    config = _net_metering_config()
+    config.preferences = UserPreferences(min_savings_eur=1.00)
+    metrics = _metrics(solar_surplus_w=1500.0)
+
+    assert REASON_SOLAR_SURPLUS_AVAILABLE in _codes(Advisor().generate(config, metrics))
 
 
 # --- Sorting, limiting and filtering ----------------------------------------
