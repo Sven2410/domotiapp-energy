@@ -164,6 +164,21 @@ function formDataFrom(home) {
   return data;
 }
 
+/**
+ * Return only the given field names, dropping the rest.
+ *
+ * A name that is present but `undefined` is kept, not skipped: that is exactly
+ * what a field the installer just cleared looks like, and skipping it would
+ * silently restore the previous value.
+ */
+function only(data, names) {
+  const picked = {};
+  for (const name of names) {
+    picked[name] = data[name];
+  }
+  return picked;
+}
+
 export const homeTab = {
   id: 'home',
   label: 'Woning',
@@ -188,17 +203,34 @@ export const homeTab = {
     let leaveRequested = null;
     let loadedRevision = null;
 
-    function onChange(part) {
-      draft = { ...draft, ...part };
-      state.setDraft(DRAFT, draft);
-      refreshDirty();
+    /**
+     * Merge one card's fields back into the draft.
+     *
+     * Only that card's own fields, never the whole payload it emits. `ha-form`
+     * hands back the complete `data` object it was given with one field
+     * changed, so a form that was handed the *shared* draft would re-emit its
+     * snapshot of every other card's fields as well — and a card touched later
+     * would quietly undo an edit made in a card touched earlier. That reverted
+     * the saved profile, not only the hint on screen.
+     */
+    function changeHandler(names) {
+      return (part) => {
+        draft = { ...draft, ...only(part, names) };
+        state.setDraft(DRAFT, draft);
+        refreshDirty();
+      };
     }
 
-    const forms = [
-      { form: createForm(getHass(), CONNECTION_SCHEMA, onChange), host: connection },
-      { form: createForm(getHass(), CONTRACT_SCHEMA, onChange), host: contract },
-      { form: createForm(getHass(), ADVICE_SCHEMA, onChange), host: advice },
-    ];
+    const forms = [CONNECTION_SCHEMA, CONTRACT_SCHEMA, ADVICE_SCHEMA].map(
+      (schema, index) => {
+        const names = schema.map((field) => field.name);
+        return {
+          names,
+          form: createForm(getHass(), schema, changeHandler(names)),
+          host: [connection, contract, advice][index],
+        };
+      },
+    );
     for (const { form, host } of forms) {
       host.body.appendChild(form.element);
     }
@@ -307,11 +339,30 @@ export const homeTab = {
       draft = { ...saved };
       revision = config?.revision ?? null;
       loadedRevision = revision;
-      for (const { form } of forms) {
-        form.setData({ ...draft });
+      // Each card is handed only its own fields, so it cannot carry a stale
+      // copy of another card's values.
+      for (const { form, names } of forms) {
+        form.setData(only(draft, names));
       }
       state.clearDraft(DRAFT);
       refreshDirty();
+    }
+
+    /**
+     * The home profile to send.
+     *
+     * Every editable field is present, with an explicitly cleared one as
+     * `null` rather than absent. The backend tells the two apart on purpose:
+     * an absent `net_metering_until` means "an older file, take the default"
+     * while an explicit null means "this home does not net-meter". Leaving the
+     * key out would silently hand the default back (SPEC.md §16).
+     */
+    function payload() {
+      const home = {};
+      for (const name of EDITED_FIELDS) {
+        home[name] = draft[name] ?? null;
+      }
+      return home;
     }
 
     function setBusy(busy) {
@@ -329,7 +380,7 @@ export const homeTab = {
       saveNotice.set('Bezig met opslaan…', { tone: 'info' });
 
       try {
-        const result = await createApi(getHass()).updateHome(revision, draft);
+        const result = await createApi(getHass()).updateHome(revision, payload());
         const updated = {
           ...state.get().config,
           home: result.item,

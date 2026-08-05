@@ -140,6 +140,41 @@ describe('the form itself', () => {
     assert.equal(findButton(tab, 'Opslaan').disabled, false);
   });
 
+  it('keeps an edit from one card when another card changes', async () => {
+    const { tab } = await openHomeTab();
+
+    change(tab, { phases: 3 }, 0);
+    change(tab, { contract_type: 'dynamic' }, 1);
+
+    const hint = noticeTexts(tab).find((text) => text.includes('Theoretisch maximum'));
+    assert.match(hint, /3 × 230 V × 25 A/);
+  });
+
+  it('sends the edit from every card, not only the last one touched', async () => {
+    const sent = [];
+    const hass = fakeHass();
+    const original = hass.callWS;
+    hass.callWS = async (message) => {
+      sent.push(message);
+      if (message.type === 'domotiapp_energy/home/update') {
+        return { revision: 8, item: { ...message.home } };
+      }
+      return original(message);
+    };
+
+    const { tab } = await openHomeTab(hass);
+    change(tab, { phases: 3 }, 0);
+    change(tab, { contract_type: 'dynamic' }, 1);
+    findButton(tab, 'Opslaan').click();
+    await settle();
+
+    const update = sent.find(
+      (message) => message.type === 'domotiapp_energy/home/update',
+    );
+    assert.equal(update.home.phases, 3);
+    assert.equal(update.home.contract_type, 'dynamic');
+  });
+
   it('offers the other control levels but leaves them disabled', async () => {
     const { tab } = await openHomeTab();
     const controlForm = forms(tab)[3];
@@ -188,6 +223,34 @@ describe('the save cycle', () => {
     // Fields the installer did not touch travel along unchanged: the backend
     // replaces the whole profile.
     assert.equal(update.home.max_grid_power_w, 5750);
+  });
+
+  it('sends a cleared field as null, not by leaving the key out', async () => {
+    // The backend distinguishes an absent net_metering_until ("older file,
+    // take the default") from an explicit null ("this home does not
+    // net-meter"). Omitting the key would silently hand the default back and
+    // undo the installer's choice on the next load (SPEC.md §16).
+    const sent = [];
+    const hass = fakeHass();
+    const original = hass.callWS;
+    hass.callWS = async (message) => {
+      sent.push(message);
+      if (message.type === 'domotiapp_energy/home/update') {
+        return { revision: 8, item: { ...message.home } };
+      }
+      return original(message);
+    };
+
+    const { tab } = await openHomeTab(hass);
+    change(tab, { net_metering_until: undefined }, 1);
+    findButton(tab, 'Opslaan').click();
+    await settle();
+
+    const update = sent.find(
+      (message) => message.type === 'domotiapp_energy/home/update',
+    );
+    assert.ok('net_metering_until' in update.home);
+    assert.equal(update.home.net_metering_until, null);
   });
 
   it('locks the fields while saving and confirms only afterwards', async () => {
