@@ -65,88 +65,160 @@ const STYLES = `
   .is-hidden {
     display: none !important;
   }
+
   :host {
+    /*
+     * Typography for the DomotiTech house style.
+     *
+     * Headings are meant to be an elegant serif. Home Assistant offers the
+     * seam for it: --ha-font-family-heading exists and points at the body
+     * font by default, so overriding it here is using their system rather
+     * than fighting it. It is still pointing at the Home Assistant font until
+     * that choice is confirmed; switching it is this one declaration.
+     *
+     * The intended value, with no web font and therefore no CDN:
+     *   ui-serif, Georgia, 'Iowan Old Style', 'Palatino Linotype',
+     *   'Times New Roman', 'Noto Serif', 'Liberation Serif', serif
+     */
+    --domotiapp-font-heading: var(--ha-font-family-heading, inherit);
+
+    /* Rhythm. Generous by design: this style breathes, and a crowded card
+       turns muddy under the customer's Liquid Glass theme. */
+    --domotiapp-space-row: 20px;
+    --domotiapp-space-section: 40px;
+
     display: block;
-    padding: 16px;
-    padding-bottom: calc(16px + env(safe-area-inset-bottom));
+    padding: 32px 16px;
+    padding-bottom: calc(32px + env(safe-area-inset-bottom));
     box-sizing: border-box;
     color: var(--primary-text-color);
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
   }
+
   .layout {
     max-width: 1400px;
     margin: 0 auto;
   }
+
+  /*
+   * Small capitals with wide letterspacing, for every label and button. The
+   * house style uses these as its quiet structural voice.
+   */
+  .label,
+  .tab-button,
+  .stat-label {
+    font-size: 0.7rem;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--secondary-text-color);
+  }
+
+  /* --- Tab bar: hairline and text, no boxed-in buttons ------------------- */
+
   .tabs {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
-    margin-bottom: 16px;
+    gap: 4px 24px;
+    max-width: 760px;
+    margin: 0 auto var(--domotiapp-space-section);
     border-bottom: 1px solid var(--divider-color);
-    padding-bottom: 8px;
   }
   .tab-button {
     display: flex;
     align-items: center;
     gap: 8px;
     min-height: 44px;
-    padding: 0 16px;
+    padding: 0 2px;
     border: none;
-    border-radius: 8px;
-    background: var(--secondary-background-color);
-    color: var(--primary-text-color);
-    font: inherit;
-    font-size: 0.95rem;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    background: none;
     cursor: pointer;
   }
+  .tab-button ha-icon {
+    --mdc-icon-size: 18px;
+  }
   .tab-button[aria-selected='true'] {
-    background: var(--primary-color);
-    color: var(--text-primary-color);
-    font-weight: 600;
+    color: var(--primary-color);
+    border-bottom-color: var(--primary-color);
   }
   .tab-button:focus-visible {
     outline: 2px solid var(--primary-color);
-    outline-offset: 2px;
+    outline-offset: 4px;
   }
+
+  /* --- One narrow column, with air between the sections ------------------ */
+
   .tab-content {
     display: grid;
-    gap: 16px;
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 760px);
+    justify-content: center;
+    gap: var(--domotiapp-space-section);
   }
-  @media (min-width: 900px) {
-    .tab-content {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-  }
+
   .card-title {
     margin: 0;
-    padding: 16px 16px 0;
-    font-size: 1.05rem;
-    font-weight: 600;
+    padding: 32px 32px 0;
+    font-family: var(--domotiapp-font-heading);
+    font-size: 1.5rem;
+    font-weight: 400;
+    letter-spacing: 0.01em;
   }
   .card-body {
-    padding: 8px 16px 16px;
+    padding: 24px 32px 32px;
   }
   .subheading {
-    margin: 16px 0 4px;
-    font-size: 0.95rem;
-    font-weight: 600;
+    margin: var(--domotiapp-space-section) 0 12px;
+    font-family: var(--domotiapp-font-heading);
+    font-size: 1.1rem;
+    font-weight: 400;
+    /* Blue is reserved for headings, links and the one primary button. */
+    color: var(--primary-color);
   }
+
+  /* --- Headline figures --------------------------------------------------- */
+
+  .display-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 40px;
+    margin-bottom: var(--domotiapp-space-section);
+  }
+  .display-metric {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 120px;
+  }
+  .display-figure {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+  .display-value {
+    font-size: 3rem;
+    font-weight: 300;
+    line-height: 1;
+    font-variant-numeric: lining-nums tabular-nums;
+  }
+  .display-suffix,
+  .display-empty {
+    font-size: 0.85rem;
+    color: var(--secondary-text-color);
+  }
+
+  /* --- Rows: hairlines, not boxes ---------------------------------------- */
+
   .stat-row {
     display: flex;
     flex-wrap: wrap;
     justify-content: space-between;
     align-items: baseline;
-    gap: 8px;
-    padding: 8px 0;
-    border-bottom: 1px solid var(--divider-color);
-  }
-  .stat-row:last-of-type {
-    border-bottom: none;
-  }
-  .stat-label {
-    color: var(--secondary-text-color);
+    gap: 12px;
+    padding: var(--domotiapp-space-row) 0;
+    border-top: 1px solid var(--divider-color);
   }
   .stat-value-wrap {
     display: flex;
@@ -155,64 +227,90 @@ const STYLES = `
     text-align: right;
   }
   .stat-value {
-    font-weight: 600;
+    font-size: 1.05rem;
+    font-variant-numeric: lining-nums tabular-nums;
     overflow-wrap: anywhere;
   }
   .stat-value.is-empty {
-    font-weight: 400;
     color: var(--secondary-text-color);
     font-style: italic;
   }
   .stat-hint {
+    margin-top: 4px;
     font-size: 0.8rem;
     color: var(--secondary-text-color);
   }
+
+  /* --- Notices ------------------------------------------------------------ */
+
   .notice {
     display: flex;
     align-items: flex-start;
-    gap: 8px;
-    margin-top: 12px;
+    gap: 12px;
+    margin-top: var(--domotiapp-space-row);
+    padding-top: var(--domotiapp-space-row);
+    border-top: 1px solid var(--divider-color);
+    font-size: 0.9rem;
     color: var(--secondary-text-color);
   }
   .notice[data-tone='warning'] {
     color: var(--warning-color);
   }
-  .notice[data-tone='success'] {
-    color: var(--success-color);
-  }
   .notice ha-icon {
     flex: none;
     --mdc-icon-size: 20px;
   }
+
+  /* --- Advice ------------------------------------------------------------- */
+
   .advice-title {
-    margin: 8px 0 4px;
-    font-size: 1.1rem;
-    font-weight: 600;
+    margin: 0 0 8px;
+    font-family: var(--domotiapp-font-heading);
+    font-size: 1.25rem;
+    font-weight: 400;
   }
   .advice-message {
-    margin: 0 0 8px;
+    margin: 0 0 var(--domotiapp-space-row);
+    max-width: 58ch;
+    line-height: 1.6;
     color: var(--secondary-text-color);
   }
-  .warning-list {
+  .advice-list {
+    display: flex;
+    flex-direction: column;
+  }
+  .advice-item {
+    padding: var(--domotiapp-space-row) 0;
+    border-top: 1px solid var(--divider-color);
+  }
+  .advice-item-title {
+    margin: 6px 0 4px;
+    font-size: 1rem;
+  }
+  .advice-item-message {
     margin: 0;
-    padding-left: 20px;
-  }
-  .warning-item {
-    margin-bottom: 4px;
-    color: var(--warning-color);
-  }
-  .placeholder-text {
-    margin: 8px 0;
+    max-width: 58ch;
+    line-height: 1.6;
     color: var(--secondary-text-color);
   }
+
+  .placeholder-text {
+    margin: 0 0 var(--domotiapp-space-row);
+    max-width: 58ch;
+    line-height: 1.6;
+    color: var(--secondary-text-color);
+  }
+
+  /* --- Status banner ------------------------------------------------------ */
+
   .banner {
     display: flex;
     align-items: center;
     gap: 8px;
-    margin-bottom: 16px;
-    padding: 12px 16px;
-    border-radius: 8px;
-    background: var(--secondary-background-color);
+    max-width: 760px;
+    margin: 0 auto var(--domotiapp-space-row);
+    font-size: 0.9rem;
+    color: var(--secondary-text-color);
   }
   .banner[data-tone='error'] {
     color: var(--error-color);

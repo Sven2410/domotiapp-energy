@@ -106,6 +106,63 @@ export function statRow(label, { unit = '', empty = 'Niet beschikbaar' } = {}) {
 }
 
 /**
+ * A headline figure: a small label above a large number.
+ *
+ * The hierarchy is the point. A score and its label at nearly the same weight
+ * read as two equal facts; the number is the thing the customer came for, so
+ * the label steps back into small letterspaced capitals and the figure
+ * dominates.
+ */
+export function displayMetric(label, { suffix = '', empty = 'Nog niet berekend' } = {}) {
+  const valueNode = el('span', { class: 'display-value', text: '—' });
+  const suffixNode = el('span', { class: 'display-suffix', text: suffix });
+  const emptyNode = el('span', { class: 'display-empty', text: empty });
+
+  const element = el('div', { class: 'display-metric' }, [
+    el('span', { class: 'label', text: label }),
+    el('span', { class: 'display-figure' }, [valueNode, suffixNode, emptyNode]),
+  ]);
+
+  return {
+    element,
+    set(value) {
+      const missing = value === null || value === undefined || value === '';
+      valueNode.textContent = missing ? '' : String(value);
+      setVisible(valueNode, !missing);
+      setVisible(suffixNode, !missing && Boolean(suffix));
+      setVisible(emptyNode, missing);
+    },
+  };
+}
+
+/**
+ * One advice or warning, as a block rather than a bullet.
+ *
+ * A long sentence behind a bullet reads as an error list. A short marker above
+ * the sentence, separated from its neighbours by a hairline, reads as advice —
+ * which is what these are.
+ */
+export function adviceBlock() {
+  const markerNode = el('span', { class: 'label' });
+  const titleNode = el('p', { class: 'advice-item-title' });
+  const messageNode = el('p', { class: 'advice-item-message' });
+  const element = el('div', { class: 'advice-item' }, [
+    markerNode,
+    titleNode,
+    messageNode,
+  ]);
+
+  return {
+    element,
+    set({ marker, title, message }) {
+      markerNode.textContent = marker;
+      titleNode.textContent = title;
+      messageNode.textContent = message;
+    },
+  };
+}
+
+/**
  * A line of text that can be hidden, with an icon beside it.
  *
  * The icon is always accompanied by text: information is never carried by an

@@ -226,8 +226,45 @@ describe('empty and populated configurations', () => {
     const text = panel.shadowRoot.textContent;
 
     assert.match(text, /Mijn woning/);
-    assert.match(text, /46 \/ 100/);
     assert.match(text, /Aanvullende gegevens nodig/);
+  });
+
+  it('gives the score its own headline figure, apart from its label', async () => {
+    // The house style asks the number to dominate; a score and its label at
+    // the same weight read as two equal facts. Structure is what carries that,
+    // so this asserts the structure rather than the font size.
+    const panel = await mountPanel();
+    const [score] = [...panel.shadowRoot.querySelectorAll('.display-metric')];
+
+    assert.equal(score.querySelector('.label').textContent, 'Energiescore');
+    assert.equal(score.querySelector('.display-value').textContent, '46');
+    assert.equal(score.querySelector('.display-suffix').textContent, 'van 100');
+  });
+
+  it('shows a warning as a block with a marker, not as a bullet', async () => {
+    const panel = await mountPanel();
+    const items = [...panel.shadowRoot.querySelectorAll('.advice-item')];
+
+    assert.equal(items.length, 1);
+    assert.equal(items[0].querySelector('.label').textContent, 'Waarschuwing');
+    assert.match(
+      items[0].querySelector('.advice-item-title').textContent,
+      /Aanvullende gegevens nodig/,
+    );
+    // A bullet list is what made these read as an error log.
+    assert.equal(panel.shadowRoot.querySelectorAll('.advice-list ul').length, 0);
+  });
+
+  it('shows an empty score as words, not as a dash or a blank', async () => {
+    const panel = await mountPanel(
+      fakeHass({
+        coach: sampleCoach({ metrics: { energy_score: null } }),
+      }),
+    );
+    const [score] = [...panel.shadowRoot.querySelectorAll('.display-metric')];
+
+    assert.ok(!isVisible(score.querySelector('.display-value')));
+    assert.equal(score.querySelector('.display-empty').textContent, 'Nog niet berekend');
   });
 
   it('does not rebuild the DOM when the state changes', async () => {

@@ -1,19 +1,26 @@
 /**
- * The Overzicht tab (SPEC.md §8).
+ * The Overzicht tab (SPEC.md §8, §10, §11 and §23).
  *
  * Shows everything SPEC.md §8 lists for this tab: integration status, data
  * quality, energy score, current grid power, solar production, solar surplus,
  * the percentage of the configured maximum, the primary advice, warnings, the
  * number of configured appliances and the time of the last calculation.
  *
+ * The layout follows the DomotiTech house style rather than a dashboard grid:
+ * one narrow column, a great deal of white space, a headline figure that
+ * dominates its label, and hairline rules instead of boxed-in blocks. SPEC.md
+ * §11 allows several columns "waar nuttig"; here it is not — two columns left
+ * one half empty and made neighbouring cards look mismatched.
+ *
  * The DOM is built once in `create()`; `update()` only ever calls the setters
  * that `create()` closed over. Nothing here reads an entity: the panel gets its
- * numbers from the backend over the WebSocket API, so the tab keeps working
- * regardless of what the entities are named.
+ * numbers from the backend over the WebSocket API.
  */
 
 import {
+  adviceBlock,
   card,
+  displayMetric,
   el,
   formatNumber,
   formatTimestamp,
@@ -36,34 +43,26 @@ export const overviewTab = {
   create() {
     const element = el('div', { class: 'tab-content' });
 
-    // --- Status -------------------------------------------------------------
-    const statusCard = card('Status');
-    const statusRow = statRow('Integratie', { empty: EMPTY_NOT_AVAILABLE });
+    // --- Headline figures ---------------------------------------------------
+    const scoreCard = card('Energiescore');
+    const energyScore = displayMetric('Energiescore', {
+      suffix: 'van 100',
+    });
+    const dataQuality = displayMetric('Datakwaliteit', { suffix: 'procent' });
+    const missingNotice = notice('mdi:clipboard-alert-outline');
+    scoreCard.body.append(
+      el('div', { class: 'display-row' }, [
+        energyScore.element,
+        dataQuality.element,
+      ]),
+      missingNotice.element,
+    );
+
+    const statusRow = statRow('Status', { empty: EMPTY_NOT_AVAILABLE });
     const calculatedRow = statRow('Laatste berekening', {
       empty: 'Nog niet berekend',
     });
-    const setupNotice = notice('mdi:information-outline');
-    statusCard.body.append(
-      statusRow.element,
-      calculatedRow.element,
-      setupNotice.element,
-    );
-
-    // --- Scores -------------------------------------------------------------
-    const scoreCard = card('Scores');
-    const energyScoreRow = statRow('Energiescore', {
-      empty: 'Nog niet berekend',
-    });
-    const dataQualityRow = statRow('Datakwaliteit', {
-      unit: '%',
-      empty: 'Nog niet berekend',
-    });
-    const missingNotice = notice('mdi:clipboard-alert-outline');
-    scoreCard.body.append(
-      energyScoreRow.element,
-      dataQualityRow.element,
-      missingNotice.element,
-    );
+    scoreCard.body.append(statusRow.element, calculatedRow.element);
 
     // --- Measurements -------------------------------------------------------
     const powerCard = card('Actuele situatie');
@@ -93,7 +92,7 @@ export const overviewTab = {
     );
 
     // --- Advice -------------------------------------------------------------
-    const adviceCard = card('Hoofdadvies');
+    const adviceCard = card('Advies');
     const adviceTitle = el('p', { class: 'advice-title' });
     const adviceMessage = el('p', { class: 'advice-message' });
     const adviceConfidence = statRow('Betrouwbaarheid', {
@@ -103,34 +102,33 @@ export const overviewTab = {
       class: 'subheading',
       text: 'Waarschuwingen',
     });
-    const warningsList = el('ul', { class: 'warning-list' });
+    const warningsHost = el('div', { class: 'advice-list' });
     const noWarnings = notice('mdi:check-circle-outline');
-    // Hidden until the first calculation arrives: an empty list under a
-    // heading reads as "something failed to load".
     setVisible(warningsTitle, false);
-    setVisible(warningsList, false);
+    setVisible(warningsHost, false);
     adviceCard.body.append(
       adviceTitle,
       adviceMessage,
       adviceConfidence.element,
       warningsTitle,
-      warningsList,
+      warningsHost,
       noWarnings.element,
     );
 
     // --- Configuration ------------------------------------------------------
     const configCard = card('Configuratie');
+    const homeNameRow = statRow('Woning', { empty: EMPTY_NOT_CONFIGURED });
     const sourceCountRow = statRow('Energiebronnen', { empty: '0' });
     const deviceCountRow = statRow('Apparaten', { empty: '0' });
-    const homeNameRow = statRow('Woning', { empty: EMPTY_NOT_CONFIGURED });
+    const setupNotice = notice('mdi:information-outline');
     configCard.body.append(
       homeNameRow.element,
       sourceCountRow.element,
       deviceCountRow.element,
+      setupNotice.element,
     );
 
     element.append(
-      statusCard.element,
       scoreCard.element,
       powerCard.element,
       adviceCard.element,
@@ -138,7 +136,7 @@ export const overviewTab = {
     );
 
     /** Keyed by advice id, so warnings are added and removed, never rebuilt. */
-    const warningNodes = new Map();
+    const warningBlocks = new Map();
 
     function updateWarnings(advice) {
       const warnings = advice.filter((item) => item.severity === 'warning');
@@ -146,26 +144,31 @@ export const overviewTab = {
 
       for (const item of warnings) {
         seen.add(item.id);
-        let node = warningNodes.get(item.id);
-        if (!node) {
-          node = el('li', { class: 'warning-item' });
-          warningNodes.set(item.id, node);
-          warningsList.appendChild(node);
+        let block = warningBlocks.get(item.id);
+        if (!block) {
+          block = adviceBlock();
+          warningBlocks.set(item.id, block);
+          warningsHost.appendChild(block.element);
         }
-        node.textContent = `${item.title} — ${item.message}`;
+        block.set({
+          marker: 'Waarschuwing',
+          title: item.title,
+          message: item.message,
+        });
       }
 
-      for (const [id, node] of warningNodes) {
+      for (const [id, block] of warningBlocks) {
         if (!seen.has(id)) {
-          node.remove();
-          warningNodes.delete(id);
+          block.element.remove();
+          warningBlocks.delete(id);
         }
       }
 
-      setVisible(warningsList, warnings.length > 0);
-      setVisible(warningsTitle, warnings.length > 0);
+      const hasWarnings = warnings.length > 0;
+      setVisible(warningsTitle, hasWarnings);
+      setVisible(warningsHost, hasWarnings);
       noWarnings.set(
-        warnings.length === 0 ? 'Er zijn op dit moment geen waarschuwingen.' : '',
+        hasWarnings ? '' : 'Er zijn op dit moment geen waarschuwingen.',
         { tone: 'success' },
       );
     }
@@ -184,7 +187,7 @@ export const overviewTab = {
       homeNameRow.set(config?.home?.home_name || null);
 
       // An installation with nothing linked yet has to say what to do, not
-      // show six empty rows (SPEC.md §8).
+      // show a column of empty rows (SPEC.md §8).
       setupNotice.set(
         sources.length === 0
           ? 'Er zijn nog geen energiebronnen gekoppeld. Ga naar het tabblad ' +
@@ -200,12 +203,8 @@ export const overviewTab = {
       const metrics = live.metrics || {};
       calculatedRow.set(formatTimestamp(live.generated_at));
 
-      energyScoreRow.set(
-        metrics.energy_score === null || metrics.energy_score === undefined
-          ? null
-          : `${metrics.energy_score} / 100`,
-      );
-      dataQualityRow.set(metrics.data_quality?.score ?? null);
+      energyScore.set(metrics.energy_score ?? null);
+      dataQuality.set(metrics.data_quality?.score ?? null);
 
       const missingCount = metrics.data_quality?.missing_items?.length ?? 0;
       missingNotice.set(
