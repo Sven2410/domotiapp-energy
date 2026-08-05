@@ -42,6 +42,30 @@ overleg met de ontwikkelaar in het Nederlands.
    invult en wordt een geldige opslagpoging onterecht geweigerd.
    Afgeleide toestand (zoals de quarantaine van een rij met een onbekend type)
    wordt in het geheugen berekend, nooit teruggeschreven naar de storage.
+10. **De zes entity-ID's zijn Engels en vast, ongeacht de UI-taal van de klant.**
+    Ze staan in de README; klanten bouwen er dashboards, automatiseringen en
+    langetermijnstatistieken op (`statistic_id` is de entity-ID zelf).
+
+    Dit vecht bewust tegen wat op HA-standaardgedrag lijkt, dus ruim het niet op.
+    HA leidt de object-id af uit de entiteitsnaam in de *native-entity-id-taal*:
+    `entity_platform.EntityPlatformData.async_load_translations()` kiest
+    `hass.config.language` zodra die in
+    `homeassistant.generated.languages.NATIVE_ENTITY_IDS` staat, en die verzameling
+    bevat 41 talen waaronder `nl`. Zonder tegenmaatregel heet de sensor bij een
+    Nederlandse klant `sensor.domotiapp_energy_energiescore`.
+
+    Daarom overridet `entity.py` de property `suggested_object_id` met de vaste
+    Engelse naam uit `const.ENTITY_OBJECT_ID_NAMES`. `Entity` kent geen
+    `_attr_suggested_object_id`, en `self.entity_id` zetten zou ook de
+    devicenaam-prefix hard coderen. Zet nooit `_attr_name`: de weergavenaam moet
+    de taal juist wél volgen. De devicenaam blijft vast `DomotiApp Energy`, omdat
+    HA die vóór de object-id plakt.
+
+    **Een wijziging aan deze ID's ná de eerste uitrol is een breaking change en
+    vereist een major-versiebump.** Al geregistreerde entiteiten behouden hun ID,
+    dus zo'n wijziging splitst het bestand in klanten met oude en nieuwe ID's,
+    met gebroken dashboards en afgekapte statistieken bij de laatste groep.
+    De tests in `tests/test_entities.py` bewaken dit in `en` én `nl`.
 
 ## Verplichte API-keuzes
 
@@ -98,6 +122,23 @@ py -3.13 -m venv .venv
 
 Het testimage installeert de dependencies in een eigen laag en wordt alleen opnieuw
 gebouwd wanneer `pyproject.toml` verandert; de broncode is een bind-mount.
+
+### Versieverschil tussen tests en de draaiende HA (bekend, nog niet opgelost)
+
+| | Python | Home Assistant |
+|---|---|---|
+| Testcontainer en CI | 3.13 | 2026.2.3 (via `pytest-homeassistant-custom-component` 0.13.316) |
+| Testinstance `ha-dev` (`:stable`) | 3.14.6 | 2026.7.4 |
+
+De testharnas pint HA; wij kiezen die versie niet. Vanaf 0.13.317 vereist
+`pytest-homeassistant-custom-component` **Python ≥ 3.14**, en HA 2026.8 zelf vereist
+≥ 3.14.2. Op Python 3.13 lost pip daarom 0.13.316 met HA 2026.2.3 op — vijf maanden
+ouder dan wat de klant draait. Op Python 3.14 lost dezelfde `pyproject.toml` 0.13.353
+met HA 2026.8.0b5 op en slaagt de hele suite ongewijzigd (geverifieerd 2026-08-05).
+
+**Groene CI bewijst dus geen 3.14-gedrag.** SPEC.md §0 noemt Python 3.13 als doel; dat is
+achterhaald. Overstappen betekent dat de suite tegen een HA-bèta draait, dus dat is een
+aparte afweging — niet stilzwijgend meenemen in een fase.
 
 ## Testomgeving
 

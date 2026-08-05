@@ -873,12 +873,39 @@ zichtbaar worden gemaakt (bijvoorbeeld in een model- of via-veld), maar hij bepa
 **nooit** de entity-ID's — anders krijgt elke klant andere ID's en is de lijst hieronder
 niet vast te leggen.
 
-**Entity-ID's ontstaan via de normale HA-afleiding**, niet via een geforceerde object-id.
-Gebruik `_attr_has_entity_name = True` en `_attr_translation_key`. HA bouwt de object-id
-dan op als `slugify(devicenaam + " " + Engelse entiteitsnaam)`, zie
-`entity_platform.async_calculate_suggested_object_id`. De Engelse naam komt uit
-`translations/en.json`; HA gebruikt daarvoor bewust de Engelse vertaling
-(`object_id_platform_translations`), zodat de ID's niet met de gebruikerstaal meebewegen.
+**De entity-ID's zijn Engels en vast, ongeacht de UI-taal van de klant.** Ze staan in
+de README, en klanten bouwen er dashboards, automatiseringen en langetermijnstatistieken
+op — `statistic_id` van een sensor mét `state_class` is de entity-ID zelf, dus een
+verschuivende ID breekt ook de historie.
+
+Gebruik `_attr_has_entity_name = True` en `_attr_translation_key`, en **override
+daarnaast de property `suggested_object_id`** zodat die de vaste Engelse naam
+teruggeeft. HA bouwt de object-id dan op als
+`slugify(devicenaam + " " + die naam)`; de devicenaam-prefix en het slugifyen blijven
+van HA, alleen de naam wordt vastgepind. De weergavenaam blijft gewoon de vertaling —
+zet dus nooit `_attr_name`.
+
+> **Correctie t.o.v. v0.1.0 van deze spec.** Deze sectie stelde eerder dat de object-id
+> uit de Engelse vertaling komt (`object_id_platform_translations`) en dat een
+> geforceerde object-id verboden was. Dat eerste is onjuist. In
+> `entity_platform.EntityPlatformData.async_load_translations()` geldt:
+>
+> ```python
+> object_id_language = (
+>     hass.config.language
+>     if hass.config.language in languages.NATIVE_ENTITY_IDS
+>     else languages.DEFAULT_LANGUAGE
+> )
+> ```
+>
+> `homeassistant.generated.languages.NATIVE_ENTITY_IDS` bevat 41 talen, waaronder `nl`,
+> `de` en `fr`. Een Nederlandse installatie kreeg daardoor
+> `sensor.domotiapp_energy_energiescore` en een Engelse `sensor.domotiapp_energy_score`.
+> Dit is bewust HA-gedrag ("native entity IDs") en voor een gewone integratie gewenst;
+> voor dit product niet. `Entity` kent geen `_attr_suggested_object_id`, dus de property
+> overriden is de enige manier om de ID vast te zetten zonder óók de devicenaam-prefix
+> hard te coderen. Vastgesteld tegen HA 2026.2.3 en 2026.8.0b5, en bevestigd in de
+> draaiende testinstance.
 
 | Entiteit | Engelse naam | device_class | state_class | unit |
 |---|---|---|---|---|
@@ -889,11 +916,18 @@ dan op als `slugify(devicenaam + " " + Engelse entiteitsnaam)`, zie
 | `sensor.domotiapp_energy_current_advice` | `Current advice` | — | — | — |
 | `binary_sensor.domotiapp_energy_peak_risk` | `Peak risk` | `problem` | — | — |
 
-Fase 5 bevat een test die bevestigt dat deze zes ID's daadwerkelijk zo ontstaan.
+Deze Engelse namen staan tweemaal: in `translations/en.json` en in
+`const.ENTITY_OBJECT_ID_NAMES`. Het vertaalbestand tijdens runtime lezen zou blokkerende
+I/O in de event loop zijn, dus een test vergelijkt beide lijsten.
+
+Fase 5 bevat tests die bevestigen dat deze zes ID's ontstaan, dat ze niet meebewegen met
+de taal (`en` én `nl`), en dat de weergavenaam wél de taal volgt.
 
 > Twee dingen die hierbij horen. (1) HA gebruikt `device.name_by_user or device.name`:
 > hernoemt een gebruiker het device vóór de eerste registratie, dan wijken de ID's af.
-> Al geregistreerde entiteiten behouden hun ID. (2) De oorspronkelijke opdracht noemde
+> Al geregistreerde entiteiten behouden hun ID — een wijziging aan deze ID's raakt dus
+> alleen nieuwe installaties en is na de eerste uitrol een breaking change (CLAUDE.md).
+> (2) De oorspronkelijke opdracht noemde
 > `sensor.domotiapp_data_quality` naast `sensor.domotiapp_energy_score` — twee
 > verschillende prefixen. Dat is hier geüniformeerd naar `domotiapp_energy_*`.
 > Documenteer de exacte ID's in de README.

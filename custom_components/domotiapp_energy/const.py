@@ -505,13 +505,6 @@ ENTITY_KEY_SOLAR_SURPLUS: Final = "solar_surplus"
 ENTITY_KEY_CURRENT_ADVICE: Final = "current_advice"
 ENTITY_KEY_PEAK_RISK: Final = "peak_risk"
 
-# The entity keys double as translation keys, so the English name in
-# translations/en.json is what Home Assistant slugifies into the object id:
-# slugify(device name + " " + English name), see
-# entity_platform._async_derive_object_ids together with
-# entity_registry._async_get_full_entity_name. Nothing forces an object id;
-# changing an English name in en.json changes the entity id of a fresh install,
-# which is why tests/test_entities.py pins all six.
 ENTITY_KEYS: Final[tuple[str, ...]] = (
     ENTITY_KEY_ENERGY_SCORE,
     ENTITY_KEY_DATA_QUALITY,
@@ -520,6 +513,24 @@ ENTITY_KEYS: Final[tuple[str, ...]] = (
     ENTITY_KEY_CURRENT_ADVICE,
     ENTITY_KEY_PEAK_RISK,
 )
+
+# The English entity name each object id is built from, whatever language the
+# customer runs Home Assistant in. Home Assistant would otherwise derive the
+# object id from the *native* name for every language in
+# homeassistant.generated.languages.NATIVE_ENTITY_IDS — which contains "nl" —
+# and a Dutch installation would get sensor.domotiapp_energy_energiescore.
+# See entity.py for the mechanism and CLAUDE.md for why this is a hard rule.
+#
+# These must stay identical to the names under "entity" in translations/en.json;
+# tests/test_entities.py compares the two so the duplication cannot drift.
+ENTITY_OBJECT_ID_NAMES: Final[dict[str, str]] = {
+    ENTITY_KEY_ENERGY_SCORE: "Score",
+    ENTITY_KEY_DATA_QUALITY: "Data quality",
+    ENTITY_KEY_GRID_POWER: "Grid power",
+    ENTITY_KEY_SOLAR_SURPLUS: "Solar surplus",
+    ENTITY_KEY_CURRENT_ADVICE: "Current advice",
+    ENTITY_KEY_PEAK_RISK: "Peak risk",
+}
 
 # Home Assistant rejects a state longer than 255 characters.
 MAX_STATE_LENGTH: Final = 255

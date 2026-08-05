@@ -1,12 +1,20 @@
 """Tests for the Home Assistant entities (SPEC.md §19 and §24).
 
-The entity-id test is the important one: SPEC.md §19 fixes six ids and requires
-that they arise from the normal Home Assistant derivation — device name plus
-the English entity name from ``translations/en.json`` — and not from a forced
-object id. If someone renames an entity in ``en.json``, or gives the device the
-home name instead of a fixed one, this test fails before a customer notices.
+The entity-id tests are the important ones: SPEC.md §19 fixes six ids that go
+into the README and that customers build dashboards and automations on. Three
+things can move them, and there is a test for each:
+
+* the customer's language, because Home Assistant derives the object id from
+  the native entity name for the 41 languages in ``NATIVE_ENTITY_IDS``
+  (including Dutch) — the reason ``suggested_object_id`` is pinned at all;
+* a rename in ``translations/en.json`` that is not mirrored in
+  ``ENTITY_OBJECT_ID_NAMES``;
+* the device name, which Home Assistant prefixes onto the id, and which is
+  therefore fixed to ``DomotiApp Energy`` instead of the home name.
 """
 
+import json
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -16,6 +24,7 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components import domotiapp_energy
 from custom_components.domotiapp_energy.const import (
     ATTR_ADVICE_CONFIDENCE,
     ATTR_ADVICE_ITEMS,
@@ -34,6 +43,7 @@ from custom_components.domotiapp_energy.const import (
     ENTITY_KEY_GRID_POWER,
     ENTITY_KEY_PEAK_RISK,
     ENTITY_KEY_SOLAR_SURPLUS,
+    ENTITY_OBJECT_ID_NAMES,
     INTEGRATION_NAME,
     MANUFACTURER,
     MAX_ADVICE_ITEMS_IN_ATTRIBUTES,
@@ -135,16 +145,16 @@ async def entry_fixture(
     return entry
 
 
-async def test_the_six_entity_ids_are_derived_not_forced(
+async def test_the_six_entity_ids_are_built_from_the_pinned_english_names(
     hass: HomeAssistant, entry: MockConfigEntry
 ) -> None:
-    """The six ids of SPEC.md §19 come out of the normal derivation.
+    """The six ids of SPEC.md §19 exist, and the registry shows how.
 
-    Home Assistant builds the object id as
-    ``slugify(device name + " " + English entity name)`` when
-    ``has_entity_name`` is set and no object id is suggested. The registry
-    entries below prove that is the path taken: every entity has
-    ``has_entity_name``, a translation key and no ``suggested_object_id``.
+    ``object_id_base`` is the name Home Assistant prefixed with the device name
+    to reach the id. It has to be the pinned English name: that is what stops a
+    Dutch installation from getting ``sensor.domotiapp_energy_energiescore``.
+    ``suggested_object_id`` stays ``None``, which proves the device-name prefix
+    still comes from Home Assistant instead of being hard-coded here.
     """
     registry = er.async_get(hass)
 
@@ -163,9 +173,90 @@ async def test_the_six_entity_ids_are_derived_not_forced(
         assert registry_entry.unique_id == f"{entry.entry_id}_{key}"
         assert registry_entry.translation_key == key
         assert registry_entry.has_entity_name is True
-        # Nothing was forced: the object id came from the device name plus the
-        # English name, not from a suggestion by the integration.
+        assert registry_entry.object_id_base == ENTITY_OBJECT_ID_NAMES[key]
         assert registry_entry.suggested_object_id is None
+
+
+async def test_the_pinned_names_match_the_english_translations(
+    hass: HomeAssistant,
+) -> None:
+    """The pinned names and translations/en.json must not drift apart.
+
+    The English names exist twice on purpose: reading the translation file at
+    runtime would be blocking I/O in the event loop. This test is what keeps
+    the copy honest, so renaming an entity in en.json without touching
+    ENTITY_OBJECT_ID_NAMES fails here instead of silently moving the entity ids
+    of every new installation.
+    """
+    translations_file = (
+        Path(domotiapp_energy.__file__).parent / "translations" / "en.json"
+    )
+    translations = json.loads(translations_file.read_text(encoding="utf-8"))["entity"]
+
+    names = {
+        key: entry["name"]
+        for platform in translations.values()
+        for key, entry in platform.items()
+    }
+
+    assert names == ENTITY_OBJECT_ID_NAMES
+
+
+@pytest.mark.parametrize("language", ["en", "nl"])
+async def test_entity_ids_do_not_follow_the_user_language(
+    hass: HomeAssistant, hass_storage: dict[str, Any], language: str
+) -> None:
+    """The six ids are the same whatever language the customer runs.
+
+    Home Assistant derives the object id from the *native* entity name for
+    every language in ``homeassistant.generated.languages.NATIVE_ENTITY_IDS``,
+    and Dutch is in that set. Without a guard, a Dutch installation gets
+    ``sensor.domotiapp_energy_energiescore`` and an English one
+    ``sensor.domotiapp_energy_score`` — the exact drift SPEC.md §19 forbids.
+    """
+    await hass.config.async_update(language=language)
+
+    hass_storage[STORAGE_KEY] = {
+        "version": STORAGE_VERSION,
+        "minor_version": 1,
+        "key": STORAGE_KEY,
+        "data": _stored_configuration(),
+    }
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title=DEFAULT_HOME_NAME,
+        data={
+            CONF_HOME_NAME: DEFAULT_HOME_NAME,
+            CONF_MANUAL_SETUP_ACKNOWLEDGED: True,
+        },
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    for entity_id in (
+        SENSOR_SCORE,
+        SENSOR_DATA_QUALITY,
+        SENSOR_GRID_POWER,
+        SENSOR_SOLAR_SURPLUS,
+        SENSOR_CURRENT_ADVICE,
+        BINARY_SENSOR_PEAK_RISK,
+    ):
+        assert hass.states.get(entity_id) is not None, (
+            f"{entity_id} is missing with language {language!r}"
+        )
+
+    # The id is pinned, the visible name is not: a Dutch installation still
+    # reads Dutch. Anyone "fixing" this by setting _attr_name would freeze the
+    # displayed name in English, and this assertion stops that.
+    expected_name = (
+        "DomotiApp Energy Energiescore"
+        if language == "nl"
+        else ("DomotiApp Energy Score")
+    )
+    state = hass.states.get(SENSOR_SCORE)
+    assert state is not None
+    assert state.attributes["friendly_name"] == expected_name
 
 
 async def test_the_device_is_named_after_the_integration(
