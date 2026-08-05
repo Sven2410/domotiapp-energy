@@ -102,18 +102,23 @@ README-taal     : Engels
 {
   "domain": "domotiapp_energy",
   "name": "DomotiApp Energy",
-  "version": "0.1.0",
   "codeowners": ["@Sven2410"],
   "config_flow": true,
-  "single_config_entry": true,
+  "dependencies": ["http", "frontend", "panel_custom", "websocket_api"],
+  "documentation": "https://github.com/Sven2410/domotiapp-energy",
   "integration_type": "service",
   "iot_class": "calculated",
-  "documentation": "https://github.com/Sven2410/domotiapp-energy",
   "issue_tracker": "https://github.com/Sven2410/domotiapp-energy/issues",
-  "dependencies": ["http", "frontend", "panel_custom", "websocket_api"],
-  "requirements": []
+  "requirements": [],
+  "single_config_entry": true,
+  "version": "0.1.0"
 }
 ```
+
+**De sleutelvolgorde is niet vrij.** Hassfest eist `domain`, dan `name`, dan de overige
+sleutels alfabetisch, en faalt de CI met
+`[MANIFEST] Manifest keys are not sorted correctly` bij elke andere volgorde. Houd deze
+volgorde aan bij het toevoegen van een sleutel; groepeer niet op onderwerp.
 
 > **Wijziging t.o.v. eerdere spec:** `integration_type` is `"service"`, niet `"helper"`.
 > Helpers verschijnen onder *Instellingen → Apparaten & diensten → Helpers* en niet in de
