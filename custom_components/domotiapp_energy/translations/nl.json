@@ -1,0 +1,62 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "DomotiApp Energy",
+        "description": "DomotiApp Energy configureert geen apparaten automatisch. Na het toevoegen van de integratie kun je via het DomotiApp Energy-paneel zelf energiebronnen, apparaten en voorkeuren koppelen.",
+        "data": {
+          "home_name": "Naam van de woning",
+          "manual_setup_acknowledged": "Ik begrijp dat alles handmatig wordt ingesteld"
+        }
+      },
+      "reconfigure": {
+        "title": "DomotiApp Energy",
+        "description": "Wijzig de naam van deze woning. De energieconfiguratie zelf blijft in het DomotiApp Energy-paneel staan.",
+        "data": {
+          "home_name": "Naam van de woning"
+        }
+      }
+    },
+    "error": {
+      "acknowledgement_required": "Bevestig dat je de energiebronnen en apparaten zelf instelt."
+    },
+    "abort": {
+      "single_instance_allowed": "DomotiApp Energy is al ingesteld. Er is één instantie mogelijk.",
+      "reconfigure_successful": "De naam van de woning is bijgewerkt."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "score": {
+        "name": "Energiescore"
+      },
+      "data_quality": {
+        "name": "Datakwaliteit"
+      },
+      "grid_power": {
+        "name": "Netvermogen"
+      },
+      "solar_surplus": {
+        "name": "Zonneoverschot"
+      },
+      "current_advice": {
+        "name": "Actueel advies"
+      }
+    },
+    "binary_sensor": {
+      "peak_risk": {
+        "name": "Piekrisico"
+      }
+    }
+  },
+  "services": {
+    "recalculate": {
+      "name": "Opnieuw berekenen",
+      "description": "Berekent het energieadvies direct opnieuw. Stuurt geen enkel apparaat aan."
+    },
+    "clear_log": {
+      "name": "Logboek wissen",
+      "description": "Wist het interne logboek van DomotiApp Energy. Wijzigt geen configuratie."
+    }
+  }
+}

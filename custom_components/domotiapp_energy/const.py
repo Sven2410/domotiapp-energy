@@ -27,6 +27,11 @@ CONF_MANUAL_SETUP_ACKNOWLEDGED: Final = "manual_setup_acknowledged"
 
 DEFAULT_HOME_NAME: Final = "Mijn woning"
 
+# Shown when the installer submits the form without confirming that the
+# integration configures nothing by itself. The key is looked up under
+# config.error in translations/*.json.
+ERROR_ACKNOWLEDGEMENT_REQUIRED: Final = "acknowledgement_required"
+
 # --- Side panel (SPEC.md §7) ------------------------------------------------
 
 PANEL_URL_PATH: Final = "domotiapp-energy"
@@ -500,21 +505,36 @@ ENTITY_KEY_SOLAR_SURPLUS: Final = "solar_surplus"
 ENTITY_KEY_CURRENT_ADVICE: Final = "current_advice"
 ENTITY_KEY_PEAK_RISK: Final = "peak_risk"
 
-# Exact object IDs, forced via _attr_suggested_object_id so that the entity IDs
-# documented in the README are stable.
-SUGGESTED_OBJECT_IDS: Final[dict[str, str]] = {
-    ENTITY_KEY_ENERGY_SCORE: "domotiapp_energy_score",
-    ENTITY_KEY_DATA_QUALITY: "domotiapp_energy_data_quality",
-    ENTITY_KEY_GRID_POWER: "domotiapp_energy_grid_power",
-    ENTITY_KEY_SOLAR_SURPLUS: "domotiapp_energy_solar_surplus",
-    ENTITY_KEY_CURRENT_ADVICE: "domotiapp_energy_current_advice",
-    ENTITY_KEY_PEAK_RISK: "domotiapp_energy_peak_risk",
-}
+# The entity keys double as translation keys, so the English name in
+# translations/en.json is what Home Assistant slugifies into the object id:
+# slugify(device name + " " + English name), see
+# entity_platform._async_derive_object_ids together with
+# entity_registry._async_get_full_entity_name. Nothing forces an object id;
+# changing an English name in en.json changes the entity id of a fresh install,
+# which is why tests/test_entities.py pins all six.
+ENTITY_KEYS: Final[tuple[str, ...]] = (
+    ENTITY_KEY_ENERGY_SCORE,
+    ENTITY_KEY_DATA_QUALITY,
+    ENTITY_KEY_GRID_POWER,
+    ENTITY_KEY_SOLAR_SURPLUS,
+    ENTITY_KEY_CURRENT_ADVICE,
+    ENTITY_KEY_PEAK_RISK,
+)
 
 # Home Assistant rejects a state longer than 255 characters.
 MAX_STATE_LENGTH: Final = 255
 # Keep the advice attributes well under the recorder/state-machine budget.
 MAX_ADVICE_ITEMS_IN_ATTRIBUTES: Final = 5
+
+# Attributes of sensor.domotiapp_energy_current_advice. The state itself is
+# only the title, truncated; everything else lives here (SPEC.md §19).
+ATTR_ADVICE_MESSAGE: Final = "message"
+ATTR_ADVICE_REASON_CODE: Final = "reason_code"
+ATTR_ADVICE_CONFIDENCE: Final = "confidence"
+ATTR_ADVICE_SEVERITY: Final = "severity"
+ATTR_ADVICE_MEASUREMENTS: Final = "measurements"
+ATTR_ADVICE_ITEMS: Final = "advice"
+ATTR_LAST_CALCULATED: Final = "last_calculated"
 
 # --- Advice ordering (SPEC.md §16 "Sorteervolgorde") ------------------------
 

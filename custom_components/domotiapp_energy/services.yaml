@@ -1,0 +1,11 @@
+# Services of DomotiApp Energy (SPEC.md §20).
+#
+# Neither service takes a field: both act on the single config entry. They are
+# registered once in async_setup and survive a reload of the entry.
+#
+# Names and descriptions are translated in translations/nl.json and
+# translations/en.json under "services".
+
+recalculate:
+
+clear_log:

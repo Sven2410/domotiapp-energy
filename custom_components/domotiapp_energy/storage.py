@@ -117,6 +117,10 @@ class ConfigurationStore:
         )
         self._lock = asyncio.Lock()
         self._config: StoredConfiguration | None = None
+        # Called after every configuration change, so the coordinator can
+        # rebuild its state listener over the newly linked entities without
+        # every writer having to remember to tell it (SPEC.md §18).
+        self._change_listeners: list[Callable[[], None]] = []
         # Subject id -> the invalid reason already reported for it. Purely in
         # memory: after a restart every quarantined row is reported once more,
         # which is what an installer reading a fresh log expects.
@@ -142,6 +146,22 @@ class ConfigurationStore:
     def loaded(self) -> bool:
         """Return whether the configuration has been loaded."""
         return self._config is not None
+
+    def add_change_listener(self, listener: Callable[[], None]) -> Callable[[], None]:
+        """Subscribe to configuration changes and return the unsubscribe.
+
+        The listener runs after a change has been written successfully, and
+        only for a change to the configuration itself. A logbook write is not a
+        configuration change and never triggers it, for the same reason it does
+        not consume a revision (SPEC.md §13).
+        """
+        self._change_listeners.append(listener)
+
+        def _unsubscribe() -> None:
+            if listener in self._change_listeners:
+                self._change_listeners.remove(listener)
+
+        return _unsubscribe
 
     async def async_load(self) -> StoredConfiguration:
         """Load the configuration, falling back to safe defaults.
@@ -391,4 +411,16 @@ class ConfigurationStore:
                 config.revision -= 1
             raise StorageError(f"Could not write {STORAGE_KEY}") from err
 
+        if bump_revision:
+            self._notify_change()
         return config.revision
+
+    def _notify_change(self) -> None:
+        """Tell the subscribers that the configuration itself changed.
+
+        Runs while the write lock is held, so a listener must return
+        immediately and must never call back into the store; the coordinator's
+        listener only rebuilds its subscriptions and schedules a recalculation.
+        """
+        for listener in list(self._change_listeners):
+            listener()

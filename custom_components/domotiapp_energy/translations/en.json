@@ -1,0 +1,62 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "DomotiApp Energy",
+        "description": "DomotiApp Energy does not configure any devices automatically. After adding the integration you can link energy sources, appliances and preferences yourself through the DomotiApp Energy panel.",
+        "data": {
+          "home_name": "Home name",
+          "manual_setup_acknowledged": "I understand that everything is configured manually"
+        }
+      },
+      "reconfigure": {
+        "title": "DomotiApp Energy",
+        "description": "Change the name of this home. The energy configuration itself stays in the DomotiApp Energy panel.",
+        "data": {
+          "home_name": "Home name"
+        }
+      }
+    },
+    "error": {
+      "acknowledgement_required": "Confirm that you will configure the energy sources and appliances yourself."
+    },
+    "abort": {
+      "single_instance_allowed": "DomotiApp Energy is already set up. Only one instance is supported.",
+      "reconfigure_successful": "The home name has been updated."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "score": {
+        "name": "Score"
+      },
+      "data_quality": {
+        "name": "Data quality"
+      },
+      "grid_power": {
+        "name": "Grid power"
+      },
+      "solar_surplus": {
+        "name": "Solar surplus"
+      },
+      "current_advice": {
+        "name": "Current advice"
+      }
+    },
+    "binary_sensor": {
+      "peak_risk": {
+        "name": "Peak risk"
+      }
+    }
+  },
+  "services": {
+    "recalculate": {
+      "name": "Recalculate",
+      "description": "Recalculates the energy advice immediately. Does not control any device."
+    },
+    "clear_log": {
+      "name": "Clear logbook",
+      "description": "Empties the internal DomotiApp Energy logbook. Changes no configuration."
+    }
+  }
+}

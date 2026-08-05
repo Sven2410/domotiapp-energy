@@ -30,6 +30,10 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
+          # The integration depends on panel_custom -> frontend, whose
+          # hass_frontend package is a component requirement that the test
+          # harness does not install by itself.
+          python scripts/install_frontend_requirement.py
 
       - name: Ruff check
         run: ruff check .

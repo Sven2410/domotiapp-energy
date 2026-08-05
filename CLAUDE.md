@@ -67,7 +67,10 @@ Werk in de fases uit `SPEC.md` §30. Per fase:
 3. Draai `pytest`
 4. Los alles op tot beide schoon zijn.
 5. Commit met een beschrijvende message, prefix `feat(fase-N):` of `fix:`.
-6. Rapporteer kort wat af is en wat nog open staat.
+6. **Push altijd direct na de commit** (`git push`). Controleer daarna met
+   `gh run list` / `gh run view --log-failed` of Tests én Validate groen zijn,
+   en meld de push plus de CI-uitslag in het eindrapport van de fase.
+7. Rapporteer kort wat af is en wat nog open staat.
 
 Begin niet aan een volgende fase voordat de tests van de huidige fase slagen.
 

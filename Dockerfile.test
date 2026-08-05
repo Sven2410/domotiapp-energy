@@ -23,6 +23,8 @@ WORKDIR /app
 # up in its own image layer that is reused until pyproject.toml changes. The
 # source tree itself is bind-mounted over /app at run time.
 COPY pyproject.toml ./
-RUN pip install -e ".[dev]"
+COPY scripts/install_frontend_requirement.py ./scripts/
+RUN pip install -e ".[dev]" \
+    && python scripts/install_frontend_requirement.py
 
 CMD ["pytest"]
