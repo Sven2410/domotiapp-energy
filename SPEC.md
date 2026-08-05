@@ -334,6 +334,14 @@ Deze keuze wordt expliciet opgeslagen. Nooit afleiden of gokken.
 `grid_meter` en `current_price` mogen hoogstens één ingeschakelde bron per type hebben;
 zie §16 voor wat er gebeurt wanneer er toch meerdere staan.
 
+**Tekenconventie thuisbatterij (verplichte GUI-hulptekst, fase 8).** Intern geldt voor
+`home_battery`: **positief = laden** (de woning verbruikt), negatief = ontladen. Dit
+spiegelt de netconventie. Batterijsensoren verschillen sterk per merk — sommige melden
+laden juist als negatief — dus het formulier voor een batterijbron moet deze conventie
+expliciet noemen, met de aanwijzing `invert_value` te gebruiken wanneer de sensor het
+andersom rapporteert. Zonder die tekst gokt de installateur, en een verkeerd teken haalt
+het zonneoverschot stilzwijgend onderuit.
+
 ### Apparaten
 Lijst met naam · type · configuratiestatus · prioriteit · bedieningsniveau ·
 datakwaliteit · bewerken · verwijderen.
