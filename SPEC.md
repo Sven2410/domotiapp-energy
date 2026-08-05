@@ -700,6 +700,14 @@ devices/create · devices/update · devices/delete · preferences/update · logs
 Leesacties: elke ingelogde gebruiker. De frontend verbergt configuratietabbladen voor
 niet-admins (`hass.user.is_admin`), maar de backend is altijd leidend.
 
+**`coach/recalculate` blijft bewust open voor elke gebruiker**, ook al schrijft hij via de
+coordinator een `advice_recalculated`-regel in het logboek. Een niet-admin kan daarmee
+hooguit één regel per kwartier laten ontstaan — de anti-spam uit §8 klapt de rest samen —
+en de alternatieven zijn slechter. Alleen loggen bij een admin maakt het logboek een
+onbetrouwbare weergave van wat er werkelijk gebeurd is; het type helemaal niet loggen kost
+traceerbaarheid die bij een klantstoring nodig is. Besloten door Sven op 2026-08-05; niet
+opnieuw ter discussie stellen.
+
 ---
 
 ## 15. Entiteitswaarden uitlezen

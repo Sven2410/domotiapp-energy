@@ -1030,6 +1030,10 @@ class EnergyMetrics:
 
     timestamp: datetime = field(default_factory=dt_util.utcnow)
     grid_power_w: float | None = None
+    # Carried through from the snapshot rather than derived: the Overzicht tab
+    # shows solar production next to the surplus (SPEC.md §8), and the panel
+    # reads the metrics, never the snapshot.
+    solar_power_w: float | None = None
     solar_surplus_w: float | None = None
     solar_surplus_confidence: str = CONFIDENCE_LOW
     grid_load_percent: float | None = None
@@ -1046,6 +1050,7 @@ class EnergyMetrics:
         return {
             "timestamp": self.timestamp.isoformat(),
             "grid_power_w": self.grid_power_w,
+            "solar_power_w": self.solar_power_w,
             "solar_surplus_w": self.solar_surplus_w,
             "solar_surplus_confidence": self.solar_surplus_confidence,
             "grid_load_percent": self.grid_load_percent,
@@ -1064,6 +1069,7 @@ class EnergyMetrics:
         return cls(
             timestamp=_as_datetime(data.get("timestamp")) or dt_util.utcnow(),
             grid_power_w=_as_optional_float(data.get("grid_power_w")),
+            solar_power_w=_as_optional_float(data.get("solar_power_w")),
             solar_surplus_w=_as_optional_float(data.get("solar_surplus_w")),
             solar_surplus_confidence=_as_choice(
                 data.get("solar_surplus_confidence"), CONFIDENCE_LEVELS, CONFIDENCE_LOW

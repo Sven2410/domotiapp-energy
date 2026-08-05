@@ -38,6 +38,7 @@ from .coordinator import (
 )
 from .engine.providers import RuleBasedCoachProvider
 from .models import StoredConfiguration
+from .panel import async_register_panel, async_remove_panel
 from .storage import ConfigurationStore
 from .websocket_api import async_register_commands
 
@@ -79,6 +80,7 @@ async def async_setup_entry(
     await coordinator.async_config_entry_first_refresh()
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    await async_register_panel(hass)
     return True
 
 
@@ -91,7 +93,11 @@ async def async_unload_entry(
     ``entry.async_on_unload`` and are taken down by Home Assistant itself. The
     services stay registered: they belong to the integration, not to this entry
     (SPEC.md §20).
+
+    The panel does go: leaving it in the sidebar after an unload would offer a
+    page that can no longer answer any of its questions.
     """
+    async_remove_panel(hass)
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
 

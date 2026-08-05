@@ -140,6 +140,7 @@ class Calculator:
         return EnergyMetrics(
             timestamp=snapshot.timestamp,
             grid_power_w=snapshot.grid_power_w,
+            solar_power_w=snapshot.solar_power_w,
             solar_surplus_w=surplus,
             solar_surplus_confidence=confidence,
             grid_load_percent=load_percent,
