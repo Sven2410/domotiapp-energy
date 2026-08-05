@@ -107,6 +107,7 @@ const STYLES = `
    */
   .label,
   .tab-button,
+  .button,
   .stat-label {
     font-size: 0.7rem;
     font-weight: 500;
@@ -301,6 +302,43 @@ const STYLES = `
     color: var(--secondary-text-color);
   }
 
+  /* --- Forms and buttons -------------------------------------------------- */
+
+  ha-form {
+    display: block;
+  }
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-top: var(--domotiapp-space-section);
+    padding-top: var(--domotiapp-space-row);
+    border-top: 1px solid var(--divider-color);
+  }
+  .button {
+    min-height: 44px;
+    padding: 0 20px;
+    border: 1px solid var(--divider-color);
+    border-radius: 4px;
+    background: none;
+    color: var(--primary-text-color);
+    cursor: pointer;
+  }
+  /* Blue is reserved for headings, links and the one primary button. */
+  .button-primary {
+    border-color: var(--primary-color);
+    background: var(--primary-color);
+    color: var(--text-primary-color);
+  }
+  .button:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+  .button:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 2px;
+  }
+
   /* --- Status banner ------------------------------------------------------ */
 
   .banner {
@@ -443,7 +481,12 @@ class DomotiAppEnergyPanel extends HTMLElement {
       return this._tabs.get(id);
     }
     const definition = TABS.find((tab) => tab.id === id);
-    const instance = definition.create();
+    // The context is deliberately narrow: a tab may read the current hass and
+    // the shared state, and nothing else of the panel.
+    const instance = definition.create({
+      getHass: () => this._hass,
+      state: this._state,
+    });
     instance.element.id = `panel-${id}`;
     instance.element.setAttribute('role', 'tabpanel');
     instance.element.setAttribute('aria-labelledby', `tab-${id}`);
@@ -454,6 +497,19 @@ class DomotiAppEnergyPanel extends HTMLElement {
   }
 
   _selectTab(id) {
+    if (id === this._activeTab) {
+      return;
+    }
+    // A tab with unsaved changes may refuse, and asks the question itself
+    // (SPEC.md §22). The callback is how it says "go ahead" afterwards.
+    const current = this._tabs.get(this._activeTab);
+    if (current?.canLeave && !current.canLeave(() => this._switchTo(id))) {
+      return;
+    }
+    this._switchTo(id);
+  }
+
+  _switchTo(id) {
     this._activeTab = id;
     this._update();
   }

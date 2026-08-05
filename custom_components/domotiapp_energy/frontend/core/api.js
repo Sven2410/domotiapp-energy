@@ -32,7 +32,23 @@ export function createApi(hass) {
     getConfig: () => call('config/get'),
     /** The latest coach result, including the metrics the Overzicht shows. */
     getCoach: () => call('coach/get'),
+    /**
+     * Replace the home profile.
+     *
+     * `expectedRevision` is what the form was filled in against. If the stored
+     * configuration moved on meanwhile the backend refuses with
+     * `revision_conflict` and sends the current configuration along in the
+     * error, so the caller can reload instead of overwriting someone else's
+     * change (SPEC.md §14 and §22).
+     */
+    updateHome: (expectedRevision, home) =>
+      call('home/update', { expected_revision: expectedRevision, home }),
   };
+}
+
+/** Whether a rejected call was refused because the form held stale data. */
+export function isRevisionConflict(error) {
+  return error?.code === ERROR_REVISION_CONFLICT;
 }
 
 /** Turn any thrown value into a readable Dutch sentence (SPEC.md §21). */

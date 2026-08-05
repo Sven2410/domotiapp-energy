@@ -474,7 +474,15 @@ Zonder deze regel loopt het logboek bij elke herberekening vol.
 ### ha-form
 Alle invoerformulieren gebruiken `ha-form` met een schema. Geen losse `ha-entity-picker`,
 `ha-select`, `ha-textfield` of `ha-switch` als primaire besturing. Selectors: `entity`,
-`number`, `boolean`, `select`, `text`, `time`.
+`number`, `boolean`, `select`, `text`, `time`, `date`.
+
+> `date` is toegevoegd t.o.v. de oorspronkelijke lijst: `net_metering_until` uit §8 is een
+> datum, en die in een tekstveld laten invullen levert precies de invoerfouten op die een
+> selector voorkomt.
+
+Label en hulptekst staan in het schema zelf (`label` en `helper` per veld, uitgelezen via
+`computeLabel` en `computeHelper`), zodat een veld en de woorden die het uitleggen niet op
+twee plaatsen kunnen gaan afwijken.
 
 ```javascript
 form.hass = this._hass;

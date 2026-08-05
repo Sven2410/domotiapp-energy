@@ -27,8 +27,13 @@ export function createForm(hass, schema, onChange) {
   element.hass = hass;
   element.schema = schema;
   element.data = {};
+  // Label and helper text travel in the schema itself, so a field and the words
+  // that explain it are never in two places that can drift apart.
   element.computeLabel = (field) => field.label || field.name;
+  element.computeHelper = (field) => field.helper ?? null;
 
+  // One listener for the life of this form. Re-creating the element on a hass
+  // update would throw away whatever the installer was halfway through typing.
   element.addEventListener('value-changed', (event) => {
     event.stopPropagation();
     onChange(event.detail.value);
