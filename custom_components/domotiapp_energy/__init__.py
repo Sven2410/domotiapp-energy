@@ -39,6 +39,7 @@ from .coordinator import (
 from .engine.providers import RuleBasedCoachProvider
 from .models import StoredConfiguration
 from .storage import ConfigurationStore
+from .websocket_api import async_register_commands
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -52,8 +53,14 @@ CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    """Register the services once, for the lifetime of Home Assistant."""
+    """Register the services and WebSocket commands once.
+
+    Both belong to the integration rather than to an entry: registering them in
+    ``async_setup_entry`` would take them down on the first reload and never
+    bring them back (SPEC.md §14 and §20).
+    """
     _async_register_services(hass)
+    async_register_commands(hass)
     return True
 
 
