@@ -20,7 +20,10 @@ from custom_components.domotiapp_energy.const import (
     ERROR_ACKNOWLEDGEMENT_REQUIRED,
     SERVICE_CLEAR_LOG,
     SERVICE_RECALCULATE,
+    SOURCE_TYPE_GRID_METER,
+    STORAGE_KEY,
 )
+from custom_components.domotiapp_energy.models import EnergySource
 
 
 def _entry(**data: Any) -> MockConfigEntry:
@@ -153,6 +156,35 @@ async def test_setup_does_not_bump_the_revision_without_a_change(
     await hass.async_block_till_done()
 
     assert entry.runtime_data.store.revision == revision
+
+
+async def test_removing_the_integration_keeps_the_configuration(
+    hass: HomeAssistant, hass_storage: dict[str, Any]
+) -> None:
+    """Removing the entry leaves the stored configuration intact.
+
+    An installer who removes the integration by accident, or who removes it to
+    reinstall, must not have to re-enter every source and appliance
+    (SPEC.md §13). The README documents how to start over deliberately.
+    """
+    entry = _entry()
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    store = entry.runtime_data.store
+    await store.async_update(
+        lambda config: config.sources.append(
+            EnergySource.from_dict({"id": "grid", "type": SOURCE_TYPE_GRID_METER})
+        )
+    )
+
+    assert await hass.config_entries.async_remove(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert not hass.config_entries.async_entries(DOMAIN)
+    stored = hass_storage[STORAGE_KEY]["data"]
+    assert [source["id"] for source in stored["sources"]] == ["grid"]
 
 
 async def test_unload_and_reload(hass: HomeAssistant) -> None:

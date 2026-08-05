@@ -29,6 +29,7 @@ from .const import (
     DOMAIN,
     SERVICE_CLEAR_LOG,
     SERVICE_RECALCULATE,
+    STORAGE_KEY,
 )
 from .coordinator import (
     DomotiAppEnergyConfigEntry,
@@ -92,6 +93,30 @@ async def async_reload_entry(
 ) -> None:
     """Reload the config entry."""
     await hass.config_entries.async_reload(entry.entry_id)
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Handle removal of the integration: keep the stored configuration.
+
+    Deliberately does **not** delete ``.storage/domotiapp_energy.config``. An
+    installer who removes the integration by accident, or who removes it to
+    reinstall it, would otherwise have to re-enter every source and appliance
+    by hand; adding the integration again picks the configuration back up
+    (SPEC.md §13).
+
+    Home Assistant offers no way to say this in the removal dialog: the only
+    hook is this function, and the endpoint behind the dialog returns nothing
+    but ``require_restart``. Repairs and persistent notifications could carry
+    such a message but are deferred to a later release (SPEC.md §21), so the
+    visible trace is this log line plus the troubleshooting section of the
+    README.
+    """
+    _LOGGER.info(
+        "DomotiApp Energy has been removed. The energy configuration is kept in "
+        "%s under .storage/, so adding the integration again restores it. Delete "
+        "that file to start over",
+        STORAGE_KEY,
+    )
 
 
 async def _async_sync_home_name(store: ConfigurationStore, entry: ConfigEntry) -> None:

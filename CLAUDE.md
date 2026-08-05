@@ -123,7 +123,7 @@ py -3.13 -m venv .venv
 Het testimage installeert de dependencies in een eigen laag en wordt alleen opnieuw
 gebouwd wanneer `pyproject.toml` verandert; de broncode is een bind-mount.
 
-### Versieverschil tussen tests en de draaiende HA (bekend, nog niet opgelost)
+### Versieverschil tussen tests en de draaiende HA (bewuste keuze, niet oplossen)
 
 | | Python | Home Assistant |
 |---|---|---|
@@ -136,9 +136,35 @@ De testharnas pint HA; wij kiezen die versie niet. Vanaf 0.13.317 vereist
 ouder dan wat de klant draait. Op Python 3.14 lost dezelfde `pyproject.toml` 0.13.353
 met HA 2026.8.0b5 op en slaagt de hele suite ongewijzigd (geverifieerd 2026-08-05).
 
-**Groene CI bewijst dus geen 3.14-gedrag.** SPEC.md §0 noemt Python 3.13 als doel; dat is
-achterhaald. Overstappen betekent dat de suite tegen een HA-bèta draait, dus dat is een
-aparte afweging — niet stilzwijgend meenemen in een fase.
+**Besluit van Sven, 2026-08-05: we blijven op 3.13.** Overstappen betekent testen tegen
+een HA-bèta, en een bug in die bèta kost uren zoeken in code die niets mankeert.
+**Heroverwegen zodra HA 2026.8 stabiel is** — stel het dan voor, voer het niet
+stilzwijgend door in een fase.
+
+**Groene CI bewijst daarmee geen 3.14-gedrag**, en ook geen gedrag van de HA-versie die
+de klant draait. Wat een fase écht in HA doet, controleer je met de verificatieroute
+hieronder.
+
+### Verificatie tegen de draaiende HA
+
+`scripts/ha_check.py` leest via de REST-API de zes entiteiten uit de testinstance en kan
+een `input_number` zetten om een herberekening te forceren. Het leest `HA_URL` en
+`HA_TOKEN` uit `.env` in de repo-root (**staat in `.gitignore`, nooit committen**).
+
+```powershell
+py -3.13 .\scripts\ha_check.py                 # toon de zes entiteiten
+py -3.13 .\scripts\ha_check.py --set -5700     # zet de netmeter en toon opnieuw
+py -3.13 .\scripts\ha_check.py --json          # ruwe states, om zelf door te spitten
+```
+
+**Dit is een verificatiehulpmiddel, geen vervanging van de testsuite.** Een fase is pas
+klaar wanneer `pytest` slaagt; dit script vangt wat de testharnas per definitie niet ziet
+(een andere HA-versie, een andere UI-taal, echte entiteiten). De entity-ID-fout van
+fase 5 stond groen in de tests terwijl de werkelijkheid afweek — dat is precies waar dit
+script voor is.
+
+Het script gebruikt uitsluitend de standaardbibliotheek en voegt **niets** toe aan
+`custom_components/` of aan de runtime-requirements. Zet er geen productielogica in.
 
 ## Testomgeving
 

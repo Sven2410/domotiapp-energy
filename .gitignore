@@ -22,6 +22,13 @@ htmlcov/
 # Note: docker-compose.dev.yml itself IS tracked; only its generated config is not.
 .ha-dev-config/
 
+# Credentials for the verification script (scripts/ha_check.py): HA_URL and a
+# long-lived access token. Never commit this — the token grants full API access
+# to the Home Assistant instance it was created on.
+.env
+.env.*
+!.env.example
+
 # Editors and operating system
 .idea/
 .vscode/

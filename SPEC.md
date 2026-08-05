@@ -16,10 +16,19 @@
 
 ```text
 Minimale Home Assistant-versie : 2025.6
-Python                          : 3.13
+Python (testroute)              : 3.13
 Doelbrowsers                    : evergreen (Chrome/Safari/Firefox), incl. HA companion app
 Licentie                        : MIT
 ```
+
+**De doelomgeving loopt vóór op de testroute.** Een klant die vandaag de HA-container
+`:stable` draait, zit op Python 3.14 met HA 2026.7; de testsuite draait op Python 3.13
+met HA 2026.2.3. Dat is geen keuze van ons: `pytest-homeassistant-custom-component`
+vereist vanaf 0.13.317 Python ≥ 3.14, en HA 2026.8 zelf ≥ 3.14.2, dus op 3.13 kan pip
+niets nieuwers oplossen. Op 3.14 slaagt dezelfde suite ongewijzigd, maar tegen een
+HA-bèta — en een bug in die bèta kost meer tijd dan hij oplevert. Bewuste keuze op
+2026-08-05: blijven op 3.13 tot HA 2026.8 stabiel is. Zie CLAUDE.md, waar ook staat wat
+groene CI daarmee wél en niet bewijst.
 
 Alle gebruikte API's moeten bestaan in HA 2025.6 en niet deprecated zijn in de meest
 recente HA-release. Controleer bij twijfel de actuele developer docs en documenteer de
@@ -630,6 +639,18 @@ De volgende schrijfacties raken de revision **niet**:
   configuratie.
 
 De woningnaam staat óók in de config entry; de uitgebreide configuratie in de storage.
+
+**Verwijderen van de integratie wist de opgeslagen configuratie niet.**
+`async_remove_entry` laat `.storage/domotiapp_energy.config` bewust staan: een
+installateur die per ongeluk verwijdert, of die opnieuw installeert, wil niet twintig
+apparaten opnieuw invoeren. De integratie opnieuw toevoegen pakt de configuratie weer op.
+
+Dit mag niet stilzwijgend gebeuren, maar HA biedt er geen UI-haakje voor: `async_remove_entry`
+is het enige aanknopingspunt en de endpoint achter de verwijderdialoog
+(`DELETE /api/config/config_entries/entry/{id}`) geeft alleen `require_restart` terug.
+Repairs en persistent notifications zouden zo'n melding wél kunnen dragen, maar staan in
+§21 voor een latere release. Daarom: één INFO-logregel bij verwijderen die het pad noemt,
+plus een troubleshooting-sectie in de README waarin staat hoe je bewust schoon begint.
 
 ---
 
