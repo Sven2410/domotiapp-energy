@@ -55,6 +55,7 @@ from custom_components.domotiapp_energy.models import (
     EnergySnapshot,
     EnergySource,
     HomeProfile,
+    SourceFailure,
     StoredConfiguration,
 )
 from custom_components.domotiapp_energy.storage import (
@@ -970,6 +971,14 @@ def test_energy_snapshot_round_trip() -> None:
         battery_power_w=0.0,
         current_price_eur_kwh=0.21,
         invalid_source_ids=["source-9"],
+        source_failures=[
+            SourceFailure(
+                source_id="source-9",
+                entity_id="sensor.weg",
+                reason_code="invalid_entity_state",
+                unavailable=True,
+            )
+        ],
         reason_codes=["invalid_entity_state"],
     )
 
@@ -982,6 +991,17 @@ def test_energy_snapshot_round_trip() -> None:
     assert restored.invalid_source_ids == ["source-9"]
     assert restored.reason_codes == ["invalid_entity_state"]
     assert restored.timestamp == snapshot.timestamp
+    assert restored.source_failures == snapshot.source_failures
+
+
+def test_a_damaged_source_failure_degrades_to_empty_strings() -> None:
+    """A failure record rebuilt from rubbish is usable, not an exception."""
+    restored = SourceFailure.from_dict({"source_id": 42, "unavailable": "misschien"})
+
+    assert restored.source_id == ""
+    assert restored.entity_id == ""
+    assert restored.reason_code == ""
+    assert restored.unavailable is False
 
 
 def test_coach_result_round_trip() -> None:

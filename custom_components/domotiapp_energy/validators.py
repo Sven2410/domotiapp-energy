@@ -83,12 +83,19 @@ class ReadResult:
     when it is false. ``entity_id`` is always present so the caller can name
     the offending row without looking it up again; it is an empty string when
     the binding had no entity linked at all.
+
+    ``unavailable`` separates the two ways a read can fail, because they need
+    different logbook entries (SPEC.md §8): the entity is gone or reports no
+    value at all, versus the entity is there and reports something unusable.
+    The distinction is made here because this is the only place that knows
+    which of the two happened.
     """
 
     ok: bool
     value: float | None
     reason_code: str | None
     entity_id: str
+    unavailable: bool = False
 
     @classmethod
     def succeeded(cls, value: float, entity_id: str) -> ReadResult:
@@ -96,9 +103,17 @@ class ReadResult:
         return cls(ok=True, value=value, reason_code=None, entity_id=entity_id)
 
     @classmethod
-    def failed(cls, reason_code: str, entity_id: str) -> ReadResult:
+    def failed(
+        cls, reason_code: str, entity_id: str, *, unavailable: bool = False
+    ) -> ReadResult:
         """Return a refusal. There is deliberately no fallback value."""
-        return cls(ok=False, value=None, reason_code=reason_code, entity_id=entity_id)
+        return cls(
+            ok=False,
+            value=None,
+            reason_code=reason_code,
+            entity_id=entity_id,
+            unavailable=unavailable,
+        )
 
 
 def read_entity_value(hass: HomeAssistant, binding: EntityBinding) -> ReadResult:
@@ -115,14 +130,24 @@ def read_entity_value(hass: HomeAssistant, binding: EntityBinding) -> ReadResult
 
     state = hass.states.get(entity_id)
     if state is None:
-        return ReadResult.failed(REASON_INVALID_ENTITY_STATE, entity_id)
+        # The entity has been removed or renamed: unavailable, not unreadable.
+        return ReadResult.failed(
+            REASON_INVALID_ENTITY_STATE, entity_id, unavailable=True
+        )
 
     raw, reason_code = _select_raw_value(state, binding)
     if reason_code is not None:
         return ReadResult.failed(reason_code, entity_id)
 
+    if _is_unusable(raw):
+        # The entity exists but is carrying no measurement at all.
+        return ReadResult.failed(
+            REASON_INVALID_ENTITY_STATE, entity_id, unavailable=True
+        )
+
     number = as_finite_float(raw)
-    if number is None or _is_unusable(raw):
+    if number is None:
+        # Present and reporting, but not a number we can use.
         return ReadResult.failed(REASON_INVALID_ENTITY_STATE, entity_id)
 
     number *= binding.scale_factor

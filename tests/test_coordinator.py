@@ -21,6 +21,7 @@ from unittest.mock import patch
 import pytest
 from freezegun.api import FrozenDateTimeFactory
 from homeassistant.config_entries import ConfigEntryState
+from homeassistant.const import STATE_UNAVAILABLE
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import (
@@ -35,8 +36,10 @@ from custom_components.domotiapp_energy.const import (
     DOMAIN,
     DUPLICATE_SUBJECT_PREFIX,
     LOG_EVENT_INVALID_CONFIGURATION,
+    LOG_EVENT_INVALID_MEASUREMENT,
     LOG_EVENT_PEAK_RISK_DETECTED,
     LOG_EVENT_SOLAR_SURPLUS_DETECTED,
+    LOG_EVENT_SOURCE_UNAVAILABLE,
     METER_MODE_SINGLE_SIGNED,
     POSITIVE_MEANS_IMPORT,
     RECALCULATE_DEBOUNCE_SECONDS,
@@ -53,6 +56,9 @@ from custom_components.domotiapp_energy.coordinator import (
     tracked_entity_ids,
 )
 from custom_components.domotiapp_energy.engine.calculator import Calculator
+from custom_components.domotiapp_energy.engine.reason_codes import (
+    REASON_INVALID_ENTITY_STATE,
+)
 from custom_components.domotiapp_energy.models import (
     CoachResult,
     DeviceProfile,
@@ -206,13 +212,16 @@ async def test_a_linked_entity_triggers_a_recalculation(
     )
 
     with patch.object(
-        Calculator, "calculate", autospec=True, side_effect=Calculator.calculate
-    ) as calculate:
+        Calculator,
+        "build_snapshot",
+        autospec=True,
+        side_effect=Calculator.build_snapshot,
+    ) as build_snapshot:
         hass.states.async_set(GRID_ENTITY, "250")
         await hass.async_block_till_done()
         await _flush_debouncer(hass)
 
-    assert calculate.call_count == 1
+    assert build_snapshot.call_count == 1
     assert entry.runtime_data.coordinator.data.metrics.grid_power_w == 250.0
 
 
@@ -224,13 +233,16 @@ async def test_an_unlinked_entity_does_not_trigger_anything(
     await _setup(hass, hass_storage, StoredConfiguration(sources=[_grid_source()]))
 
     with patch.object(
-        Calculator, "calculate", autospec=True, side_effect=Calculator.calculate
-    ) as calculate:
+        Calculator,
+        "build_snapshot",
+        autospec=True,
+        side_effect=Calculator.build_snapshot,
+    ) as build_snapshot:
         hass.states.async_set(UNRELATED_ENTITY, "21.5")
         await hass.async_block_till_done()
         await _flush_debouncer(hass)
 
-    assert calculate.call_count == 0
+    assert build_snapshot.call_count == 0
 
 
 async def test_a_burst_of_changes_is_debounced_into_one_calculation(
@@ -241,14 +253,17 @@ async def test_a_burst_of_changes_is_debounced_into_one_calculation(
     await _setup(hass, hass_storage, StoredConfiguration(sources=[_grid_source()]))
 
     with patch.object(
-        Calculator, "calculate", autospec=True, side_effect=Calculator.calculate
-    ) as calculate:
+        Calculator,
+        "build_snapshot",
+        autospec=True,
+        side_effect=Calculator.build_snapshot,
+    ) as build_snapshot:
         for value in range(200, 250, 10):
             hass.states.async_set(GRID_ENTITY, str(value))
         await hass.async_block_till_done()
         await _flush_debouncer(hass)
 
-    assert calculate.call_count == 1
+    assert build_snapshot.call_count == 1
 
 
 async def test_the_listener_is_rebuilt_when_the_configuration_changes(
@@ -269,19 +284,22 @@ async def test_the_listener_is_rebuilt_when_the_configuration_changes(
     await _flush_debouncer(hass)
 
     with patch.object(
-        Calculator, "calculate", autospec=True, side_effect=Calculator.calculate
-    ) as calculate:
+        Calculator,
+        "build_snapshot",
+        autospec=True,
+        side_effect=Calculator.build_snapshot,
+    ) as build_snapshot:
         # The old entity is no longer linked and must be ignored.
         hass.states.async_set(GRID_ENTITY, "999")
         await hass.async_block_till_done()
         await _flush_debouncer(hass)
-        assert calculate.call_count == 0
+        assert build_snapshot.call_count == 0
 
         # The new one is watched without anyone having to say so.
         hass.states.async_set(SOLAR_ENTITY, "1500")
         await hass.async_block_till_done()
         await _flush_debouncer(hass)
-        assert calculate.call_count == 1
+        assert build_snapshot.call_count == 1
 
 
 async def test_the_safety_interval_recalculates_every_five_minutes(
@@ -292,13 +310,16 @@ async def test_the_safety_interval_recalculates_every_five_minutes(
     await _setup(hass, hass_storage, StoredConfiguration(sources=[_grid_source()]))
 
     with patch.object(
-        Calculator, "calculate", autospec=True, side_effect=Calculator.calculate
-    ) as calculate:
+        Calculator,
+        "build_snapshot",
+        autospec=True,
+        side_effect=Calculator.build_snapshot,
+    ) as build_snapshot:
         freezer.tick(timedelta(minutes=SAFETY_RECALCULATE_INTERVAL_MINUTES, seconds=1))
         async_fire_time_changed(hass)
         await hass.async_block_till_done()
 
-    assert calculate.call_count == 1
+    assert build_snapshot.call_count == 1
 
 
 async def test_unloading_removes_the_state_listener(
@@ -315,13 +336,16 @@ async def test_unloading_removes_the_state_listener(
     assert entry.state is ConfigEntryState.NOT_LOADED
 
     with patch.object(
-        Calculator, "calculate", autospec=True, side_effect=Calculator.calculate
-    ) as calculate:
+        Calculator,
+        "build_snapshot",
+        autospec=True,
+        side_effect=Calculator.build_snapshot,
+    ) as build_snapshot:
         hass.states.async_set(GRID_ENTITY, "4000")
         await hass.async_block_till_done()
         await _flush_debouncer(hass)
 
-    assert calculate.call_count == 0
+    assert build_snapshot.call_count == 0
 
 
 # --- No overlapping calculations --------------------------------------------
@@ -486,6 +510,172 @@ async def test_a_solar_surplus_is_recorded_in_the_logbook(
     ]
     assert len(surplus_logs) == 1
     assert surplus_logs[0].count == 2
+
+
+async def test_an_entity_that_disappeared_is_reported_as_unavailable(
+    hass: HomeAssistant, hass_storage: dict[str, Any]
+) -> None:
+    """A linked entity that is gone produces one source_unavailable entry.
+
+    The entry names the source and the entity and carries the reason code, but
+    never the raw state (SPEC.md §8 and §13).
+    """
+    # No state is set at all, so the entity does not exist.
+    entry = await _setup(
+        hass, hass_storage, StoredConfiguration(sources=[_grid_source()])
+    )
+
+    logs = [
+        log
+        for log in entry.runtime_data.store.config.logs
+        if log.event_type == LOG_EVENT_SOURCE_UNAVAILABLE
+    ]
+
+    assert len(logs) == 1
+    assert logs[0].severity == SEVERITY_WARNING
+    assert logs[0].subject == "grid"
+    assert "Netmeter" in logs[0].message
+    assert GRID_ENTITY in logs[0].message
+    assert REASON_INVALID_ENTITY_STATE in logs[0].message
+
+
+async def test_an_unavailable_entity_is_reported_as_unavailable(
+    hass: HomeAssistant, hass_storage: dict[str, Any]
+) -> None:
+    """An entity carrying no measurement is unavailable, not a bad reading."""
+    hass.states.async_set(GRID_ENTITY, STATE_UNAVAILABLE)
+    entry = await _setup(
+        hass, hass_storage, StoredConfiguration(sources=[_grid_source()])
+    )
+
+    events = {log.event_type for log in entry.runtime_data.store.config.logs}
+
+    assert LOG_EVENT_SOURCE_UNAVAILABLE in events
+    assert LOG_EVENT_INVALID_MEASUREMENT not in events
+
+
+async def test_a_non_numeric_state_is_reported_as_an_invalid_measurement(
+    hass: HomeAssistant, hass_storage: dict[str, Any]
+) -> None:
+    """An entity that is present but reports nonsense is a bad reading.
+
+    A different problem from an unavailable entity, and a different fix: this
+    one is normally the wrong entity, unit or attribute rather than another
+    integration being down.
+    """
+    hass.states.async_set(GRID_ENTITY, "aan")
+    entry = await _setup(
+        hass, hass_storage, StoredConfiguration(sources=[_grid_source()])
+    )
+
+    logs = [
+        log
+        for log in entry.runtime_data.store.config.logs
+        if log.event_type == LOG_EVENT_INVALID_MEASUREMENT
+    ]
+
+    assert len(logs) == 1
+    assert logs[0].subject == "grid"
+    assert "Netmeter" in logs[0].message
+    # The unusable state itself is never stored.
+    assert "aan" not in logs[0].message.replace("waardebron", "")
+    assert LOG_EVENT_SOURCE_UNAVAILABLE not in {
+        log.event_type for log in entry.runtime_data.store.config.logs
+    }
+
+
+async def test_a_failing_source_is_reported_once_then_again_after_recovery(
+    hass: HomeAssistant, hass_storage: dict[str, Any]
+) -> None:
+    """The same failure does not repeat, but a relapse is reported afresh.
+
+    Without the first half a recalculation every few seconds would fill the
+    logbook; without the second half a source that breaks again after being
+    repaired would stay silent forever.
+    """
+    hass.states.async_set(GRID_ENTITY, STATE_UNAVAILABLE)
+    entry = await _setup(
+        hass, hass_storage, StoredConfiguration(sources=[_grid_source()])
+    )
+    store = entry.runtime_data.store
+    coordinator = entry.runtime_data.coordinator
+
+    def _unavailable_entries() -> list[Any]:
+        return [
+            log
+            for log in store.config.logs
+            if log.event_type == LOG_EVENT_SOURCE_UNAVAILABLE
+        ]
+
+    assert len(_unavailable_entries()) == 1
+    assert _unavailable_entries()[0].count == 1
+
+    # Still broken: reported once, so nothing is added and nothing is counted.
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+    assert len(_unavailable_entries()) == 1
+    assert _unavailable_entries()[0].count == 1
+
+    # Repaired.
+    hass.states.async_set(GRID_ENTITY, "1200")
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+    assert coordinator.data.metrics.grid_power_w == 1200.0
+
+    # Broken again: the installer has to hear about it a second time.
+    hass.states.async_set(GRID_ENTITY, STATE_UNAVAILABLE)
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+
+    entries = _unavailable_entries()
+    assert len(entries) == 1
+    assert entries[0].count == 2
+
+
+async def test_a_source_that_changes_failure_mode_is_reported_again(
+    hass: HomeAssistant, hass_storage: dict[str, Any]
+) -> None:
+    """Going from unavailable to unreadable is a new finding, not a repeat."""
+    hass.states.async_set(GRID_ENTITY, STATE_UNAVAILABLE)
+    entry = await _setup(
+        hass, hass_storage, StoredConfiguration(sources=[_grid_source()])
+    )
+    store = entry.runtime_data.store
+
+    hass.states.async_set(GRID_ENTITY, "kapot")
+    await entry.runtime_data.coordinator.async_refresh()
+    await hass.async_block_till_done()
+
+    events = [
+        log.event_type
+        for log in store.config.logs
+        if log.event_type
+        in (LOG_EVENT_SOURCE_UNAVAILABLE, LOG_EVENT_INVALID_MEASUREMENT)
+    ]
+
+    assert LOG_EVENT_SOURCE_UNAVAILABLE in events
+    assert LOG_EVENT_INVALID_MEASUREMENT in events
+
+
+async def test_an_unconfigured_source_is_not_reported_as_a_failure(
+    hass: HomeAssistant, hass_storage: dict[str, Any]
+) -> None:
+    """A source that was never finished has not broken (SPEC.md §8).
+
+    A grid meter without a meter mode consults no entity at all, so there is
+    nothing to call unavailable. The data quality checklist already reports
+    that it is incomplete.
+    """
+    entry = await _setup(
+        hass,
+        hass_storage,
+        StoredConfiguration(sources=[_grid_source(meter_mode=None)]),
+    )
+
+    events = {log.event_type for log in entry.runtime_data.store.config.logs}
+
+    assert LOG_EVENT_SOURCE_UNAVAILABLE not in events
+    assert LOG_EVENT_INVALID_MEASUREMENT not in events
 
 
 async def test_reporting_quarantined_rows_leaves_the_revision_alone(

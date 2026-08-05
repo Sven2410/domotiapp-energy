@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import timedelta
 from typing import Any
 
@@ -35,6 +35,8 @@ from .const import (
     INVALID_REASON_DUPLICATE_SOURCE,
     LOG_DEDUPE_WINDOW_MINUTES,
     LOG_EVENT_INVALID_CONFIGURATION,
+    LOG_EVENT_INVALID_MEASUREMENT,
+    LOG_EVENT_SOURCE_UNAVAILABLE,
     MAX_LOG_ENTRIES,
     SEVERITY_INFO,
     SEVERITY_WARNING,
@@ -42,7 +44,7 @@ from .const import (
     STORAGE_MINOR_VERSION,
     STORAGE_VERSION,
 )
-from .models import LogEntry, StoredConfiguration
+from .models import LogEntry, SourceFailure, StoredConfiguration
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -191,18 +193,24 @@ class ConfigurationStore:
         self._reported_invalid.clear()
         return self._config
 
-    async def async_report_invalid_rows(self) -> None:
-        """Report every stored row the engine refuses to use.
+    async def async_report_invalid_rows(
+        self, failures: Sequence[SourceFailure] = ()
+    ) -> None:
+        """Report every row the engine refuses to use, and every failed read.
 
-        Call this where the quarantine becomes functionally relevant: at the
-        moment the engine reads the configuration to calculate with it. A
+        Call this where the problems become functionally relevant: at the
+        moment the engine has read the configuration to calculate with it. A
         source or device with an unrecognised type stays in the list but is
-        disabled and marked invalid (SPEC.md §12); without a visible warning the
-        installer would only notice through a silently lower data quality score.
+        disabled and marked invalid (SPEC.md §12); a source whose entity could
+        not be read is passed in as a :class:`SourceFailure`. Without a visible
+        warning the installer would only notice either through a silently lower
+        data quality score.
 
-        Anti-spam: each row is reported once per reason, so a recalculation
-        that runs every few seconds does not repeat itself. A row that is
-        repaired and later breaks again is reported afresh.
+        Both kinds share one anti-spam ledger, and they have to: each subject
+        is reported once per reason, so a recalculation every few seconds does
+        not repeat itself, and a source that is repaired and later breaks again
+        is reported afresh. Splitting the ledger over two methods would make
+        each of them forget the other's subjects on every pass.
         """
         config = self.config
         still_invalid: set[str] = set()
@@ -269,9 +277,80 @@ class ConfigurationStore:
                 subject=device.id,
             )
 
+        await self._async_report_failures(failures, still_invalid)
+
         # Forget rows that are valid again, so a relapse is reported once more.
         for subject in self._reported_invalid.keys() - still_invalid:
             del self._reported_invalid[subject]
+
+    async def _async_report_failures(
+        self, failures: Sequence[SourceFailure], still_invalid: set[str]
+    ) -> None:
+        """Report the sources whose entity could not be read (SPEC.md §8).
+
+        Two events, because they ask for different things from the installer:
+        ``source_unavailable`` when the entity is gone or carries no value at
+        all — usually another integration's problem — and
+        ``invalid_measurement`` when it is there and reporting something this
+        source cannot use, which is normally the unit, the value source or the
+        attribute being wrong.
+        """
+        for failure in failures:
+            subject = failure.source_id
+            still_invalid.add(subject)
+
+            event_type = (
+                LOG_EVENT_SOURCE_UNAVAILABLE
+                if failure.unavailable
+                else LOG_EVENT_INVALID_MEASUREMENT
+            )
+            # The reason is part of the key, so a source that goes from
+            # unavailable to unreadable is reported again rather than silently
+            # keeping the older description.
+            if not self._mark_reported(subject, f"{event_type}:{failure.reason_code}"):
+                continue
+
+            # The Home Assistant log gets the ids and the reason only: no source
+            # name and no state (SPEC.md §21). The readable version, still
+            # without the raw state, goes to the in-app logbook.
+            _LOGGER.warning(
+                "Energy source %s could not be read from %s (%s)",
+                failure.source_id,
+                failure.entity_id,
+                failure.reason_code,
+            )
+
+            name = self._source_name(failure.source_id)
+            if failure.unavailable:
+                title = "Bron niet beschikbaar"
+                message = (
+                    f"De energiebron '{name}' kon niet worden uitgelezen: de "
+                    f"entiteit '{failure.entity_id}' bestaat niet of levert op dit "
+                    f"moment geen waarde. (reden: {failure.reason_code})"
+                )
+            else:
+                title = "Ongeldige meting"
+                message = (
+                    f"De energiebron '{name}' leverde geen bruikbare meetwaarde. "
+                    f"Controleer bij de entiteit '{failure.entity_id}' de gekozen "
+                    f"waardebron, het attribuut en de eenheid. "
+                    f"(reden: {failure.reason_code})"
+                )
+
+            await self.async_add_log_entry(
+                event_type,
+                title,
+                message,
+                severity=SEVERITY_WARNING,
+                subject=subject,
+            )
+
+    def _source_name(self, source_id: str) -> str:
+        """Return the configured name of a source, or its id as a fallback."""
+        for source in self.config.sources:
+            if source.id == source_id:
+                return source.name or source_id
+        return source_id
 
     def _mark_reported(self, subject: str, reason: str | None) -> bool:
         """Return whether this subject still has to be reported for this reason.

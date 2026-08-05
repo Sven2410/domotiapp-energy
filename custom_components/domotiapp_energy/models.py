@@ -897,6 +897,45 @@ def _as_sequence(value: Any) -> list[Mapping[str, Any]]:
 
 
 @dataclass(slots=True)
+class SourceFailure:
+    """One configured source that could not be read (SPEC.md §8).
+
+    Carries what the logbook needs and nothing more. The raw state is
+    deliberately absent: an entry must never hold a Home Assistant state
+    (SPEC.md §13), and knowing *that* a value was unusable is what the
+    installer acts on, not what the value happened to be.
+    """
+
+    source_id: str
+    entity_id: str
+    reason_code: str
+    # True when the entity is gone or carries no measurement at all, False when
+    # it is present and reporting something we cannot use. The two need
+    # different logbook events: source_unavailable versus invalid_measurement.
+    unavailable: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return the failure as a JSON-serialisable mapping."""
+        return {
+            "source_id": self.source_id,
+            "entity_id": self.entity_id,
+            "reason_code": self.reason_code,
+            "unavailable": self.unavailable,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> Self:
+        """Build a failure from a mapping, filling in defaults."""
+        data = _as_mapping(data)
+        return cls(
+            source_id=_as_str(data.get("source_id"), ""),
+            entity_id=_as_str(data.get("entity_id"), ""),
+            reason_code=_as_str(data.get("reason_code"), ""),
+            unavailable=_as_bool(data.get("unavailable"), False),
+        )
+
+
+@dataclass(slots=True)
 class EnergySnapshot:
     """The raw, normalised measurements at one moment in time (SPEC.md §16).
 
@@ -910,8 +949,13 @@ class EnergySnapshot:
     household_consumption_w: float | None = None
     battery_power_w: float | None = None
     current_price_eur_kwh: float | None = None
-    # Source ids whose entity could not be read, and the reason per source.
+    # Every source the engine could not use, including the rows of a source
+    # type that occurs more than once. Feeds the data quality score.
     invalid_source_ids: list[str] = field(default_factory=list)
+    # Only the sources whose *entity* could not be read, with enough detail to
+    # report each one. A duplicate source type is a configuration problem and
+    # is reported through its own route, so it is deliberately not in here.
+    source_failures: list[SourceFailure] = field(default_factory=list)
     reason_codes: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -924,6 +968,7 @@ class EnergySnapshot:
             "battery_power_w": self.battery_power_w,
             "current_price_eur_kwh": self.current_price_eur_kwh,
             "invalid_source_ids": list(self.invalid_source_ids),
+            "source_failures": [failure.to_dict() for failure in self.source_failures],
             "reason_codes": list(self.reason_codes),
         }
 
@@ -941,6 +986,10 @@ class EnergySnapshot:
             battery_power_w=_as_optional_float(data.get("battery_power_w")),
             current_price_eur_kwh=_as_optional_float(data.get("current_price_eur_kwh")),
             invalid_source_ids=_as_str_list(data.get("invalid_source_ids")),
+            source_failures=[
+                SourceFailure.from_dict(item)
+                for item in _as_sequence(data.get("source_failures"))
+            ],
             reason_codes=_as_str_list(data.get("reason_codes")),
         )
 

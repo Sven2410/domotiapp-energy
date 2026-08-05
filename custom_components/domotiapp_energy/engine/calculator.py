@@ -61,10 +61,11 @@ from custom_components.domotiapp_energy.models import (
     EnergyMetrics,
     EnergySnapshot,
     EnergySource,
+    SourceFailure,
     StoredConfiguration,
     without_negative_zero,
 )
-from custom_components.domotiapp_energy.validators import read_entity_value
+from custom_components.domotiapp_energy.validators import ReadResult, read_entity_value
 
 from .completeness import evaluate_completeness
 from .reason_codes import REASON_MISSING_REQUIRED_DATA
@@ -78,6 +79,7 @@ class _Readings:
 
     values: dict[str, float]
     invalid_source_ids: list[str]
+    failures: list[SourceFailure]
     reason_codes: list[str]
 
 
@@ -106,6 +108,7 @@ class Calculator:
             battery_power_w=readings.values.get(SOURCE_TYPE_HOME_BATTERY),
             current_price_eur_kwh=readings.values.get(SOURCE_TYPE_CURRENT_PRICE),
             invalid_source_ids=readings.invalid_source_ids,
+            source_failures=readings.failures,
             reason_codes=readings.reason_codes,
         )
 
@@ -152,7 +155,9 @@ class Calculator:
 
     def _read_sources(self, config: StoredConfiguration) -> _Readings:
         """Read every usable source, grouped by what it measures."""
-        readings = _Readings(values={}, invalid_source_ids=[], reason_codes=[])
+        readings = _Readings(
+            values={}, invalid_source_ids=[], failures=[], reason_codes=[]
+        )
 
         duplicated = config.duplicate_exclusive_sources
         for source_type, rows in duplicated.items():
@@ -186,63 +191,87 @@ class Calculator:
         return readings
 
     def _read_source(self, source: EnergySource, readings: _Readings) -> float | None:
-        """Read one source, recording why it failed when it does."""
+        """Read one source, recording why it failed when it does.
+
+        A read that fails against an actual entity is recorded as a
+        :class:`SourceFailure` as well, so the coordinator can tell the
+        installer which source went quiet and why. A source that is simply not
+        finished — no entity linked, no meter mode chosen — produces no such
+        record: nothing broke, it was never configured, and the data quality
+        checklist already reports that.
+        """
         if source.type == SOURCE_TYPE_GRID_METER:
-            value, reason = self._read_grid_meter(source)
+            value, result = self._read_grid_meter(source)
         else:
             result = read_entity_value(self._hass, source.binding)
             value = result.value if result.ok else None
-            reason = result.reason_code
 
         if value is not None:
             return value
 
         readings.invalid_source_ids.append(source.id)
+        reason = (
+            result.reason_code if result is not None else REASON_MISSING_REQUIRED_DATA
+        )
         if reason is not None and reason not in readings.reason_codes:
             readings.reason_codes.append(reason)
+
+        if result is not None and not result.ok and result.entity_id:
+            readings.failures.append(
+                SourceFailure(
+                    source_id=source.id,
+                    entity_id=result.entity_id,
+                    reason_code=result.reason_code or "",
+                    unavailable=result.unavailable,
+                )
+            )
         return None
 
-    def _read_grid_meter(self, source: EnergySource) -> tuple[float | None, str | None]:
+    def _read_grid_meter(
+        self, source: EnergySource
+    ) -> tuple[float | None, ReadResult | None]:
         """Read a grid meter and normalise it to positive = import.
 
         The meter mode is never derived from which entities happen to be
         filled in: without an explicit mode the meter is unusable (SPEC.md §8).
+        A ``None`` result means no entity was consulted at all, so there is
+        nothing to report as unavailable.
         """
         if source.meter_mode == METER_MODE_SINGLE_SIGNED:
             return self._read_signed_meter(source)
         if source.meter_mode == METER_MODE_SEPARATE:
             return self._read_separate_meter(source)
-        return None, REASON_MISSING_REQUIRED_DATA
+        return None, None
 
     def _read_signed_meter(
         self, source: EnergySource
-    ) -> tuple[float | None, str | None]:
+    ) -> tuple[float | None, ReadResult | None]:
         """Read a meter that reports one signed value."""
         if source.positive_means not in (POSITIVE_MEANS_IMPORT, POSITIVE_MEANS_EXPORT):
-            return None, REASON_MISSING_REQUIRED_DATA
+            return None, None
 
         result = read_entity_value(self._hass, source.binding)
         if not result.ok or result.value is None:
-            return None, result.reason_code
+            return None, result
 
         if source.positive_means == POSITIVE_MEANS_EXPORT:
             # A meter reading exactly 0 would otherwise normalise to -0.0.
-            return without_negative_zero(-result.value), None
-        return result.value, None
+            return without_negative_zero(-result.value), result
+        return result.value, result
 
     def _read_separate_meter(
         self, source: EnergySource
-    ) -> tuple[float | None, str | None]:
+    ) -> tuple[float | None, ReadResult | None]:
         """Read a meter with separate import and export entities."""
         imported = read_entity_value(self._hass, source.import_binding)
         exported = read_entity_value(self._hass, source.export_binding)
 
         if not imported.ok or imported.value is None:
-            return None, imported.reason_code
+            return None, imported
         if not exported.ok or exported.value is None:
-            return None, exported.reason_code
+            return None, exported
 
-        return imported.value - exported.value, None
+        return imported.value - exported.value, imported
 
 
 # --- Derivation -------------------------------------------------------------

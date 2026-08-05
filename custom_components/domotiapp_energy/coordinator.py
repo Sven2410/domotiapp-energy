@@ -256,12 +256,15 @@ class EnergyCoordinator(DataUpdateCoordinator[CoachResult]):
         async with self._calculation_lock:
             config = self._store.config
 
-            # The moment the quarantined rows become functionally relevant: the
-            # engine is about to skip them. Reporting here rather than at load
-            # time keeps the storage read side free of writes (SPEC.md §13).
-            await self._store.async_report_invalid_rows()
+            # Read first, then report: the snapshot is what knows which sources
+            # went quiet. Reporting here rather than at load time keeps the
+            # storage read side free of writes (SPEC.md §13), and it is the
+            # moment the quarantined rows become functionally relevant — the
+            # engine is about to skip them.
+            snapshot = self._calculator.build_snapshot(config)
+            await self._store.async_report_invalid_rows(snapshot.source_failures)
 
-            metrics = self._calculator.calculate(config)
+            metrics = self._calculator.derive_metrics(config, snapshot)
             advice = self._advisor.generate(config, metrics)
             result = CoachResult(
                 primary_advice=advice[0] if advice else None,
