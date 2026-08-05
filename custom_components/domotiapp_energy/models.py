@@ -150,6 +150,21 @@ def as_finite_float(value: Any) -> float | None:
     return number if math.isfinite(number) else None
 
 
+def without_negative_zero(value: float) -> float:
+    """Return the value with ``-0.0`` collapsed to ``0.0``.
+
+    IEEE 754 keeps the sign through a negation or a multiplication, so
+    inverting a meter that reads exactly 0 W yields ``-0.0``. That is
+    numerically equal to zero and compares equal to it, but it reaches the
+    customer as the state ``-0.0`` in the interface, which reads as a defect.
+
+    Public because every place that flips a sign has to apply it: the unit and
+    inversion step in :mod:`.validators`, and the meter normalisation and
+    surplus clamp in :mod:`.engine.calculator`.
+    """
+    return 0.0 if value == 0 else value
+
+
 def _as_float(value: Any, default: float, *, minimum: float | None = None) -> float:
     """Return a finite float clamped to a lower bound, or the default."""
     number = as_finite_float(value)

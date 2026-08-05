@@ -7,6 +7,7 @@ midnight, an invalid main fuse, max_grid_power_w = 0, and the unit conversions
 kW->W and ct->EUR.
 """
 
+import math
 from typing import Any
 
 import pytest
@@ -275,6 +276,24 @@ async def test_invert_value_flips_the_sign(hass: HomeAssistant) -> None:
     result = read_entity_value(hass, _binding(unit=UNIT_W, invert_value=True))
 
     assert result.value == -800.0
+
+
+async def test_inverting_zero_does_not_produce_negative_zero(
+    hass: HomeAssistant,
+) -> None:
+    """An inverted meter reading exactly 0 W reports 0.0, not -0.0.
+
+    IEEE 754 keeps the sign through the negation. ``-0.0 == 0.0`` is true, so
+    no assertion on equality would catch this — but the customer sees the state
+    ``-0.0`` in the panel, which reads as a defect. ``copysign`` is what
+    actually distinguishes the two.
+    """
+    hass.states.async_set(ENTITY_ID, "0")
+
+    result = read_entity_value(hass, _binding(unit=UNIT_W, invert_value=True))
+
+    assert result.value == 0.0
+    assert math.copysign(1.0, result.value) == 1.0
 
 
 async def test_kilowatts_are_converted_to_watts(hass: HomeAssistant) -> None:

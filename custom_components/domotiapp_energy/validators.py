@@ -69,6 +69,7 @@ from .models import (
     UserPreferences,
     as_finite_float,
     minutes_since_midnight,
+    without_negative_zero,
 )
 
 # --- Reading an entity value ------------------------------------------------
@@ -132,7 +133,9 @@ def read_entity_value(hass: HomeAssistant, binding: EntityBinding) -> ReadResult
     # the only honest fallback.
     number *= UNIT_CONVERSION_FACTORS.get(binding.unit, 1.0)
 
-    return ReadResult.succeeded(number, entity_id)
+    # Inverting a meter that reads exactly zero produces -0.0, which would show
+    # up verbatim in the panel and in the sensor state.
+    return ReadResult.succeeded(without_negative_zero(number), entity_id)
 
 
 def _select_raw_value(state: State, binding: EntityBinding) -> tuple[Any, str | None]:

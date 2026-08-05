@@ -62,6 +62,7 @@ from custom_components.domotiapp_energy.models import (
     EnergySnapshot,
     EnergySource,
     StoredConfiguration,
+    without_negative_zero,
 )
 from custom_components.domotiapp_energy.validators import read_entity_value
 
@@ -225,7 +226,8 @@ class Calculator:
             return None, result.reason_code
 
         if source.positive_means == POSITIVE_MEANS_EXPORT:
-            return -result.value, None
+            # A meter reading exactly 0 would otherwise normalise to -0.0.
+            return without_negative_zero(-result.value), None
         return result.value, None
 
     def _read_separate_meter(
@@ -256,7 +258,10 @@ def _solar_surplus(
     """
     if snapshot.grid_power_w is not None:
         # Export is surplus by definition, whatever the household is doing.
-        return max(-snapshot.grid_power_w, 0.0), CONFIDENCE_HIGH, None
+        # max() returns its first argument when the two are equal, so a grid
+        # power of exactly 0 would hand back -0.0 without the guard.
+        surplus = without_negative_zero(max(-snapshot.grid_power_w, 0.0))
+        return surplus, CONFIDENCE_HIGH, None
 
     if snapshot.solar_power_w is None or snapshot.household_consumption_w is None:
         return None, CONFIDENCE_LOW, REASON_MISSING_REQUIRED_DATA
@@ -273,7 +278,7 @@ def _solar_surplus(
         # variant a good deal less trustworthy (SPEC.md §16).
         confidence = CONFIDENCE_LOW
 
-    return max(surplus, 0.0), confidence, None
+    return without_negative_zero(max(surplus, 0.0)), confidence, None
 
 
 def _battery_configured_but_unreadable(

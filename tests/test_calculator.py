@@ -6,6 +6,7 @@ consumption, no reliable calculation at all, peak warning, and the data quality
 checklist and energy score.
 """
 
+import math
 from typing import Any
 
 import pytest
@@ -116,6 +117,42 @@ async def test_signed_meter_with_positive_export(hass: HomeAssistant) -> None:
 
     # Positive means export, so 1500 W out of the house is -1500 W internally.
     assert snapshot.grid_power_w == -1500.0
+
+
+async def test_a_meter_at_zero_never_reports_negative_zero(
+    hass: HomeAssistant,
+) -> None:
+    """0 W stays 0.0 through the sign flip and into the surplus.
+
+    ``-0.0 == 0.0``, so an equality assertion cannot see the difference; the
+    customer can, because the sensor state reads ``-0.0``. Both the meter
+    normalisation and the surplus clamp can produce it — ``max()`` returns its
+    first argument when the two compare equal.
+    """
+    hass.states.async_set("sensor.grid", "0")
+    config = _config()
+    config.sources.append(_grid_meter(positive_means=POSITIVE_MEANS_EXPORT))
+
+    metrics = Calculator(hass).calculate(config)
+
+    assert metrics.grid_power_w == 0.0
+    assert math.copysign(1.0, metrics.grid_power_w) == 1.0
+    assert metrics.solar_surplus_w == 0.0
+    assert math.copysign(1.0, metrics.solar_surplus_w) == 1.0
+
+
+async def test_importing_power_yields_a_positive_zero_surplus(
+    hass: HomeAssistant,
+) -> None:
+    """Drawing from the grid means no surplus, reported as a plain 0.0."""
+    hass.states.async_set("sensor.grid", "1500")
+    config = _config()
+    config.sources.append(_grid_meter())
+
+    metrics = Calculator(hass).calculate(config)
+
+    assert metrics.solar_surplus_w == 0.0
+    assert math.copysign(1.0, metrics.solar_surplus_w) == 1.0
 
 
 async def test_separate_import_and_export_entities(hass: HomeAssistant) -> None:
