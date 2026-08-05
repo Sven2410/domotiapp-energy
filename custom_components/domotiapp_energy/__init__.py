@@ -20,6 +20,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import Unauthorized
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
 
 from .const import (
@@ -41,6 +42,12 @@ from .storage import ConfigurationStore
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: list[Platform] = [Platform.BINARY_SENSOR, Platform.SENSOR]
+
+# There is no YAML configuration: everything is entered in the UI (SPEC.md §2.4).
+# This schema makes that explicit — a `domotiapp_energy:` block in
+# configuration.yaml is reported as an error instead of being ignored — and is
+# what hassfest requires of an integration that implements async_setup.
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
