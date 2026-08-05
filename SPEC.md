@@ -585,8 +585,27 @@ die nu alleen de identiteitsmigratie doet maar de structuur klaarzet.
 
 Eisen: versioned storage · migratiefunctie · max. 200 logregels (trimmen bij schrijven) ·
 defensief laden · veilige defaults · geen secrets · geen kopieën van volledige entity
-states · writes serialiseren met `asyncio.Lock` · `revision` +1 bij elke wijziging ·
-frontend ontvangt de actuele revision · optimistic concurrency (zie §14).
+states · writes serialiseren met `asyncio.Lock` · frontend ontvangt de actuele revision ·
+optimistic concurrency (zie §14).
+
+**Wanneer de revision verandert.** De `revision` telt uitsluitend wijzigingen aan de
+configuratie zelf — `home`, `sources`, `devices` en `preferences` — die voortkomen uit
+een expliciete gebruikersactie. Zo'n wijziging verhoogt de revision met precies 1.
+
+De volgende schrijfacties raken de revision **niet**:
+
+- **Logboekschrijfacties.** Een regel toevoegen of het logboek wissen laat de revision
+  ongemoeid. Dit is geen bug en moet niet als bug "gerepareerd" worden: de meeste
+  logregels komen van de engine (`advice_recalculated`, `source_unavailable`,
+  `invalid_configuration`), niet van de gebruiker. Zou zo'n achtergrondgebeurtenis de
+  revision ophogen, dan verloopt de `expected_revision` die de frontend vasthoudt terwijl
+  de gebruiker een formulier invult, en wordt een geldige opslagpoging geweigerd met
+  `revision_conflict`. Het logboek valt niet onder wat `expected_revision` bewaakt.
+- **Laden.** `async_load` schrijft niets, ook niet wanneer rijen in quarantaine gaan.
+  Afgeleide toestand zoals `invalid_reason` wordt bij elke uitlezing uit het opgeslagen
+  type berekend en nooit teruggeschreven (zie §12).
+- **Herberekenen en overige achtergrondtaken.** Deze produceren runtime-resultaten, geen
+  configuratie.
 
 De woningnaam staat óók in de config entry; de uitgebreide configuratie in de storage.
 
@@ -926,8 +945,10 @@ ongeldige invoer (acknowledgement niet aangevinkt) · reconfigure/options van de
 *(De oorspronkelijke eis "annuleren" is geschrapt: de config-flow-API kent geen
 annuleerstap die zinvol te testen is.)*
 
-**Storage:** standaardconfiguratie · opslaan en laden · revision verhogen · limiet van 200
-logs · onbekende velden defensief verwerken · migratiefunctie aanwezig en aanroepbaar.
+**Storage:** standaardconfiguratie · opslaan en laden · revision +1 bij een
+configuratiewijziging · revision ongewijzigd bij laden en bij logboekschrijfacties (§13) ·
+limiet van 200 logs · onbekende velden defensief verwerken · migratiefunctie aanwezig en
+aanroepbaar.
 
 **Validatie:** geldige/ongeldige entities · negatieve vermogens · scale factors ·
 ontbrekende attributes · ongeldige tijdvensters · `latest_finish` vóór `earliest_start` ·

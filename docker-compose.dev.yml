@@ -1,0 +1,24 @@
+# Development Home Assistant instance for testing domotiapp_energy by hand.
+#
+# The integration is bind-mounted, so a code change only needs a container
+# restart, not a rebuild. Home Assistant's own configuration lives in
+# ./.ha-dev-config, which is created on first start and is not in version
+# control. The UI is on http://localhost:8124 (8123 stays free for a real
+# instance on the same machine).
+#
+#   docker compose -f docker-compose.dev.yml up -d      # start
+#   docker compose -f docker-compose.dev.yml restart    # after a code change
+#   docker compose -f docker-compose.dev.yml logs -f    # follow the log
+#
+# This is not the test runner: the automated suite runs via .\scripts\test.ps1.
+
+services:
+  homeassistant:
+    image: ghcr.io/home-assistant/home-assistant:stable
+    container_name: ha-dev
+    restart: unless-stopped
+    ports:
+      - "8124:8123"
+    volumes:
+      - ./.ha-dev-config:/config
+      - ./custom_components/domotiapp_energy:/config/custom_components/domotiapp_energy
