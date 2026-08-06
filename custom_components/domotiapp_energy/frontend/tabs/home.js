@@ -78,14 +78,46 @@ const CONTRACT_SCHEMA = [
   },
   {
     name: 'fixed_import_price_eur_kwh',
-    label: 'Vast leveringstarief',
-    helper: 'Alleen nodig bij een vast contract.',
+    label: 'Vast leveringstarief (all-in)',
+    helper:
+      'Alleen nodig bij een vast contract. Het all-in bedrag per kWh, ' +
+      'inclusief energiebelasting en btw — dus wat de klant werkelijk betaalt.',
     selector: { number: { min: 0, step: 0.001, unit_of_measurement: '€/kWh' } },
   },
   {
+    name: 'energy_tax_eur_kwh',
+    label: 'Energiebelasting',
+    helper:
+      'Een bedrag per kWh, exclusief btw. Nodig zodra een prijsbron de kale ' +
+      'marktprijs levert; die wordt hiermee naar een all-in prijs omgerekend.',
+    selector: { number: { min: 0, step: 0.0001, unit_of_measurement: '€/kWh' } },
+  },
+  {
+    name: 'supplier_markup_eur_kwh',
+    label: 'Opslag leverancier',
+    // The same trap as the feed-in cost: several contracts bill a fixed
+    // monthly amount, and entering that here would be wrong by orders of
+    // magnitude (SPEC.md §8).
+    helper:
+      'Een bedrag per kWh, exclusief btw — géén vast maandbedrag. Reken een ' +
+      'maandbedrag niet om: alleen de opslag per kWh hoort hier.',
+    selector: { number: { step: 0.0001, unit_of_measurement: '€/kWh' } },
+  },
+  {
+    name: 'vat_percent',
+    label: 'Btw',
+    helper: 'Het btw-percentage over de leveringsprijs. In Nederland 21%.',
+    selector: { number: { min: 0, max: 100, step: 1, unit_of_measurement: '%' } },
+  },
+  {
     name: 'feed_in_price_eur_kwh',
-    label: 'Terugleververgoeding',
-    helper: 'Wat je per teruggeleverde kWh vergoed krijgt.',
+    label: 'Terugleververgoeding (all-in)',
+    // Unambiguous on purpose: this field is never converted, unlike the price
+    // source. Whatever ends up on the invoice per fed-in kWh is what goes here.
+    helper:
+      'Het vaste bedrag dat de klant per teruggeleverde kWh daadwerkelijk ' +
+      'vergoed krijgt. Geen marktprijs en geen percentage: dit veld wordt ' +
+      'niet omgerekend.',
     selector: { number: { min: 0, step: 0.001, unit_of_measurement: '€/kWh' } },
   },
   {
@@ -109,14 +141,21 @@ const CONTRACT_SCHEMA = [
   },
   {
     name: 'low_price_threshold_eur_kwh',
-    label: 'Lage prijsgrens',
-    helper: 'Alleen bij een dynamisch contract.',
+    label: 'Lage prijsgrens (all-in)',
+    // The consequence of normalising on reading: everything downstream compares
+    // all-in prices, so an installer who enters what their market-price sensor
+    // shows would set the threshold about three times too low (SPEC.md §16).
+    helper:
+      'Alleen bij een dynamisch contract. Vergelijk met de all-in prijs, niet ' +
+      'met de kale marktprijs van je prijsbron.',
     selector: { number: { min: 0, step: 0.001, unit_of_measurement: '€/kWh' } },
   },
   {
     name: 'high_price_threshold_eur_kwh',
-    label: 'Hoge prijsgrens',
-    helper: 'Alleen bij een dynamisch contract.',
+    label: 'Hoge prijsgrens (all-in)',
+    helper:
+      'Alleen bij een dynamisch contract. Vergelijk met de all-in prijs, niet ' +
+      'met de kale marktprijs van je prijsbron.',
     selector: { number: { min: 0, step: 0.001, unit_of_measurement: '€/kWh' } },
   },
 ];
@@ -237,6 +276,21 @@ export const homeTab = {
 
     const maxPowerNotice = notice('mdi:calculator-variant-outline');
     connection.body.appendChild(maxPowerNotice.element);
+
+    // The one place the whole price composition is stated in plain Dutch. Every
+    // number below and every threshold above is an all-in amount, and an
+    // installer who does not know that enters the wrong figure without any
+    // error to warn them (SPEC.md §16).
+    const priceNotice = notice('mdi:cash-multiple');
+    priceNotice.set(
+      'DomotiApp Energy rekent overal met de all-in prijs: ' +
+        '(marktprijs + opslag + energiebelasting) × (1 + btw). Een prijsbron ' +
+        'die de kale marktprijs levert wordt daarmee omgerekend; een bron die ' +
+        'al all-in is, wordt ongewijzigd gebruikt. Bij de bron zelf geef je aan ' +
+        'welke van de twee het is.',
+      { tone: 'info' },
+    );
+    contract.body.appendChild(priceNotice.element);
 
     // --- The control level, fixed in 0.1.0 ----------------------------------
     const controlForm = createForm(

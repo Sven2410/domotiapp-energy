@@ -26,6 +26,11 @@ from custom_components.domotiapp_energy.const import (
     CONFIDENCE_HIGH,
     CONFIDENCE_MEDIUM,
     CONTRACT_TYPE_DYNAMIC,
+    MEASUREMENT_GRID_LOAD_PERCENT,
+    MEASUREMENT_GRID_POWER_W,
+    MEASUREMENT_MISSING_ITEMS,
+    MEASUREMENT_PRICE,
+    MEASUREMENT_SOLAR_SURPLUS_W,
     MINUTES_PER_HOUR,
     PRIORITIES,
     SEVERITY_INFO,
@@ -143,7 +148,7 @@ def _advise_missing_data(context: _Context) -> list[AdviceItem]:
             severity=SEVERITY_WARNING,
             reason_code=REASON_MISSING_REQUIRED_DATA,
             confidence=CONFIDENCE_HIGH,
-            measurements={"ontbrekende_onderdelen": len(missing)},
+            measurements={MEASUREMENT_MISSING_ITEMS: len(missing)},
         )
     ]
 
@@ -161,8 +166,8 @@ def _advise_peak_risk(context: _Context) -> list[AdviceItem]:
 
     grid_power = context.metrics.grid_power_w or 0.0
     measurements: dict[str, float | str] = {
-        "netbelasting_procent": round(context.metrics.grid_load_percent, 1),
-        "netvermogen_w": grid_power,
+        MEASUREMENT_GRID_LOAD_PERCENT: round(context.metrics.grid_load_percent, 1),
+        MEASUREMENT_GRID_POWER_W: grid_power,
     }
 
     if grid_power < 0:
@@ -235,7 +240,7 @@ def _advise_solar_surplus(context: _Context) -> list[AdviceItem]:
             confidence=context.metrics.solar_surplus_confidence,
             estimated_savings_eur=savings,
             related_device_ids=[device.id],
-            measurements={"zonneoverschot_w": round(surplus, 1)},
+            measurements={MEASUREMENT_SOLAR_SURPLUS_W: round(surplus, 1)},
         )
     ]
 
@@ -245,6 +250,10 @@ def _advise_price(context: _Context) -> list[AdviceItem]:
 
     SPEC.md §16: with a fixed contract ``low_energy_price`` and
     ``high_energy_price`` are never generated.
+
+    The price compared here is the all-in price the calculator normalised on
+    reading, and both thresholds are all-in amounts as well, so the comparison
+    never depends on what the customer's price sensor happens to report.
     """
     home = context.config.home
     if home.contract_type != CONTRACT_TYPE_DYNAMIC:
@@ -270,7 +279,7 @@ def _advise_price(context: _Context) -> list[AdviceItem]:
                 severity=SEVERITY_INFO,
                 reason_code=REASON_LOW_ENERGY_PRICE,
                 confidence=CONFIDENCE_HIGH,
-                measurements={"prijs_eur_kwh": price},
+                measurements={MEASUREMENT_PRICE: price},
             )
         ]
 
@@ -288,7 +297,7 @@ def _advise_price(context: _Context) -> list[AdviceItem]:
                 severity=SEVERITY_WARNING,
                 reason_code=REASON_HIGH_ENERGY_PRICE,
                 confidence=CONFIDENCE_HIGH,
-                measurements={"prijs_eur_kwh": price},
+                measurements={MEASUREMENT_PRICE: price},
             )
         ]
 
@@ -407,6 +416,11 @@ def _solar_savings(context: _Context, device: DeviceProfile) -> float | None:
     Returns ``0.0`` rather than ``None`` when the sum works out to nothing: that
     is a calculated answer, not an unknown one, and the advice stays visible
     because the reason to run the appliance now still holds.
+
+    Every amount in the formula is all-in: the dynamic price because the
+    calculator normalised it on reading, the fixed tariff and the feed-in
+    amounts because the form asks for them that way (SPEC.md §16). Mixing a bare
+    market price into this sum would overstate the saving by the energy tax.
     """
     energy = device.energy_per_cycle_kwh
     if energy is None:

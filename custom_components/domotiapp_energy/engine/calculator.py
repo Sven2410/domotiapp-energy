@@ -14,6 +14,10 @@ Internal conventions, both mirroring each other:
 * grid power — positive means import from the grid, negative means export;
 * battery power — positive means charging (the home consumes), negative means
   discharging (SPEC.md §16 counts a charging battery as consumption).
+
+A third normalisation happens here for the same reason: the price source is
+converted to an **all-in** price on reading, so nothing downstream has to know
+whether the customer's sensor reports a bare market price (SPEC.md §16).
 """
 
 from __future__ import annotations
@@ -39,6 +43,7 @@ from custom_components.domotiapp_energy.const import (
     PERCENT_MAX,
     POSITIVE_MEANS_EXPORT,
     POSITIVE_MEANS_IMPORT,
+    PRICE_BASES,
     PRICE_COMPONENT_FIXED_CONTRACT,
     SCORE_COMPONENT_DATA_QUALITY,
     SCORE_COMPONENT_FLEXIBILITY,
@@ -61,6 +66,7 @@ from custom_components.domotiapp_energy.models import (
     EnergyMetrics,
     EnergySnapshot,
     EnergySource,
+    HomeProfile,
     SourceFailure,
     StoredConfiguration,
     without_negative_zero,
@@ -178,7 +184,7 @@ class Calculator:
             if not source.is_usable or source.type in duplicated:
                 continue
 
-            value = self._read_source(source, readings)
+            value = self._read_source(source, config.home, readings)
             if value is None:
                 continue
 
@@ -191,18 +197,22 @@ class Calculator:
 
         return readings
 
-    def _read_source(self, source: EnergySource, readings: _Readings) -> float | None:
+    def _read_source(
+        self, source: EnergySource, home: HomeProfile, readings: _Readings
+    ) -> float | None:
         """Read one source, recording why it failed when it does.
 
         A read that fails against an actual entity is recorded as a
         :class:`SourceFailure` as well, so the coordinator can tell the
         installer which source went quiet and why. A source that is simply not
-        finished — no entity linked, no meter mode chosen — produces no such
-        record: nothing broke, it was never configured, and the data quality
-        checklist already reports that.
+        finished — no entity linked, no meter mode chosen, no price basis
+        stated — produces no such record: nothing broke, it was never
+        configured, and the data quality checklist already reports that.
         """
         if source.type == SOURCE_TYPE_GRID_METER:
             value, result = self._read_grid_meter(source)
+        elif source.type == SOURCE_TYPE_CURRENT_PRICE:
+            value, result = self._read_price(source, home)
         else:
             result = read_entity_value(self._hass, source.binding)
             value = result.value if result.ok else None
@@ -227,6 +237,35 @@ class Calculator:
                 )
             )
         return None
+
+    def _read_price(
+        self, source: EnergySource, home: HomeProfile
+    ) -> tuple[float | None, ReadResult | None]:
+        """Read the price source and normalise it to an all-in price.
+
+        This is the one place where the conversion happens, and it happens on
+        reading (SPEC.md §16). From here on a single kind of price exists: the
+        thresholds, the savings formula, the energy score and every sentence the
+        coach produces all compare the same number. Letting the source's own
+        basis travel any further would put the question "which price is this?"
+        into every comparison and every text instead.
+
+        A basis that was never chosen, or a market price without the components
+        that complete it, yields ``None`` for both values: the reading is simply
+        not usable, and like a grid meter without a mode that is a gap in the
+        configuration rather than an entity that failed.
+        """
+        if source.price_basis not in PRICE_BASES:
+            return None, None
+
+        result = read_entity_value(self._hass, source.binding)
+        if not result.ok or result.value is None:
+            return None, result
+
+        normalised = home.all_in_price_eur_kwh(result.value, source.price_basis)
+        if normalised is None:
+            return None, None
+        return normalised, result
 
     def _read_grid_meter(
         self, source: EnergySource

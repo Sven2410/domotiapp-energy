@@ -131,6 +131,30 @@ CONTRACT_TYPES: Final[tuple[str, ...]] = (CONTRACT_TYPE_FIXED, CONTRACT_TYPE_DYN
 # no advice is generated until the installer explicitly selects "dynamic".
 DEFAULT_CONTRACT_TYPE: Final = CONTRACT_TYPE_FIXED
 
+# --- Price composition (SPEC.md §8 "Woning" and §16 "Prijsopbouw") ----------
+#
+# What a price source actually reports. Deliberately without a default, exactly
+# like METER_MODES: in the Netherlands a bare market price and an all-in price
+# differ by roughly a factor of three (about EUR 0.08 against EUR 0.25), so a
+# basis nobody stated is not a detail to fill in — it makes the source unusable.
+# The field itself lives on the source; the components below live on the home,
+# because they belong to the contract and not to the sensor.
+PRICE_BASIS_ALL_IN: Final = "all_in"
+PRICE_BASIS_MARKET: Final = "market"
+PRICE_BASES: Final[tuple[str, ...]] = (PRICE_BASIS_ALL_IN, PRICE_BASIS_MARKET)
+
+# A field on the home profile rather than a constant here, for the same reason
+# net_metering_until is a date: the rate changes, and following it should not
+# require a release.
+DEFAULT_VAT_PERCENT: Final = 21.0
+MIN_VAT_PERCENT: Final = 0.0
+MAX_VAT_PERCENT: Final = 100.0
+
+# Decimals the normalised all-in price is rounded to. The multiplication by the
+# VAT factor otherwise leaves binary floating point noise, which would reach the
+# panel verbatim; six decimals is far finer than any tariff is ever quoted.
+ALL_IN_PRICE_DECIMALS: Final = 6
+
 STRATEGY_COMFORT: Final = "comfort"
 STRATEGY_BALANCED: Final = "balanced"
 STRATEGY_SAVE: Final = "save"
@@ -618,6 +642,20 @@ ADVICE_RANK_TIME_LIMIT: Final = 3
 ADVICE_RANK_SOLAR: Final = 4
 ADVICE_RANK_PRICE: Final = 5
 ADVICE_RANK_GENERAL: Final = 6
+
+# --- Advice measurements (SPEC.md §8 "Energiecoach") ------------------------
+#
+# The keys under AdviceItem.measurements. Dutch, because they surface in the
+# panel and in the attributes of sensor.domotiapp_energy_current_advice, where
+# customers build dashboards on them — so they are constants rather than
+# literals, and they stay put. The coach adds the reading unit when it phrases
+# them; see MEASUREMENT_PRICE in particular, which is always the normalised
+# all-in price (SPEC.md §16).
+MEASUREMENT_PRICE: Final = "prijs_eur_kwh"
+MEASUREMENT_GRID_LOAD_PERCENT: Final = "netbelasting_procent"
+MEASUREMENT_GRID_POWER_W: Final = "netvermogen_w"
+MEASUREMENT_SOLAR_SURPLUS_W: Final = "zonneoverschot_w"
+MEASUREMENT_MISSING_ITEMS: Final = "ontbrekende_onderdelen"
 
 # --- Coach question selector (SPEC.md §8 "Energiecoach") --------------------
 

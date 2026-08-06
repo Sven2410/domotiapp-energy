@@ -299,18 +299,35 @@ Duidelijke lege statussen wanneer nog niets is ingesteld.
 - `max_grid_power_w` — maximaal toegestaan netvermogen
 - `peak_warning_percent` — waarschuwing vanaf % (default 80)
 - `contract_type` — `fixed` | `dynamic`
-- `fixed_import_price_eur_kwh`
-- `feed_in_price_eur_kwh`
+- `fixed_import_price_eur_kwh` — het **all-in** bedrag per afgenomen kWh, inclusief
+  energiebelasting en btw. Dit veld wordt niet omgerekend; de hulptekst zegt dat.
+- `energy_tax_eur_kwh` — energiebelasting **per kWh**, exclusief btw
+- `supplier_markup_eur_kwh` — opslag van de leverancier **per kWh**, exclusief btw. De
+  veldhulptekst moet dat net zo expliciet zeggen als bij `feed_in_cost_eur_kwh`:
+  verschillende contracten rekenen een vast maandbedrag, en dat is hier niet de
+  bedoeling. Mag negatief zijn — een korting is een echt contract.
+- `vat_percent` — default `21`. Een veld en geen constante, om dezelfde reden als
+  `net_metering_until` een datum is: het tarief verandert, en dat mag geen release kosten.
+- `feed_in_price_eur_kwh` — het vaste **all-in** bedrag dat de klant per teruggeleverde
+  kWh werkelijk vergoed krijgt. Geen marktprijs en geen percentage; dit veld wordt niet
+  omgerekend. Een prijsbron voor teruglevering is een idee voor een volgende versie.
 - `feed_in_cost_eur_kwh` — terugleverkosten **per kWh**. De veldhulptekst moet dat
   expliciet zeggen: verschillende leveranciers rekenen een vast maandbedrag per staffel,
   en dat is hier niet de bedoeling. Het advies gaat over één apparaatcyclus, dus alleen
   de marginale kosten zijn zinvol.
 - `net_metering_until` — nullable datum, default `2027-01-01`. Zie §16.
-- `low_price_threshold_eur_kwh`
-- `high_price_threshold_eur_kwh`
+- `low_price_threshold_eur_kwh` — **all-in**, zie §16
+- `high_price_threshold_eur_kwh` — **all-in**, zie §16
 - `min_solar_surplus_w` (default 500)
 - `default_strategy` — `comfort` | `balanced` | `save` | `max_self_consumption`
 - `control_level` — vast op `advice_only` in 0.1.0
+
+**Alle prijsvelden zijn all-in (verplichte GUI-hulptekst).** De prijsgrenzen, het vaste
+leveringstarief en de terugleververgoeding zijn bedragen inclusief energiebelasting en
+btw, omdat de rekenmotor uitsluitend met all-in prijzen werkt (§16). De GUI toont dat in
+het label van beide prijsgrenzen én één keer als toelichting bij de prijsvelden, met de
+formule erbij. Zonder die tekst vult een installateur de grens in die zijn prijssensor
+toont — een factor drie ernaast, zonder enige foutmelding.
 
 **Relatie zekering ↔ max vermogen (expliciet vastleggen):**
 theoretisch maximum = `phases × 230 V × main_fuse_a`.
@@ -355,6 +372,21 @@ export_entity_id  : (alleen bij separate_import_export)
 ```
 
 Deze keuze wordt expliciet opgeslagen. Nooit afleiden of gokken.
+
+Voor `current_price` extra:
+
+```text
+price_basis : all_in | market
+```
+
+**Even streng als `meter_mode`, en zonder default.** Een prijssensor kan de kale
+marktprijs melden of de all-in prijs die de klant betaalt; in Nederland scheelt dat
+ongeveer een factor drie (≈ € 0,08 tegen ≈ € 0,25). Wie dat niet vastlegt, laat de
+rekenmotor gokken op de belangrijkste vergelijking die hij maakt. Is `price_basis` niet
+gekozen, dan is de bron **onbruikbaar**: geen prijs, `reason_code =
+missing_required_data`, en de rij telt als `invalid_item` in de datakwaliteit. Een
+bestaande prijsbron valt daarmee uit tot iemand de keuze maakt — dat is het eerlijke
+gedrag, want die informatie ontbrak werkelijk. Zie §16 voor de omrekening zelf.
 
 `grid_meter` en `current_price` mogen hoogstens één ingeschakelde bron per type hebben;
 zie §16 voor wat er gebeurt wanneer er toch meerdere staan.
@@ -893,6 +925,52 @@ anti-spamroute als §12.
 Presenteer dit **niet** als wetenschappelijke efficiëntiescore. README en UI leggen uit dat
 het een DomotiApp-indicator is voor de actuele mogelijkheid om energie slim te gebruiken.
 
+### Prijsopbouw en normalisatie
+
+Een prijsbron zegt met `price_basis` wat hij levert (§8). De rekenmotor rekent een kale
+marktprijs **bij het uitlezen** één keer om naar een all-in prijs, en daarna bestaat er in
+het hele systeem nog maar één soort prijs:
+
+```text
+all_in = (marktprijs + opslag_leverancier + energiebelasting) × (1 + btw / 100)
+
+price_basis = all_in   → de waarde wordt ongewijzigd gebruikt
+price_basis = market   → bovenstaande formule
+price_basis ontbreekt  → geen prijs; missing_required_data, rij telt als invalid_item
+```
+
+De omrekening gebeurt ná de eenheidsconversie van §15, zodat een bron in `ct/kWh` eerst
+euro's wordt en daarna pas all-in.
+
+**Waarom bij het uitlezen (en niet bij het vergelijken).** Het alternatief is de vraag
+"welke soort prijs is dit?" meedragen tot in elke vergelijking, elke adviestekst en elk
+getal in het paneel. Dat is precies het soort verspreide aanname waar dit project al
+drie keer op is stukgelopen. Door één keer te normaliseren geldt overal hetzelfde getal:
+de prijsgrenzen, de besparingsformule, de `price_component` van de energiescore, het
+`prijs_eur_kwh`-meetgetal op een advies en het antwoord op "Kan ik nu het beste een
+apparaat gebruiken?" vergelijken allemaal dezelfde eenheid.
+
+**Gevolg dat vastligt: de prijsgrenzen zijn dus all-in.** Dat staat in het label en in de
+hulptekst van beide velden (§8), anders vult iemand € 0,05 in omdat zijn sensor dat toont.
+
+**Energiebelasting en opslag zijn verplicht zodra een bron `market` levert.** Ze staan op
+`HomeProfile` en niet op de bron: het zijn eigenschappen van het contract, en bij twee
+prijsbronnen zouden er twee kopieën ontstaan die uit elkaar kunnen lopen. Ontbreekt er
+één, dan wordt de prijs **niet** gebruikt — ze op nul zetten zou de prijs met meer dan de
+helft onderschatten terwijl elke grens, besparing en coachtekst hem als feit blijft
+noemen. `validate_configuration` meldt dat bij de woning, want anders ziet de installateur
+een bron die schoon valideert en nergens een prijs. Een expliciete `0` is wél een antwoord;
+alleen "niet ingevuld" blokkeert. Btw kent wel een default en ontbreekt daarom nooit.
+
+**De energiescore verandert hier niet van.** `price_component` kijkt puur relatief naar de
+afstand tussen de twee grenzen, en dat blijft kloppen zolang prijs en grenzen dezelfde
+eenheid hebben — wat normalisatie bij het uitlezen nu juist garandeert.
+
+**Teruglevering wordt niet genormaliseerd.** `feed_in_price_eur_kwh` blijft een vast
+all-in bedrag (§8). De importformule past er niet op: teruglevering levert doorgaans de
+marktprijs op, eventueel met btw, maar zonder energiebelasting. Een aparte prijsbron voor
+teruglevering is een idee voor een volgende versie, geen onderdeel van 0.1.0.
+
 ### Saldering en de besparingsformule
 
 De salderingsregeling stopt in één keer op **2027-01-01**, zonder afbouw. Tot die datum
@@ -908,6 +986,10 @@ besparing = energie_per_cyclus × (importprijs − effectieve_terugleververgoedi
 effectieve_terugleververgoeding = importprijs           tijdens saldering
                                 = feed_in_price         daarna
 ```
+
+Elk bedrag in deze som is all-in: de dynamische prijs omdat hij bij het uitlezen is
+genormaliseerd, het vaste tarief en de terugleverbedragen omdat het formulier er expliciet
+om vraagt. Een kale marktprijs hierin zou de besparing met de energiebelasting overdrijven.
 
 Tijdens saldering valt `importprijs − importprijs` weg en blijft
 `energie × terugleverkosten` over. Daarna neemt het terugleveringstarief het over en
@@ -958,6 +1040,12 @@ Aanvullende regels die expliciet vastliggen:
 - Tijdvensters en stille uren worden geëvalueerd in de HA-tijdzone via `dt_util.now()`.
 - Er is altijd exact één hoofdadvies; bij geen enkele treffer is dat
   `neutral_energy_situation`.
+- Het coachantwoord op **"Kan ik nu het beste een apparaat gebruiken?"** volgt dezelfde
+  volgorde: zonneoverschot, dan piekbelasting, dan prijs. Pas als geen van die drie iets
+  zegt, luidt het antwoord dat er geen aanleiding is. Een lage of hoge prijs noemt het
+  bedrag erbij, uitdrukkelijk als **all-in** prijs — hetzelfde genormaliseerde getal dat
+  tegen de prijsgrenzen is vergeleken. Zonder die tak stond er "geen aanleiding" terwijl
+  er een prijsadvies naast in de lijst hing.
 
 Sorteervolgorde: 1) veiligheid 2) piekbelasting 3) harde tijdsgrenzen 4) zonnebenutting
 5) prijs 6) algemene optimalisatie. Nooit meer adviezen tonen dan `max_advice_count`.

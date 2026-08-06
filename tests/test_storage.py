@@ -23,6 +23,7 @@ from custom_components.domotiapp_energy.const import (
     DEFAULT_PHASES,
     DEFAULT_PRIORITY,
     DEFAULT_SCALE_FACTOR,
+    DEFAULT_VAT_PERCENT,
     DEVICE_TYPE_DISHWASHER,
     DEVICE_TYPE_HEAT_PUMP,
     DUPLICATE_SUBJECT_PREFIX,
@@ -37,9 +38,12 @@ from custom_components.domotiapp_energy.const import (
     METER_MODE_SINGLE_SIGNED,
     NOMINAL_VOLTAGE_PER_PHASE,
     PHASES_THREE,
+    PRICE_BASIS_ALL_IN,
+    PRICE_BASIS_MARKET,
     SCHEMA_VERSION,
     SEVERITY_INFO,
     SEVERITY_WARNING,
+    SOURCE_TYPE_CURRENT_PRICE,
     SOURCE_TYPE_GRID_METER,
     STORAGE_KEY,
     STORAGE_MINOR_VERSION,
@@ -1243,3 +1247,82 @@ def test_the_feed_in_cost_round_trips_and_refuses_a_negative() -> None:
     assert HomeProfile.from_dict({"feed_in_cost_eur_kwh": -1}).feed_in_cost_eur_kwh is (
         None
     )
+
+
+# --- Price composition (SPEC.md §16 "Prijsopbouw") ---------------------------
+
+
+def test_the_price_components_round_trip() -> None:
+    """The three contract fields survive a write and a read."""
+    home = HomeProfile(
+        energy_tax_eur_kwh=0.1088,
+        supplier_markup_eur_kwh=0.02,
+        vat_percent=9.0,
+    )
+
+    restored = HomeProfile.from_dict(home.to_dict())
+
+    assert restored.energy_tax_eur_kwh == 0.1088
+    assert restored.supplier_markup_eur_kwh == 0.02
+    assert restored.vat_percent == 9.0
+
+
+def test_a_missing_vat_percentage_falls_back_to_the_default() -> None:
+    """An older file predates the field and gets the Dutch rate."""
+    assert HomeProfile.from_dict({}).vat_percent == DEFAULT_VAT_PERCENT
+
+
+def test_a_negative_energy_tax_is_not_stored() -> None:
+    """There is no negative tax per kWh, so it becomes "not entered"."""
+    home = HomeProfile.from_dict({"energy_tax_eur_kwh": -0.1})
+
+    assert home.energy_tax_eur_kwh is None
+
+
+def test_a_negative_supplier_markup_is_kept() -> None:
+    """A discount is a real contract term, unlike a negative tax."""
+    home = HomeProfile.from_dict({"supplier_markup_eur_kwh": -0.01})
+
+    assert home.supplier_markup_eur_kwh == -0.01
+
+
+def test_the_price_basis_round_trips_on_a_source() -> None:
+    """The basis is part of the stored source, never re-derived."""
+    source = EnergySource(
+        id="s1", type=SOURCE_TYPE_CURRENT_PRICE, price_basis=PRICE_BASIS_MARKET
+    )
+
+    assert source.to_dict()["price_basis"] == PRICE_BASIS_MARKET
+    assert EnergySource.from_dict(source.to_dict()).price_basis == PRICE_BASIS_MARKET
+
+
+def test_an_unrecognised_price_basis_becomes_none() -> None:
+    """Unlike the source type, a bad basis is dropped rather than quarantined.
+
+    The row still describes a price source; only the one field is unusable, and
+    the calculator already treats "no basis" as "do not use this source".
+    """
+    source = EnergySource.from_dict({"type": "current_price", "price_basis": "spot"})
+
+    assert source.price_basis is None
+    assert source.invalid_reason is None
+
+
+def test_the_all_in_price_of_an_all_in_source_is_the_price_itself() -> None:
+    """No conversion, whatever the components say (SPEC.md §16)."""
+    home = HomeProfile(energy_tax_eur_kwh=0.1088, supplier_markup_eur_kwh=0.02)
+
+    assert home.all_in_price_eur_kwh(0.28, PRICE_BASIS_ALL_IN) == 0.28
+
+
+def test_a_market_price_without_components_has_no_all_in_price() -> None:
+    """Refused, not completed with zeroes."""
+    assert HomeProfile().all_in_price_eur_kwh(0.08, PRICE_BASIS_MARKET) is None
+    assert HomeProfile().has_price_components is False
+
+
+def test_an_unstated_basis_has_no_all_in_price() -> None:
+    """The strictness of the meter mode, applied to the price."""
+    home = HomeProfile(energy_tax_eur_kwh=0.1088, supplier_markup_eur_kwh=0.02)
+
+    assert home.all_in_price_eur_kwh(0.08, None) is None

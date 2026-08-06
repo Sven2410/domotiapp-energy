@@ -21,6 +21,7 @@ from custom_components.domotiapp_energy.const import (
     DEVICE_TYPE_EV_CHARGER,
     DEVICE_TYPE_GENERIC_MONITOR,
     EXPLANATION_KEYS,
+    MEASUREMENT_PRICE,
     PRIORITY_HIGH,
     SEVERITY_INFO,
     SEVERITY_WARNING,
@@ -1096,6 +1097,115 @@ async def test_the_provider_advises_using_a_device_during_an_export_peak(
     answer = generated.explanations["use_device_now"]
     assert answer.startswith("Ja.")
     assert "geen gunstig moment" not in answer
+
+
+async def test_the_provider_answers_the_device_question_from_the_price(
+    hass: HomeAssistant,
+) -> None:
+    """A low price is a reason to run something now, and the answer says so.
+
+    Before the price round this fell through to "no reason to move anything"
+    while a low price advice was sitting in the list right next to it.
+    """
+    advice = AdviceItem(
+        id="a1",
+        title="Lage energieprijs",
+        message="De actuele energieprijs is relatief laag.",
+        severity=SEVERITY_INFO,
+        reason_code=REASON_LOW_ENERGY_PRICE,
+        confidence=CONFIDENCE_HIGH,
+    )
+    result = CoachResult(
+        primary_advice=advice,
+        advice=[advice],
+        metrics=_metrics(current_price_eur_kwh=0.2088),
+    )
+
+    generated = await RuleBasedCoachProvider().async_generate(result)
+
+    answer = generated.explanations["use_device_now"]
+    assert answer.startswith("Ja.")
+    # The same normalised all-in number the thresholds were compared against.
+    assert "0,209" in answer
+    assert "all-in" in answer
+
+
+async def test_the_provider_advises_waiting_at_a_high_price(
+    hass: HomeAssistant,
+) -> None:
+    """The mirror image, phrased like the peak answer."""
+    advice = AdviceItem(
+        id="a1",
+        title="Hoge energieprijs",
+        message="De actuele energieprijs is relatief hoog.",
+        severity=SEVERITY_WARNING,
+        reason_code=REASON_HIGH_ENERGY_PRICE,
+        confidence=CONFIDENCE_HIGH,
+    )
+    result = CoachResult(
+        primary_advice=advice,
+        advice=[advice],
+        metrics=_metrics(current_price_eur_kwh=0.45),
+    )
+
+    generated = await RuleBasedCoachProvider().async_generate(result)
+
+    answer = generated.explanations["use_device_now"]
+    assert "geen gunstig moment" in answer
+    assert "0,450" in answer
+
+
+async def test_the_solar_moment_outranks_the_price_answer(
+    hass: HomeAssistant,
+) -> None:
+    """Surplus comes before price, exactly as the advice ranking does."""
+    solar = AdviceItem(
+        id="a1",
+        title="Zonneoverschot beschikbaar",
+        message="Dit is een gunstig moment om Vaatwasser te gebruiken.",
+        severity=SEVERITY_INFO,
+        reason_code=REASON_SOLAR_SURPLUS_AVAILABLE,
+        confidence=CONFIDENCE_HIGH,
+    )
+    price = AdviceItem(
+        id="a2",
+        title="Hoge energieprijs",
+        message="De actuele energieprijs is relatief hoog.",
+        severity=SEVERITY_WARNING,
+        reason_code=REASON_HIGH_ENERGY_PRICE,
+        confidence=CONFIDENCE_HIGH,
+    )
+    result = CoachResult(
+        primary_advice=solar,
+        advice=[solar, price],
+        metrics=_metrics(current_price_eur_kwh=0.45),
+    )
+
+    generated = await RuleBasedCoachProvider().async_generate(result)
+
+    assert generated.explanations["use_device_now"] == solar.message
+
+
+async def test_the_provider_names_the_price_as_all_in(hass: HomeAssistant) -> None:
+    """The "why" answer may not quote a price of an unknown kind.
+
+    The measurement is the normalised all-in price, and a reader who assumed a
+    market price would think the figure was three times too high.
+    """
+    advice = AdviceItem(
+        id="a1",
+        title="Hoge energieprijs",
+        message="De actuele energieprijs is relatief hoog.",
+        severity=SEVERITY_WARNING,
+        reason_code=REASON_HIGH_ENERGY_PRICE,
+        confidence=CONFIDENCE_HIGH,
+        measurements={MEASUREMENT_PRICE: 0.45},
+    )
+    result = CoachResult(primary_advice=advice, advice=[advice], metrics=_metrics())
+
+    generated = await RuleBasedCoachProvider().async_generate(result)
+
+    assert "all-in prijs in €/kWh: 0.45" in generated.explanations["why_advice"]
 
 
 async def test_the_provider_reports_the_peak_situation(

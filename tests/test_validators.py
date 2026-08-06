@@ -29,8 +29,11 @@ from custom_components.domotiapp_energy.const import (
     METER_MODE_SINGLE_SIGNED,
     PHASES_THREE,
     POSITIVE_MEANS_IMPORT,
+    PRICE_BASIS_ALL_IN,
+    PRICE_BASIS_MARKET,
     SEVERITY_ERROR,
     SEVERITY_WARNING,
+    SOURCE_TYPE_CURRENT_PRICE,
     SOURCE_TYPE_GRID_METER,
     SOURCE_TYPE_SOLAR,
     UNIT_CT_KWH,
@@ -478,6 +481,26 @@ def test_a_negative_minimum_solar_surplus_is_rejected() -> None:
     assert VALIDATION_OUT_OF_RANGE in _codes(issues)
 
 
+def test_a_vat_percentage_outside_the_range_is_rejected() -> None:
+    """VAT is a percentage, however editable the field is."""
+    issues = validate_home_profile(HomeProfile(vat_percent=210.0))
+
+    assert _fields(issues) == {"vat_percent"}
+    assert VALIDATION_OUT_OF_RANGE in _codes(issues)
+
+
+def test_a_negative_energy_tax_is_rejected() -> None:
+    """There is no negative energy tax per kWh; a typo should say so."""
+    issues = validate_home_profile(HomeProfile(energy_tax_eur_kwh=-0.1))
+
+    assert _fields(issues) == {"energy_tax_eur_kwh"}
+
+
+def test_the_default_vat_percentage_validates() -> None:
+    """The default the form starts with is itself valid."""
+    assert validate_home_profile(HomeProfile()) == []
+
+
 def test_invalid_choices_in_the_home_profile_are_reported() -> None:
     """A directly constructed profile with nonsense choices is caught."""
     home = HomeProfile(phases=2, contract_type="barter", default_strategy="vibes")
@@ -634,6 +657,42 @@ def test_a_complete_separate_grid_meter_has_no_issues() -> None:
     )
 
     assert validate_energy_source(source) == []
+
+
+def test_a_price_source_without_a_basis_is_incomplete() -> None:
+    """As strict as the meter mode, because the two readings differ threefold."""
+    source = EnergySource(
+        id="s1",
+        type=SOURCE_TYPE_CURRENT_PRICE,
+        binding=EntityBinding(entity_id="sensor.price", unit=UNIT_EUR_KWH),
+    )
+
+    issues = validate_energy_source(source)
+
+    assert "price_basis" in _fields(issues)
+    assert VALIDATION_REQUIRED in _codes(issues)
+    assert has_errors(issues) is True
+
+
+def test_a_price_source_with_a_basis_has_no_issues() -> None:
+    """Stating the basis is all a price source needs beyond its entity."""
+    source = EnergySource(
+        id="s1",
+        type=SOURCE_TYPE_CURRENT_PRICE,
+        binding=EntityBinding(entity_id="sensor.price", unit=UNIT_EUR_KWH),
+        price_basis=PRICE_BASIS_ALL_IN,
+    )
+
+    assert validate_energy_source(source) == []
+
+
+def test_a_price_source_still_needs_an_entity() -> None:
+    """The basis check does not replace the entity check."""
+    source = EnergySource(
+        id="s1", type=SOURCE_TYPE_CURRENT_PRICE, price_basis=PRICE_BASIS_MARKET
+    )
+
+    assert _fields(validate_energy_source(source)) == {"entity_id"}
 
 
 # --- Device profile validation ----------------------------------------------
@@ -940,6 +999,96 @@ def test_preference_issues_get_their_own_key() -> None:
 
     assert set(issues) == {"preferences"}
     assert _fields(issues["preferences"]) == {"max_advice_count"}
+
+
+def test_a_market_price_source_demands_the_components_that_complete_it() -> None:
+    """The cross-check that makes a silently refused price visible.
+
+    Without it the installer sees a price source that validates cleanly, no
+    price anywhere in the panel, and nothing that explains the gap.
+    """
+    home = HomeProfile(contract_type=CONTRACT_TYPE_DYNAMIC)
+    sources = [
+        EnergySource(
+            id="s1",
+            type=SOURCE_TYPE_CURRENT_PRICE,
+            binding=EntityBinding(entity_id="sensor.price", unit=UNIT_EUR_KWH),
+            price_basis=PRICE_BASIS_MARKET,
+        )
+    ]
+
+    issues = validate_configuration(home, sources, [], UserPreferences())
+
+    assert set(issues) == {"home"}
+    assert _fields(issues["home"]) == {"energy_tax_eur_kwh"}
+    assert VALIDATION_REQUIRED in _codes(issues["home"])
+
+
+def test_an_all_in_price_source_needs_no_components() -> None:
+    """Nothing has to be converted, so nothing has to be entered."""
+    home = HomeProfile(contract_type=CONTRACT_TYPE_DYNAMIC)
+    sources = [
+        EnergySource(
+            id="s1",
+            type=SOURCE_TYPE_CURRENT_PRICE,
+            binding=EntityBinding(entity_id="sensor.price", unit=UNIT_EUR_KWH),
+            price_basis=PRICE_BASIS_ALL_IN,
+        )
+    ]
+
+    assert validate_configuration(home, sources, [], UserPreferences()) == {}
+
+
+def test_a_market_source_with_the_components_produces_no_issues() -> None:
+    """Both components filled in is the complete case."""
+    home = HomeProfile(
+        contract_type=CONTRACT_TYPE_DYNAMIC,
+        energy_tax_eur_kwh=0.1088,
+        supplier_markup_eur_kwh=0.02,
+    )
+    sources = [
+        EnergySource(
+            id="s1",
+            type=SOURCE_TYPE_CURRENT_PRICE,
+            binding=EntityBinding(entity_id="sensor.price", unit=UNIT_EUR_KWH),
+            price_basis=PRICE_BASIS_MARKET,
+        )
+    ]
+
+    assert validate_configuration(home, sources, [], UserPreferences()) == {}
+
+
+def test_a_disabled_market_source_demands_nothing() -> None:
+    """A source the engine will not read cannot make a field necessary."""
+    home = HomeProfile(contract_type=CONTRACT_TYPE_DYNAMIC)
+    sources = [
+        EnergySource(
+            id="s1",
+            type=SOURCE_TYPE_CURRENT_PRICE,
+            enabled=False,
+            binding=EntityBinding(entity_id="sensor.price", unit=UNIT_EUR_KWH),
+            price_basis=PRICE_BASIS_MARKET,
+        )
+    ]
+
+    assert validate_configuration(home, sources, [], UserPreferences()) == {}
+
+
+def test_the_component_issue_joins_the_other_home_issues() -> None:
+    """It is added to the home key rather than replacing what is already there."""
+    home = HomeProfile(contract_type=CONTRACT_TYPE_DYNAMIC, max_grid_power_w=0.0)
+    sources = [
+        EnergySource(
+            id="s1",
+            type=SOURCE_TYPE_CURRENT_PRICE,
+            binding=EntityBinding(entity_id="sensor.price", unit=UNIT_EUR_KWH),
+            price_basis=PRICE_BASIS_MARKET,
+        )
+    ]
+
+    issues = validate_configuration(home, sources, [], UserPreferences())
+
+    assert _fields(issues["home"]) == {"max_grid_power_w", "energy_tax_eur_kwh"}
 
 
 def test_a_valid_configuration_produces_no_issues() -> None:

@@ -33,6 +33,7 @@ from homeassistant.util import dt as dt_util
 
 from .const import (
     ALL_DAYS_OF_WEEK,
+    ALL_IN_PRICE_DECIMALS,
     ALLOWED_PHASES,
     CAPABILITIES,
     CONFIDENCE_LEVELS,
@@ -56,6 +57,7 @@ from .const import (
     DEFAULT_QUIET_HOURS_START,
     DEFAULT_SCALE_FACTOR,
     DEFAULT_STRATEGY,
+    DEFAULT_VAT_PERCENT,
     DEVICE_ENTITY_BINDING_KEYS,
     DEVICE_TYPES,
     EXCLUSIVE_SOURCE_TYPES,
@@ -71,10 +73,15 @@ from .const import (
     MIN_ADVICE_COUNT,
     MIN_DAY_OF_WEEK,
     MIN_MAIN_FUSE_A,
+    MIN_VAT_PERCENT,
     MINUTES_PER_HOUR,
     NOISY_BY_DEFAULT_DEVICE_TYPES,
     NOMINAL_VOLTAGE_PER_PHASE,
+    PERCENT_MAX,
     POSITIVE_MEANS_OPTIONS,
+    PRICE_BASES,
+    PRICE_BASIS_ALL_IN,
+    PRICE_BASIS_MARKET,
     PRIORITIES,
     SCHEMA_VERSION,
     SEVERITIES,
@@ -410,8 +417,20 @@ class HomeProfile:
     max_grid_power_w: float | None = None
     peak_warning_percent: int = DEFAULT_PEAK_WARNING_PERCENT
     contract_type: str = DEFAULT_CONTRACT_TYPE
+    # An all-in amount, like every other price in this model: what the customer
+    # pays per imported kWh including energy tax and VAT (SPEC.md §16).
     fixed_import_price_eur_kwh: float | None = None
+    # The two per-kWh components a bare market price is missing. They live on
+    # the home and not on the price source because they belong to the contract:
+    # two price sources would otherwise carry two copies that can drift apart.
+    energy_tax_eur_kwh: float | None = None
+    # No lower bound, unlike the energy tax: a supplier markup can genuinely be
+    # negative, and refusing that would push a real contract into "not entered".
+    supplier_markup_eur_kwh: float | None = None
+    vat_percent: float = DEFAULT_VAT_PERCENT
     feed_in_price_eur_kwh: float | None = None
+    # Both thresholds are compared against the normalised all-in price, so they
+    # are all-in amounts as well (SPEC.md §16).
     low_price_threshold_eur_kwh: float | None = None
     high_price_threshold_eur_kwh: float | None = None
     # What the supplier charges per fed-in kWh. A per-kWh amount, not the
@@ -437,6 +456,9 @@ class HomeProfile:
             "peak_warning_percent": self.peak_warning_percent,
             "contract_type": self.contract_type,
             "fixed_import_price_eur_kwh": self.fixed_import_price_eur_kwh,
+            "energy_tax_eur_kwh": self.energy_tax_eur_kwh,
+            "supplier_markup_eur_kwh": self.supplier_markup_eur_kwh,
+            "vat_percent": self.vat_percent,
             "feed_in_price_eur_kwh": self.feed_in_price_eur_kwh,
             "low_price_threshold_eur_kwh": self.low_price_threshold_eur_kwh,
             "high_price_threshold_eur_kwh": self.high_price_threshold_eur_kwh,
@@ -475,6 +497,15 @@ class HomeProfile:
             ),
             fixed_import_price_eur_kwh=_as_optional_float(
                 data.get("fixed_import_price_eur_kwh")
+            ),
+            energy_tax_eur_kwh=_as_optional_float(
+                data.get("energy_tax_eur_kwh"), minimum=0.0
+            ),
+            supplier_markup_eur_kwh=_as_optional_float(
+                data.get("supplier_markup_eur_kwh")
+            ),
+            vat_percent=_as_float(
+                data.get("vat_percent"), DEFAULT_VAT_PERCENT, minimum=MIN_VAT_PERCENT
             ),
             feed_in_price_eur_kwh=_as_optional_float(data.get("feed_in_price_eur_kwh")),
             low_price_threshold_eur_kwh=_as_optional_float(
@@ -519,6 +550,43 @@ class HomeProfile:
         return today < self.net_metering_until
 
     @property
+    def has_price_components(self) -> bool:
+        """Return whether a bare market price can be completed to an all-in one.
+
+        VAT is deliberately not part of this: it has a default, so it is always
+        known. The energy tax and the supplier markup have none, because there
+        is no rate that is right for everyone and a zero would silently
+        understate the price by more than half.
+        """
+        return (
+            self.energy_tax_eur_kwh is not None
+            and self.supplier_markup_eur_kwh is not None
+        )
+
+    def all_in_price_eur_kwh(self, price: float, basis: str | None) -> float | None:
+        """Return one price source reading as an all-in price, or None.
+
+        ``None`` means the reading cannot be made comparable — no basis was
+        chosen, or a market price arrived without the components that complete
+        it. The caller then treats the source as unusable rather than letting a
+        number of an unknown kind into the engine (SPEC.md §16).
+
+        A method on the profile rather than a function in the engine because
+        both the calculator and the validators need it, and the validators
+        cannot import the calculator.
+        """
+        if basis == PRICE_BASIS_ALL_IN:
+            return price
+
+        markup = self.supplier_markup_eur_kwh
+        tax = self.energy_tax_eur_kwh
+        if basis != PRICE_BASIS_MARKET or markup is None or tax is None:
+            return None
+
+        all_in = (price + markup + tax) * (1 + self.vat_percent / PERCENT_MAX)
+        return round(all_in, ALL_IN_PRICE_DECIMALS)
+
+    @property
     def theoretical_max_grid_power_w(self) -> float | None:
         """Return phases x 230 V x main fuse, or None when the fuse is unset.
 
@@ -548,6 +616,11 @@ class EnergySource:
     positive_means: str | None = None
     import_entity_id: str | None = None
     export_entity_id: str | None = None
+    # Price source only, and just as strict as meter_mode: without an explicit
+    # basis the reading cannot be normalised, so the source stays unused. An
+    # existing price source therefore goes unusable until someone states what it
+    # reports — which is honest, because that really is unknown (SPEC.md §16).
+    price_basis: str | None = None
     notes: str | None = None
     # What this hardware can do. Registering only in 0.1.0 (SPEC.md §12); an
     # empty list means nobody said, not that it can do nothing. A controllable
@@ -574,6 +647,7 @@ class EnergySource:
             "positive_means": self.positive_means,
             "import_entity_id": self.import_entity_id,
             "export_entity_id": self.export_entity_id,
+            "price_basis": self.price_basis,
             "notes": self.notes,
         }
 
@@ -599,6 +673,7 @@ class EnergySource:
             ),
             import_entity_id=_as_optional_str(data.get("import_entity_id")),
             export_entity_id=_as_optional_str(data.get("export_entity_id")),
+            price_basis=_as_choice(data.get("price_basis"), PRICE_BASES, None),
             notes=_as_optional_str(data.get("notes")),
             capabilities=_as_capabilities(data.get("capabilities")),
             control_forbidden=_as_bool(data.get("control_forbidden"), False),

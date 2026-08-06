@@ -35,17 +35,22 @@ from .const import (
     MAX_ADVICE_COUNT,
     MAX_MAIN_FUSE_A,
     MAX_PEAK_WARNING_PERCENT,
+    MAX_VAT_PERCENT,
     METER_MODE_SEPARATE,
     METER_MODE_SINGLE_SIGNED,
     METER_MODES,
     MIN_ADVICE_COUNT,
     MIN_MAIN_FUSE_A,
     MIN_PEAK_WARNING_PERCENT,
+    MIN_VAT_PERCENT,
     MINUTES_PER_DAY,
     POSITIVE_MEANS_OPTIONS,
+    PRICE_BASES,
+    PRICE_BASIS_MARKET,
     PRIORITIES,
     SEVERITY_ERROR,
     SEVERITY_WARNING,
+    SOURCE_TYPE_CURRENT_PRICE,
     SOURCE_TYPE_GRID_METER,
     STRATEGIES,
     UNIT_CONVERSION_FACTORS,
@@ -273,6 +278,25 @@ def validate_home_profile(home: HomeProfile) -> list[ValidationIssue]:
             )
         )
 
+    if not (MIN_VAT_PERCENT <= home.vat_percent <= MAX_VAT_PERCENT):
+        issues.append(
+            ValidationIssue(
+                "vat_percent",
+                VALIDATION_OUT_OF_RANGE,
+                f"Het btw-percentage moet tussen {MIN_VAT_PERCENT:.0f} en "
+                f"{MAX_VAT_PERCENT:.0f} liggen.",
+            )
+        )
+
+    if home.energy_tax_eur_kwh is not None and home.energy_tax_eur_kwh < 0:
+        issues.append(
+            ValidationIssue(
+                "energy_tax_eur_kwh",
+                VALIDATION_OUT_OF_RANGE,
+                "De energiebelasting kan niet negatief zijn.",
+            )
+        )
+
     if home.min_solar_surplus_w < 0:
         issues.append(
             ValidationIssue(
@@ -322,7 +346,12 @@ def _validate_max_grid_power(home: HomeProfile) -> list[ValidationIssue]:
 
 
 def _validate_price_thresholds(home: HomeProfile) -> list[ValidationIssue]:
-    """Check the price thresholds a dynamic contract needs."""
+    """Check the price thresholds a dynamic contract needs.
+
+    Both are all-in amounts, because that is what they are compared against
+    (SPEC.md §16). Nothing here can check that the installer meant it that way;
+    the form label is what carries it.
+    """
     low = home.low_price_threshold_eur_kwh
     high = home.high_price_threshold_eur_kwh
     if low is None or high is None or low < high:
@@ -386,7 +415,9 @@ def validate_energy_source(source: EnergySource) -> list[ValidationIssue]:
 
     if source.type == SOURCE_TYPE_GRID_METER:
         issues.extend(_validate_grid_meter(source))
-    elif source.binding.entity_id is None:
+        return issues
+
+    if source.binding.entity_id is None:
         issues.append(
             ValidationIssue(
                 "entity_id",
@@ -394,8 +425,32 @@ def validate_energy_source(source: EnergySource) -> list[ValidationIssue]:
                 "Koppel een entiteit aan deze bron.",
             )
         )
+    if source.type == SOURCE_TYPE_CURRENT_PRICE:
+        issues.extend(_validate_price_source(source))
 
     return issues
+
+
+def _validate_price_source(source: EnergySource) -> list[ValidationIssue]:
+    """Check that a price source says what kind of price it reports.
+
+    As strict as the meter mode, and for the same reason: a bare market price
+    and an all-in price differ by roughly a factor of three, so an unstated
+    basis is not a gap to fill in with a default but a source that cannot be
+    used at all (SPEC.md §16).
+    """
+    if source.price_basis in PRICE_BASES:
+        return []
+
+    return [
+        ValidationIssue(
+            "price_basis",
+            VALIDATION_REQUIRED,
+            "Geef aan wat deze bron levert: de kale marktprijs of de all-in "
+            "prijs die de klant betaalt. Zonder die keuze wordt de prijs niet "
+            "gebruikt.",
+        )
+    ]
 
 
 def _validate_grid_meter(source: EnergySource) -> list[ValidationIssue]:
@@ -690,6 +745,45 @@ def validate_preferences(preferences: UserPreferences) -> list[ValidationIssue]:
     return issues
 
 
+def _validate_price_components(
+    home: HomeProfile, sources: list[EnergySource]
+) -> list[ValidationIssue]:
+    """Check that a market price source has what it takes to be normalised.
+
+    The only check in this file that needs two models at once, which is why it
+    lives here and not in :func:`validate_home_profile`: whether the energy tax
+    and the supplier markup are needed depends entirely on what the price source
+    reports. Without them the calculator refuses the price silently as far as
+    the installer can see, and this is what makes it visible (SPEC.md §16).
+    """
+    if home.has_price_components:
+        return []
+
+    needs_components = any(
+        source.is_usable
+        and source.type == SOURCE_TYPE_CURRENT_PRICE
+        and source.price_basis == PRICE_BASIS_MARKET
+        for source in sources
+    )
+    if not needs_components:
+        return []
+
+    missing = (
+        "energy_tax_eur_kwh"
+        if home.energy_tax_eur_kwh is None
+        else "supplier_markup_eur_kwh"
+    )
+    return [
+        ValidationIssue(
+            missing,
+            VALIDATION_REQUIRED,
+            "De prijsbron levert de kale marktprijs. Vul de energiebelasting en "
+            "de opslag van de leverancier per kWh in; zonder die twee is de "
+            "all-in prijs niet te berekenen en wordt de prijs niet gebruikt.",
+        )
+    ]
+
+
 def validate_configuration(
     home: HomeProfile,
     sources: list[EnergySource],
@@ -706,6 +800,10 @@ def validate_configuration(
 
     if home_issues := validate_home_profile(home):
         issues["home"] = home_issues
+    if component_issues := _validate_price_components(home, sources):
+        # Reported against the home, because that is where the missing fields
+        # live, even though it took a source to make them necessary.
+        issues.setdefault("home", []).extend(component_issues)
     if preference_issues := validate_preferences(preferences):
         issues["preferences"] = preference_issues
 

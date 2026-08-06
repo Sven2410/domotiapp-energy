@@ -106,6 +106,84 @@ describe('the form itself', () => {
     assert.match(cost.helper, /géén vast maandbedrag/);
   });
 
+  it('asks for the price composition per kWh, not per month', async () => {
+    const { tab } = await openHomeTab();
+    const contract = forms(tab)[1];
+    const field = (name) => contract.schema.find((entry) => entry.name === name);
+
+    // Without these three a market price cannot be completed to an all-in one,
+    // and the engine refuses the price source (SPEC.md §16).
+    assert.ok(field('energy_tax_eur_kwh'));
+    assert.ok(field('vat_percent'));
+
+    const markup = field('supplier_markup_eur_kwh');
+    // The same trap as the feed-in cost: a monthly amount here is wrong by
+    // orders of magnitude.
+    assert.match(markup.helper, /per kWh/);
+    assert.match(markup.helper, /géén vast maandbedrag/);
+  });
+
+  it('says that the price thresholds are all-in amounts', async () => {
+    const { tab } = await openHomeTab();
+    const contract = forms(tab)[1];
+
+    for (const name of [
+      'low_price_threshold_eur_kwh',
+      'high_price_threshold_eur_kwh',
+    ]) {
+      const field = contract.schema.find((entry) => entry.name === name);
+      // Entering what a market-price sensor shows would set the threshold about
+      // three times too low, and nothing downstream could notice.
+      assert.match(field.label, /all-in/);
+      assert.match(field.helper, /niet.*met de kale marktprijs/);
+    }
+  });
+
+  it('describes the feed-in payment as a fixed amount that is never converted', async () => {
+    const { tab } = await openHomeTab();
+    const contract = forms(tab)[1];
+    const field = contract.schema.find(
+      (entry) => entry.name === 'feed_in_price_eur_kwh',
+    );
+
+    assert.match(field.helper, /per teruggeleverde kWh/);
+    assert.match(field.helper, /niet omgerekend/);
+  });
+
+  it('explains the all-in formula once, next to the price fields', async () => {
+    const { tab } = await openHomeTab();
+
+    const explanation = noticeTexts(tab).find((text) => text.includes('all-in'));
+    assert.match(explanation, /marktprijs \+ opslag \+ energiebelasting/);
+    assert.match(explanation, /btw/);
+  });
+
+  it('sends the new price fields along with the rest of the profile', async () => {
+    const sent = [];
+    const hass = fakeHass();
+    const original = hass.callWS;
+    hass.callWS = async (message) => {
+      sent.push(message);
+      if (message.type === 'domotiapp_energy/home/update') {
+        return { revision: 8, item: { ...message.home } };
+      }
+      return original(message);
+    };
+
+    const { tab } = await openHomeTab(hass);
+    change(tab, { energy_tax_eur_kwh: 0.1088, supplier_markup_eur_kwh: 0.02 }, 1);
+    findButton(tab, 'Opslaan').click();
+    await settle();
+
+    const update = sent.find(
+      (message) => message.type === 'domotiapp_energy/home/update',
+    );
+    assert.equal(update.home.energy_tax_eur_kwh, 0.1088);
+    assert.equal(update.home.supplier_markup_eur_kwh, 0.02);
+    // Untouched, so it travels as whatever the backend already had.
+    assert.ok('vat_percent' in update.home);
+  });
+
   it('is filled from the stored configuration', async () => {
     const { tab } = await openHomeTab();
 

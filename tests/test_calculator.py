@@ -20,6 +20,7 @@ from custom_components.domotiapp_energy.const import (
     COMPLETENESS_ITEM_SOLAR,
     COMPLETENESS_ITEM_TIME_WINDOWS,
     COMPLETENESS_POINTS,
+    COMPONENT_MAX,
     CONFIDENCE_HIGH,
     CONFIDENCE_LOW,
     CONFIDENCE_MEDIUM,
@@ -31,6 +32,8 @@ from custom_components.domotiapp_energy.const import (
     METER_MODE_SINGLE_SIGNED,
     POSITIVE_MEANS_EXPORT,
     POSITIVE_MEANS_IMPORT,
+    PRICE_BASIS_ALL_IN,
+    PRICE_BASIS_MARKET,
     SCORE_COMPONENT_DATA_QUALITY,
     SCORE_COMPONENT_FLEXIBILITY,
     SCORE_COMPONENT_PEAK,
@@ -41,6 +44,7 @@ from custom_components.domotiapp_energy.const import (
     SOURCE_TYPE_GRID_METER,
     SOURCE_TYPE_HOME_BATTERY,
     SOURCE_TYPE_SOLAR,
+    UNIT_CT_KWH,
     UNIT_EUR_KWH,
     UNIT_KW,
     UNIT_W,
@@ -82,6 +86,19 @@ def _source(source_type: str, entity_id: str, **overrides: Any) -> EnergySource:
         binding=EntityBinding(entity_id=entity_id, unit=UNIT_W),
         **overrides,
     )
+
+
+def _price_source(entity_id: str = "sensor.price", **overrides: Any) -> EnergySource:
+    """Return a price source that reports the all-in price, in EUR/kWh.
+
+    The basis is stated in every test that expects a usable price, because
+    there is no default: a source that does not say what kind of price it
+    reports is refused rather than guessed at (SPEC.md §16).
+    """
+    defaults: dict[str, Any] = {"price_basis": PRICE_BASIS_ALL_IN}
+    source = _source(SOURCE_TYPE_CURRENT_PRICE, entity_id, **(defaults | overrides))
+    source.binding = EntityBinding(entity_id=entity_id, unit=UNIT_EUR_KWH)
+    return source
 
 
 def _grid_meter(entity_id: str = "sensor.grid", **overrides: Any) -> EnergySource:
@@ -342,9 +359,8 @@ async def test_two_price_sources_are_both_refused(hass: HomeAssistant) -> None:
     hass.states.async_set("sensor.price_b", "0.25")
     config = _config(contract_type=CONTRACT_TYPE_DYNAMIC)
     for index, entity in enumerate(("sensor.price_a", "sensor.price_b")):
-        price = _source(SOURCE_TYPE_CURRENT_PRICE, entity)
+        price = _price_source(entity)
         price.id = f"price-{index}"
-        price.binding = EntityBinding(entity_id=entity, unit=UNIT_EUR_KWH)
         config.sources.append(price)
 
     snapshot = Calculator(hass).build_snapshot(config)
@@ -414,7 +430,7 @@ async def test_both_exclusive_types_duplicated_at_once(
         meter = _grid_meter(f"sensor.grid_{index}")
         meter.id = f"meter-{index}"
         config.sources.append(meter)
-        price = _source(SOURCE_TYPE_CURRENT_PRICE, f"sensor.price_{index}")
+        price = _price_source(f"sensor.price_{index}")
         price.id = f"price-{index}"
         config.sources.append(price)
 
@@ -466,6 +482,220 @@ async def test_two_solar_sources_are_not_a_duplicate_problem(
 
     assert snapshot.solar_power_w == 2000.0
     assert snapshot.invalid_source_ids == []
+
+
+# --- Price composition (SPEC.md §16 "Prijsopbouw") ---------------------------
+
+
+async def test_an_all_in_price_source_is_used_as_it_is(hass: HomeAssistant) -> None:
+    """A source that already reports the all-in price needs no conversion."""
+    hass.states.async_set("sensor.price", "0.28")
+    config = _config(
+        contract_type=CONTRACT_TYPE_DYNAMIC,
+        energy_tax_eur_kwh=0.1088,
+        supplier_markup_eur_kwh=0.02,
+    )
+    config.sources.append(_price_source())
+
+    snapshot = Calculator(hass).build_snapshot(config)
+
+    # The components are filled in, but an all-in source must not be marked up
+    # a second time: that is the whole point of asking for the basis.
+    assert snapshot.current_price_eur_kwh == 0.28
+
+
+async def test_a_market_price_is_normalised_to_an_all_in_price(
+    hass: HomeAssistant,
+) -> None:
+    """(market + opslag + belasting) x (1 + btw), exactly as SPEC.md §16 says."""
+    hass.states.async_set("sensor.price", "0.08")
+    config = _config(
+        contract_type=CONTRACT_TYPE_DYNAMIC,
+        energy_tax_eur_kwh=0.1088,
+        supplier_markup_eur_kwh=0.02,
+        vat_percent=21.0,
+    )
+    config.sources.append(_price_source(price_basis=PRICE_BASIS_MARKET))
+
+    snapshot = Calculator(hass).build_snapshot(config)
+
+    assert snapshot.current_price_eur_kwh == pytest.approx(0.2088 * 1.21)
+
+
+async def test_a_market_price_in_cents_is_converted_before_it_is_normalised(
+    hass: HomeAssistant,
+) -> None:
+    """The unit conversion of SPEC.md §15 runs first, the price formula second."""
+    hass.states.async_set("sensor.price", "8.0")
+    config = _config(
+        contract_type=CONTRACT_TYPE_DYNAMIC,
+        energy_tax_eur_kwh=0.1088,
+        supplier_markup_eur_kwh=0.02,
+    )
+    price = _price_source(price_basis=PRICE_BASIS_MARKET)
+    price.binding = EntityBinding(entity_id="sensor.price", unit=UNIT_CT_KWH)
+    config.sources.append(price)
+
+    snapshot = Calculator(hass).build_snapshot(config)
+
+    assert snapshot.current_price_eur_kwh == pytest.approx(0.2088 * 1.21)
+
+
+async def test_a_price_source_without_a_basis_is_unusable(
+    hass: HomeAssistant,
+) -> None:
+    """No basis is not "probably all-in": the source is refused (SPEC.md §16).
+
+    The same strictness as a grid meter without a meter mode, and for the same
+    reason — the two possible readings are a factor of about three apart.
+    """
+    hass.states.async_set("sensor.price", "0.08")
+    config = _config(contract_type=CONTRACT_TYPE_DYNAMIC)
+    config.sources.append(_price_source(price_basis=None))
+
+    snapshot = Calculator(hass).build_snapshot(config)
+
+    assert snapshot.current_price_eur_kwh is None
+    assert snapshot.invalid_source_ids == ["current_price-1"]
+    assert snapshot.reason_codes == [REASON_MISSING_REQUIRED_DATA]
+    # Nothing broke: the entity is fine, the configuration is unfinished.
+    assert snapshot.source_failures == []
+
+
+async def test_a_market_price_without_the_components_is_unusable(
+    hass: HomeAssistant,
+) -> None:
+    """A missing energy tax is refused, never treated as zero.
+
+    Treating it as zero would understate the price by more than half while
+    every threshold, saving and coach answer kept quoting it as fact.
+    """
+    hass.states.async_set("sensor.price", "0.08")
+    config = _config(contract_type=CONTRACT_TYPE_DYNAMIC, supplier_markup_eur_kwh=0.02)
+    config.sources.append(_price_source(price_basis=PRICE_BASIS_MARKET))
+
+    snapshot = Calculator(hass).build_snapshot(config)
+
+    assert snapshot.current_price_eur_kwh is None
+    assert snapshot.invalid_source_ids == ["current_price-1"]
+    assert snapshot.reason_codes == [REASON_MISSING_REQUIRED_DATA]
+    assert snapshot.source_failures == []
+
+
+async def test_a_market_price_without_a_markup_is_unusable(
+    hass: HomeAssistant,
+) -> None:
+    """Both components are needed; a markup of zero has to be typed in."""
+    hass.states.async_set("sensor.price", "0.08")
+    config = _config(contract_type=CONTRACT_TYPE_DYNAMIC, energy_tax_eur_kwh=0.1088)
+    config.sources.append(_price_source(price_basis=PRICE_BASIS_MARKET))
+
+    snapshot = Calculator(hass).build_snapshot(config)
+
+    assert snapshot.current_price_eur_kwh is None
+
+
+async def test_a_zero_markup_is_a_choice_and_not_a_gap(hass: HomeAssistant) -> None:
+    """An explicit 0.0 is an answer; only None means "not entered"."""
+    hass.states.async_set("sensor.price", "0.08")
+    config = _config(
+        contract_type=CONTRACT_TYPE_DYNAMIC,
+        energy_tax_eur_kwh=0.1088,
+        supplier_markup_eur_kwh=0.0,
+    )
+    config.sources.append(_price_source(price_basis=PRICE_BASIS_MARKET))
+
+    snapshot = Calculator(hass).build_snapshot(config)
+
+    assert snapshot.current_price_eur_kwh == pytest.approx(0.1888 * 1.21)
+
+
+async def test_a_negative_supplier_markup_survives(hass: HomeAssistant) -> None:
+    """A discount is a real contract, so it must not be dropped as unusable."""
+    hass.states.async_set("sensor.price", "0.08")
+    config = _config(
+        contract_type=CONTRACT_TYPE_DYNAMIC,
+        energy_tax_eur_kwh=0.1088,
+        supplier_markup_eur_kwh=-0.01,
+    )
+    config.sources.append(_price_source(price_basis=PRICE_BASIS_MARKET))
+
+    snapshot = Calculator(hass).build_snapshot(config)
+
+    assert snapshot.current_price_eur_kwh == pytest.approx(0.1788 * 1.21)
+
+
+async def test_the_vat_rate_is_a_setting_and_not_a_constant(
+    hass: HomeAssistant,
+) -> None:
+    """A changed rate follows through without a release (SPEC.md §16)."""
+    hass.states.async_set("sensor.price", "0.08")
+    config = _config(
+        contract_type=CONTRACT_TYPE_DYNAMIC,
+        energy_tax_eur_kwh=0.1088,
+        supplier_markup_eur_kwh=0.02,
+        vat_percent=9.0,
+    )
+    config.sources.append(_price_source(price_basis=PRICE_BASIS_MARKET))
+
+    snapshot = Calculator(hass).build_snapshot(config)
+
+    assert snapshot.current_price_eur_kwh == pytest.approx(0.2088 * 1.09)
+
+
+async def test_a_normalised_price_carries_no_floating_point_noise(
+    hass: HomeAssistant,
+) -> None:
+    """The panel shows this number verbatim, so it may not read as 0.2806799…."""
+    hass.states.async_set("sensor.price", "0.1")
+    config = _config(
+        contract_type=CONTRACT_TYPE_DYNAMIC,
+        energy_tax_eur_kwh=0.1,
+        supplier_markup_eur_kwh=0.03,
+    )
+    config.sources.append(_price_source(price_basis=PRICE_BASIS_MARKET))
+
+    snapshot = Calculator(hass).build_snapshot(config)
+
+    assert snapshot.current_price_eur_kwh == 0.2783
+
+
+async def test_an_unusable_price_source_costs_the_price_points(
+    hass: HomeAssistant,
+) -> None:
+    """A price nobody can interpret is missing data, and the checklist says so."""
+    hass.states.async_set("sensor.price", "0.08")
+    config = _config(contract_type=CONTRACT_TYPE_DYNAMIC)
+    config.sources.append(_price_source(price_basis=None))
+
+    metrics = Calculator(hass).calculate(config)
+
+    assert COMPLETENESS_ITEM_PRICE in metrics.data_quality.missing_items
+    assert "current_price-1" in metrics.data_quality.invalid_items
+
+
+async def test_the_price_component_judges_the_normalised_price(
+    hass: HomeAssistant,
+) -> None:
+    """Thresholds and price share one unit, which is what makes this work.
+
+    A market price of 0.08 looks "low" against a 0.15 threshold; the all-in
+    price it stands for is 0.25 and is not low at all.
+    """
+    hass.states.async_set("sensor.price", "0.08")
+    config = _config(
+        contract_type=CONTRACT_TYPE_DYNAMIC,
+        low_price_threshold_eur_kwh=0.15,
+        high_price_threshold_eur_kwh=0.35,
+        energy_tax_eur_kwh=0.1088,
+        supplier_markup_eur_kwh=0.02,
+    )
+    config.sources.append(_price_source(price_basis=PRICE_BASIS_MARKET))
+
+    metrics = Calculator(hass).calculate(config)
+
+    assert metrics.current_price_eur_kwh == pytest.approx(0.2526, abs=0.0001)
+    assert metrics.score_components[SCORE_COMPONENT_PRICE] < COMPONENT_MAX
 
 
 # --- Solar surplus ----------------------------------------------------------
@@ -811,9 +1041,7 @@ async def test_a_fixed_input_gives_a_fixed_score(hass: HomeAssistant) -> None:
     )
     config.sources.append(_grid_meter())
     config.sources.append(_source(SOURCE_TYPE_SOLAR, "sensor.pv"))
-    price = _source(SOURCE_TYPE_CURRENT_PRICE, "sensor.price")
-    price.binding = EntityBinding(entity_id="sensor.price", unit=UNIT_EUR_KWH)
-    config.sources.append(price)
+    config.sources.append(_price_source())
     config.devices.append(
         DeviceProfile(
             id="d1",
@@ -946,9 +1174,7 @@ async def test_a_dynamic_contract_without_thresholds_scores_zero(
     """A price without thresholds to judge it by is just as unknown."""
     hass.states.async_set("sensor.price", "0.20")
     config = _config(contract_type=CONTRACT_TYPE_DYNAMIC)
-    price = _source(SOURCE_TYPE_CURRENT_PRICE, "sensor.price")
-    price.binding = EntityBinding(entity_id="sensor.price", unit=UNIT_EUR_KWH)
-    config.sources.append(price)
+    config.sources.append(_price_source())
 
     metrics = Calculator(hass).calculate(config)
 
@@ -989,9 +1215,7 @@ async def test_a_price_below_the_low_threshold_scores_full(
         low_price_threshold_eur_kwh=0.15,
         high_price_threshold_eur_kwh=0.35,
     )
-    price = _source(SOURCE_TYPE_CURRENT_PRICE, "sensor.price")
-    price.binding = EntityBinding(entity_id="sensor.price", unit=UNIT_EUR_KWH)
-    config.sources.append(price)
+    config.sources.append(_price_source())
 
     metrics = Calculator(hass).calculate(config)
 
@@ -1008,9 +1232,7 @@ async def test_a_price_above_the_high_threshold_scores_zero(
         low_price_threshold_eur_kwh=0.15,
         high_price_threshold_eur_kwh=0.35,
     )
-    price = _source(SOURCE_TYPE_CURRENT_PRICE, "sensor.price")
-    price.binding = EntityBinding(entity_id="sensor.price", unit=UNIT_EUR_KWH)
-    config.sources.append(price)
+    config.sources.append(_price_source())
 
     metrics = Calculator(hass).calculate(config)
 

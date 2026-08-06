@@ -30,6 +30,11 @@ from custom_components.domotiapp_energy.const import (
     EXPLANATION_KEY_SCORE_BREAKDOWN,
     EXPLANATION_KEY_USE_DEVICE_NOW,
     EXPLANATION_KEY_WHY_ADVICE,
+    MEASUREMENT_GRID_LOAD_PERCENT,
+    MEASUREMENT_GRID_POWER_W,
+    MEASUREMENT_MISSING_ITEMS,
+    MEASUREMENT_PRICE,
+    MEASUREMENT_SOLAR_SURPLUS_W,
     SCORE_COMPONENT_DATA_QUALITY,
     SCORE_COMPONENT_FLEXIBILITY,
     SCORE_COMPONENT_PEAK,
@@ -39,8 +44,10 @@ from custom_components.domotiapp_energy.const import (
 from custom_components.domotiapp_energy.models import CoachResult, EnergyMetrics
 
 from .reason_codes import (
+    REASON_HIGH_ENERGY_PRICE,
     REASON_HIGH_GRID_EXPORT,
     REASON_HIGH_GRID_LOAD,
+    REASON_LOW_ENERGY_PRICE,
     REASON_SOLAR_SURPLUS_AVAILABLE,
 )
 
@@ -53,6 +60,18 @@ _ITEM_LABELS: dict[str, str] = {
     COMPLETENESS_ITEM_PRICE: "prijsinformatie",
     COMPLETENESS_ITEM_DEVICE_PROFILE: "een compleet apparaatprofiel",
     COMPLETENESS_ITEM_TIME_WINDOWS: "tijdvensters voor flexibele apparaten",
+}
+
+# Dutch labels for the measurement keys an AdviceItem carries. The price label
+# says "all-in" because that is what the number is: the calculator normalises a
+# market price on reading (SPEC.md §16), and a reader who assumed otherwise
+# would think the coach was quoting a figure three times too high.
+_MEASUREMENT_LABELS: dict[str, str] = {
+    MEASUREMENT_PRICE: "all-in prijs in €/kWh",
+    MEASUREMENT_GRID_LOAD_PERCENT: "netbelasting in %",
+    MEASUREMENT_GRID_POWER_W: "netvermogen in W",
+    MEASUREMENT_SOLAR_SURPLUS_W: "zonneoverschot in W",
+    MEASUREMENT_MISSING_ITEMS: "ontbrekende onderdelen",
 }
 
 _COMPONENT_LABELS: dict[str, str] = {
@@ -125,26 +144,59 @@ def _why_advice(result: CoachResult) -> str:
 
 
 def _use_device_now(result: CoachResult) -> str:
-    """Answer whether this is a good moment to run a device."""
+    """Answer whether this is a good moment to run a device.
+
+    The order mirrors the advice ranking of SPEC.md §16: surplus and peak load
+    outrank the price, so the price only gets to answer when neither of those
+    said anything.
+    """
+    codes = {item.reason_code for item in result.advice}
+
     for item in result.advice:
         if item.reason_code == REASON_SOLAR_SURPLUS_AVAILABLE:
             return item.message
-    if any(item.reason_code == REASON_HIGH_GRID_EXPORT for item in result.advice):
+    if REASON_HIGH_GRID_EXPORT in codes:
         # Overloading by export is the one peak situation where using more is
         # the right answer.
         return (
             "Ja. De woning levert veel terug aan het net; dat overschot kun je "
             "nu beter zelf gebruiken."
         )
-    if any(item.reason_code == REASON_HIGH_GRID_LOAD for item in result.advice):
+    if REASON_HIGH_GRID_LOAD in codes:
         return (
             "Nu is geen gunstig moment: de netbelasting ligt dicht bij het "
             "ingestelde maximum."
         )
+
+    price = _format_price(result.metrics.current_price_eur_kwh)
+    if REASON_LOW_ENERGY_PRICE in codes:
+        # Without this the answer used to be "no reason to move anything" while
+        # the advice list was showing a low price advice right next to it.
+        return (
+            f"Ja. De all-in energieprijs is nu {price} en ligt onder de "
+            f"ingestelde lage prijsgrens."
+        )
+    if REASON_HIGH_ENERGY_PRICE in codes:
+        return (
+            f"Nu is geen gunstig moment: de all-in energieprijs is {price} en "
+            f"ligt boven de ingestelde hoge prijsgrens."
+        )
+
     return (
         "Er is op dit moment geen aanleiding om een apparaat te verplaatsen of "
         "juist nu te gebruiken."
     )
+
+
+def _format_price(value: float | None) -> str:
+    """Return a price as readable Dutch, or say that it is unknown.
+
+    The number is whatever the metrics hold, which is always the normalised
+    all-in price — the same one the thresholds and the savings formula use.
+    """
+    if value is None:
+        return "onbekend"
+    return f"€ {value:.3f} per kWh".replace(".", ",")
 
 
 def _peak_risk(metrics: EnergyMetrics) -> str:
@@ -194,5 +246,5 @@ def _score_breakdown(metrics: EnergyMetrics) -> str:
 
 
 def _humanise(key: str) -> str:
-    """Turn a measurement key into readable Dutch."""
-    return key.replace("_", " ")
+    """Turn a measurement key into readable Dutch, with its unit where known."""
+    return _MEASUREMENT_LABELS.get(key, key.replace("_", " "))
