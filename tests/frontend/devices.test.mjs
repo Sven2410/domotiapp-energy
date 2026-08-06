@@ -491,7 +491,7 @@ describe('the schema is only replaced when the questions change', () => {
 
     change(panel, { name: 'Vaatwasser' });
     change(panel, { days_of_week: [] });
-    change(panel, { days_of_week: [2] });
+    change(panel, { days_of_week: ['2'] });
 
     assert.equal(watcher.sets, 0);
   });
@@ -513,14 +513,18 @@ describe('the schema is only replaced when the questions change', () => {
     await settle();
 
     change(panel, { days_of_week: [] });
-    change(panel, { days_of_week: [2] });
+    change(panel, { days_of_week: ['2'] });
 
-    assert.deepEqual(form(panel).data.days_of_week, [2]);
+    assert.deepEqual(form(panel).data.days_of_week, ['2']);
   });
 
-  it('stores a day as the number the options use, not as text', async () => {
-    // A select renders its values as strings; a day that comes back as "2"
-    // never matches the option 2, so the choice would not show as made.
+  it('speaks strings to the form and integers to the backend', async () => {
+    // The days field went dead in the browser because its option values were
+    // numbers. With seven options `ha-selector-select` renders a combobox, and
+    // that combobox works in strings: a numeric option never matches what it
+    // hands back, so the pick was dropped without a word. The draft therefore
+    // holds strings and the payload converts to the integers the backend
+    // stores (Monday = 0, SPEC.md §8).
     const { panel, tab, hass } = await openDevicesTab();
     buttonIn(tab, 'Apparaat toevoegen').click();
     await settle();
@@ -529,11 +533,46 @@ describe('the schema is only replaced when the questions change', () => {
     buttonIn(formDialog(panel), 'Opslaan').click();
     await settle();
 
-    assert.deepEqual(form(panel).data.days_of_week, [0, 6]);
     assert.deepEqual(
       lastSent(hass, 'domotiapp_energy/devices/create').device.days_of_week,
       [0, 6],
     );
+  });
+
+  it('shows a stored device its days as selected', async () => {
+    // The mirror image: integers out of storage have to reach the form as the
+    // strings its options use, or every chip renders unselected.
+    const hass = fakeHass({
+      config: sampleConfig({ devices: [dishwasher({ days_of_week: [0, 6] })] }),
+    });
+    const { panel, tab } = await openDevicesTab(hass);
+    buttonIn(rows(tab)[0], 'Bewerken').click();
+    await settle();
+
+    assert.deepEqual(form(panel).data.days_of_week, ['0', '6']);
+  });
+
+  it('never offers a select option whose value is not a string', async () => {
+    // The invariant that would have caught the days bug before a browser did.
+    // jsdom cannot run `ha-form`, so no test here can prove a control accepts a
+    // click; what it can prove is that we never hand one a value of the kind
+    // that silently does not match.
+    const { panel, tab } = await openDevicesTab();
+    buttonIn(tab, 'Apparaat toevoegen').click();
+    await settle();
+
+    for (const type of ['dishwasher', 'home_battery', 'ev_charger', 'heat_pump']) {
+      change(panel, { device_type: type });
+      for (const field of form(panel).schema) {
+        for (const option of field.selector?.select?.options ?? []) {
+          assert.equal(
+            typeof option.value,
+            'string',
+            `${field.name} offers ${JSON.stringify(option.value)}`,
+          );
+        }
+      }
+    }
   });
 });
 

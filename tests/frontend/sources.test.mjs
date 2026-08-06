@@ -591,6 +591,28 @@ describe('unsaved changes', () => {
 });
 
 
+describe('what the form hands to a selector', () => {
+  it('never offers a select option whose value is not a string', async () => {
+    // Same invariant as the device form: a numeric option value is dropped by
+    // the combobox without a word, and jsdom cannot see it happen.
+    const { panel, tab } = await openSourcesTab();
+    await openDialogFor(panel, tab);
+
+    for (const type of ['grid_meter', 'current_price', 'home_battery', 'solar']) {
+      change(panel, { type });
+      for (const field of form(panel).schema) {
+        for (const option of field.selector?.select?.options ?? []) {
+          assert.equal(
+            typeof option.value,
+            'string',
+            `${field.name} offers ${JSON.stringify(option.value)}`,
+          );
+        }
+      }
+    }
+  });
+});
+
 describe('helper texts that know what kind of source this is', () => {
   it('explains the entity differently per source type', async () => {
     const { panel, tab } = await openSourcesTab();

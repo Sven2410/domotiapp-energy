@@ -96,14 +96,28 @@ const CAPABILITY_OPTIONS = [
   { value: 'set_current', label: 'Laadstroom instellen' },
 ];
 
+/**
+ * The weekdays, with **string** values.
+ *
+ * Verified in the browser, and the reason this list does not carry the integers
+ * the backend stores: with seven options `ha-selector-select` renders a
+ * combobox rather than checkboxes, and that combobox works in strings. A
+ * numeric option value never matches what it hands back, so the selection is
+ * dropped without a word — the field simply does nothing, which is exactly how
+ * it was reported. The four-option capability list next to it kept working
+ * because it renders as checkboxes.
+ *
+ * The conversion to the integers of `datetime.weekday()` happens on the way to
+ * the backend, in `payloadFrom`, and back again in `draftFrom`.
+ */
 const DAY_OPTIONS = [
-  { value: 0, label: 'Maandag' },
-  { value: 1, label: 'Dinsdag' },
-  { value: 2, label: 'Woensdag' },
-  { value: 3, label: 'Donderdag' },
-  { value: 4, label: 'Vrijdag' },
-  { value: 5, label: 'Zaterdag' },
-  { value: 6, label: 'Zondag' },
+  { value: '0', label: 'Maandag' },
+  { value: '1', label: 'Dinsdag' },
+  { value: '2', label: 'Woensdag' },
+  { value: '3', label: 'Donderdag' },
+  { value: '4', label: 'Vrijdag' },
+  { value: '5', label: 'Zaterdag' },
+  { value: '6', label: 'Zondag' },
 ];
 
 /**
@@ -165,7 +179,8 @@ const NEW_DEVICE = {
   enabled: true,
   priority: 'normal',
   control_mode: 'advice_only',
-  days_of_week: [0, 1, 2, 3, 4, 5, 6],
+  // Strings, because that is what the draft speaks; see DAY_OPTIONS.
+  days_of_week: ['0', '1', '2', '3', '4', '5', '6'],
   capabilities: [],
   control_forbidden: false,
 };
@@ -434,6 +449,9 @@ function entityLinkFields(draft) {
 /** Read the editable fields out of a stored device. */
 function draftFrom(device) {
   const draft = { ...NEW_DEVICE, ...device };
+  if (Array.isArray(draft.days_of_week)) {
+    draft.days_of_week = daysToForm(draft.days_of_week);
+  }
   if (draft.is_noisy === undefined) {
     draft.is_noisy = noisyByDefault(draft.device_type);
   }
@@ -500,7 +518,10 @@ function payloadFrom(draft, schema) {
       continue;
     }
     const value = draft[field.name];
-    payload[field.name] = value === undefined || value === '' ? null : value;
+    payload[field.name] =
+      field.name === 'days_of_week'
+        ? daysToStorage(value)
+        : (value === undefined || value === '' ? null : value);
   }
   return payload;
 }
@@ -514,17 +535,27 @@ function differs(left, right) {
 }
 
 /**
- * Weekdays as numbers, whatever the select handed back.
+ * Weekdays as the form speaks them: strings.
  *
- * The option values are numbers, but a select renders its values as strings.
- * A day that comes back as `"0"` never matches the option `0`, so the choice
- * would not show as made — the field looks broken while the value is there.
+ * The draft holds strings for this one field, so what is stored as `[0, 6]`
+ * still shows as Monday and Sunday selected. Handing the select the integers
+ * would leave every chip unselected, because the option values are strings.
  */
-function asDayNumbers(value) {
+function daysToForm(value) {
   if (!Array.isArray(value)) {
     return value;
   }
-  return value.map((day) => (typeof day === 'string' ? Number(day) : day));
+  return value.map((day) => String(day));
+}
+
+/** Weekdays as the backend stores them: integers, Monday = 0 (SPEC.md §8). */
+function daysToStorage(value) {
+  if (!Array.isArray(value)) {
+    return value;
+  }
+  return value
+    .map((day) => Number(day))
+    .filter((day) => Number.isInteger(day) && day >= 0 && day <= 6);
 }
 
 export const devicesTab = {
@@ -579,9 +610,6 @@ export const devicesTab = {
 
     const form = createForm(getHass(), schemaFor(NEW_DEVICE), (part) => {
       const previousType = draft.device_type;
-      if ('days_of_week' in part) {
-        part = { ...part, days_of_week: asDayNumbers(part.days_of_week) };
-      }
       for (const [key, value] of Object.entries(part)) {
         if (differs(value, draft[key])) {
           touched.add(key);
