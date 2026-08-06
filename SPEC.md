@@ -925,6 +925,37 @@ verlaagt. Eén gezamenlijke tekst zou bij teruglevering adviseren de belasting t
 verergeren. Zie de twee aparte reason codes in de adviesregels hieronder; ze sluiten
 elkaar uit, omdat `grid_power_w` niet tegelijk positief en negatief kan zijn.
 
+**Bekende beperking: dit is een totaal, terwijl de zekering per fase begrenst.**
+`max_grid_power_w` is één getal voor de hele woning en `grid_power_w` is de som over de
+fasen. Bij een drie-fasen aansluiting is de werkelijke overbelasting bijna altijd
+éénfasig: 25 A op L2 terwijl de som op 40% staat is voor deze berekening onzichtbaar. Dat
+is precies het waarschijnlijkste faalgeval van de doelgroep — een drie-fasen woning met
+een laadpaal, waar de laadpaal zelf de onbalans veroorzaakt. Een P1-meter publiceert het
+vermogen per fase wel degelijk.
+
+Dit is bewust niet in 0.1.0 opgelost, omdat het optionele bindings per fase op de
+netmeter vraagt en daarmee een eigen ronde is: drie extra entiteitkoppelingen, een
+maximum per fase naast het totaal, en `grid_load_percent` als het maximum van de vier in
+plaats van één deling. Tot die ronde er is, geldt: **de piekwaarschuwing dekt overbelasting
+van de aansluiting als geheel, niet van een enkele fase.** Dat staat ook in de README
+onder Limitations, want een installateur moet dit weten vóór hij het bij een klant zet.
+
+**Hysterese (toegevoegd na de eerste uitrol op echte hardware).** `peak_risk` is geen kale
+vergelijking meer. Een P1-meter meldt elke seconde, dus een belasting die rond de
+waarschuwingsgrens hangt zette de waarschuwing — en daarmee het hele hoofdadvies —
+onophoudelijk aan en uit. De vergelijking schakelt aan op `peak_warning_percent` en pas
+weer uit onder `peak_warning_percent − PEAK_RISK_RELEASE_MARGIN_PERCENT`. Hetzelfde geldt
+voor het zonneoverschot tegen `min_solar_surplus_w`, dat uitschakelt onder
+`SOLAR_SURPLUS_RELEASE_FRACTION` daarvan, en het hoofdadvies zelf blijft minimaal
+`PRIMARY_ADVICE_MIN_DWELL_SECONDS` staan tenzij er iets urgenters komt of de data het niet
+langer draagt.
+
+Het zijn **vaste constanten en geen instellingen**: dit beschrijft hoe de rekenmotor met
+meters omgaat, niet iets waar een klant een mening over heeft — en een instelling hier zou
+een instelling zijn die uitgezet kan worden. De toestand hoort in de coordinator
+(`engine/hysteresis.py`), zodat de calculator en de advisor pure functies van hun invoer
+blijven en zonder klok testbaar zijn.
+
 ### Datakwaliteit (0–100)
 Gewogen checklist, transparant en testbaar:
 

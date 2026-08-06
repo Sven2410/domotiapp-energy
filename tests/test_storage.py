@@ -1,5 +1,7 @@
 """Tests for the models and the configuration store (SPEC.md §24)."""
 
+from collections.abc import Generator
+from contextlib import contextmanager
 from copy import deepcopy
 from datetime import date, timedelta
 from typing import Any
@@ -9,6 +11,7 @@ import pytest
 from freezegun.api import FrozenDateTimeFactory
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
+from pytest_homeassistant_custom_component.common import async_fire_time_changed
 
 from custom_components.domotiapp_energy.const import (
     CAPABILITY_READ,
@@ -33,6 +36,9 @@ from custom_components.domotiapp_energy.const import (
     LOG_EVENT_ADVICE_RECALCULATED,
     LOG_EVENT_CONFIG_CHANGED,
     LOG_EVENT_INVALID_CONFIGURATION,
+    LOG_EVENT_PEAK_RISK_DETECTED,
+    LOG_EVENT_SOLAR_SURPLUS_DETECTED,
+    LOG_FLUSH_INTERVAL_SECONDS,
     MAX_ADVICE_COUNT,
     MAX_LOG_ENTRIES,
     METER_MODE_SINGLE_SIGNED,
@@ -319,6 +325,193 @@ async def test_events_outside_the_dedupe_window_are_logged_again(
 
     assert len(config.logs) == 2
     assert [entry.count for entry in config.logs] == [1, 1]
+
+
+# --- Write amplification ----------------------------------------------------
+#
+# Every one of these counts calls to Store.async_save, which is what actually
+# rewrites .storage/domotiapp_energy.config. Collapsing a repeat into a counter
+# used to write the whole file anyway, and the engine collapses the same event
+# on every recalculation — with a real meter reporting every second that was a
+# write every couple of seconds, all day long, invisible because the file never
+# grows. These tests are the guard: they fail loudly if the writes come back.
+
+
+@contextmanager
+def _count_writes() -> Generator[list[int]]:
+    """Count the disk writes performed while inside the block."""
+    writes = [0]
+    original = DomotiAppEnergyStore.async_save
+
+    async def _counting(self: DomotiAppEnergyStore, data: dict[str, Any]) -> None:
+        writes[0] += 1
+        await original(self, data)
+
+    with patch.object(DomotiAppEnergyStore, "async_save", _counting):
+        yield writes
+
+
+async def test_repeated_events_are_written_once(hass: HomeAssistant) -> None:
+    """Fifty identical events cost one write, not fifty."""
+    store = ConfigurationStore(hass)
+    config = await store.async_load()
+
+    with _count_writes() as writes:
+        for _ in range(50):
+            await store.async_add_log_entry(
+                LOG_EVENT_SOLAR_SURPLUS_DETECTED,
+                "Zonneoverschot beschikbaar",
+                "Er is 2000 W zonneoverschot beschikbaar.",
+                subject="metrics:solar_surplus",
+            )
+
+    # Only the first event is a new line; the other 49 are a counter in memory.
+    assert writes[0] == 1
+    assert len(config.logs) == 1
+    assert config.logs[0].count == 50
+
+
+async def test_a_pending_counter_reaches_the_disk(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """The counter held in memory is flushed once the interval has passed."""
+    store = ConfigurationStore(hass)
+    config = await store.async_load()
+
+    with _count_writes() as writes:
+        for _ in range(10):
+            await store.async_add_log_entry(
+                LOG_EVENT_SOLAR_SURPLUS_DETECTED, "Zonneoverschot", "", subject="solar"
+            )
+        assert writes[0] == 1
+
+        freezer.tick(timedelta(seconds=LOG_FLUSH_INTERVAL_SECONDS + 1))
+        async_fire_time_changed(hass)
+        await hass.async_block_till_done()
+
+        # One flush for everything that accumulated, and no timer left running.
+        assert writes[0] == 2
+
+        freezer.tick(timedelta(seconds=LOG_FLUSH_INTERVAL_SECONDS + 1))
+        async_fire_time_changed(hass)
+        await hass.async_block_till_done()
+        assert writes[0] == 2
+
+    assert config.logs[0].count == 10
+
+
+async def test_a_configuration_write_carries_the_pending_counter(
+    hass: HomeAssistant,
+) -> None:
+    """A normal save persists the counter too, so no extra flush is needed."""
+    store = ConfigurationStore(hass)
+    config = await store.async_load()
+
+    with _count_writes() as writes:
+        for _ in range(5):
+            await store.async_add_log_entry(
+                LOG_EVENT_SOLAR_SURPLUS_DETECTED, "Zonneoverschot", "", subject="solar"
+            )
+
+        def _rename(stored: StoredConfiguration) -> None:
+            stored.home.home_name = "Nieuwe naam"
+
+        await store.async_update(_rename)
+        # The insert, plus the configuration change. The pending counter rode
+        # along with the second one rather than paying for a third write.
+        assert writes[0] == 2
+        await store.async_flush_logs()
+        assert writes[0] == 2
+
+    assert config.logs[0].count == 5
+
+
+async def test_flushing_writes_a_pending_counter_before_unload(
+    hass: HomeAssistant,
+) -> None:
+    """Unloading inside the interval still gets the counter onto the disk."""
+    store = ConfigurationStore(hass)
+    await store.async_load()
+
+    with _count_writes() as writes:
+        for _ in range(3):
+            await store.async_add_log_entry(
+                LOG_EVENT_SOLAR_SURPLUS_DETECTED, "Zonneoverschot", "", subject="solar"
+            )
+        await store.async_flush_logs()
+        assert writes[0] == 2
+        # Nothing pending any more, so a second flush is free.
+        await store.async_flush_logs()
+        assert writes[0] == 2
+
+
+async def test_two_alternating_findings_still_collapse(hass: HomeAssistant) -> None:
+    """The engine reports several situations per pass, and they interleave.
+
+    On a sunny afternoon under load the coordinator writes a peak risk and a
+    solar surplus in the same recalculation. Collapsing only into the newest
+    line meant each one found the *other* at the front and started a new one —
+    two writes per recalculation, from the rule that exists to prevent exactly
+    that. Found by watching the file on a running instance, not by a test that
+    only ever sent one kind of event.
+    """
+    store = ConfigurationStore(hass)
+    config = await store.async_load()
+
+    with _count_writes() as writes:
+        for _ in range(20):
+            await store.async_add_log_entry(
+                LOG_EVENT_PEAK_RISK_DETECTED, "Piekbelasting", "", subject="peak"
+            )
+            await store.async_add_log_entry(
+                LOG_EVENT_SOLAR_SURPLUS_DETECTED, "Zonneoverschot", "", subject="solar"
+            )
+
+    # One write per subject, for the line each of them started.
+    assert writes[0] == 2
+    assert len(config.logs) == 2
+    assert sorted(entry.count for entry in config.logs) == [20, 20]
+    # Still ordered newest-first, so trimming keeps dropping the oldest.
+    assert config.logs[0].timestamp >= config.logs[1].timestamp
+
+
+async def test_an_event_outside_the_window_is_not_collapsed_into(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """Searching the list does not reach past the anti-spam window."""
+    store = ConfigurationStore(hass)
+    config = await store.async_load()
+
+    await store.async_add_log_entry(
+        LOG_EVENT_PEAK_RISK_DETECTED, "Piekbelasting", "", subject="peak"
+    )
+    freezer.tick(timedelta(minutes=LOG_DEDUPE_WINDOW_MINUTES + 1))
+    await store.async_add_log_entry(
+        LOG_EVENT_PEAK_RISK_DETECTED, "Piekbelasting", "", subject="peak"
+    )
+
+    assert len(config.logs) == 2
+    assert [entry.count for entry in config.logs] == [1, 1]
+
+
+async def test_a_new_log_line_is_written_immediately(hass: HomeAssistant) -> None:
+    """Different events are each worth a write; only repeats are held back."""
+    store = ConfigurationStore(hass)
+
+    await store.async_load()
+    with _count_writes() as writes:
+        await store.async_add_log_entry(
+            LOG_EVENT_SOLAR_SURPLUS_DETECTED, "Zonneoverschot", "", subject="solar"
+        )
+        await store.async_add_log_entry(
+            LOG_EVENT_PEAK_RISK_DETECTED, "Piekbelasting", "", subject="peak"
+        )
+        # Back to a subject that already has a line: a counter, not a write.
+        await store.async_add_log_entry(
+            LOG_EVENT_SOLAR_SURPLUS_DETECTED, "Zonneoverschot", "", subject="solar"
+        )
+
+    assert writes[0] == 2
 
 
 async def test_clearing_the_logbook(hass: HomeAssistant) -> None:

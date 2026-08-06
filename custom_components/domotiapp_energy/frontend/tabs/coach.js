@@ -29,6 +29,12 @@ import {
   setVisible,
   statRow,
 } from '../core/dom.js';
+import {
+  checklistLabel,
+  confidenceLabel,
+  measurementLabel,
+  reasonLabel,
+} from '../core/labels.js';
 import { createRowList } from '../core/rows.js';
 import { onTap } from '../core/tap.js';
 
@@ -41,41 +47,12 @@ const QUESTIONS = [
   { key: 'score_breakdown', label: 'Hoe is mijn energiescore berekend?' },
 ];
 
-/** Dutch for the checklist keys, so a missing item reads as a sentence. */
-const ITEM_LABELS = {
-  home_profile_complete: 'de woninggegevens',
-  grid_source_valid: 'een geldige netbron',
-  solar_source_valid: 'een geldige zonnebron',
-  price_information_available: 'prijsinformatie',
-  device_profile_complete: 'een compleet apparaatprofiel',
-  flexible_devices_have_time_window: 'tijdvensters voor flexibele apparaten',
-};
-
-const CONFIDENCE_LABELS = {
-  low: 'laag',
-  medium: 'gemiddeld',
-  high: 'hoog',
-};
-
 const SEVERITY_MARKERS = {
   info: 'Advies',
   success: 'Advies',
   warning: 'Waarschuwing',
   error: 'Probleem',
 };
-
-/** Turn a measurement key into readable Dutch, with its unit where known. */
-const MEASUREMENT_LABELS = {
-  prijs_eur_kwh: 'all-in prijs in €/kWh',
-  netbelasting_procent: 'netbelasting in %',
-  netvermogen_w: 'netvermogen in W',
-  zonneoverschot_w: 'zonneoverschot in W',
-  ontbrekende_onderdelen: 'ontbrekende onderdelen',
-};
-
-function measurementLabel(key) {
-  return MEASUREMENT_LABELS[key] || key.replace(/_/g, ' ');
-}
 
 /**
  * How many decimals a measurement is worth showing.
@@ -220,9 +197,13 @@ export const coachTab = {
       const parts = [];
 
       if (prefs.show_technical_explanation !== false && item.measurements) {
-        const readings = Object.entries(item.measurements).map(
-          ([key, value]) => `${measurementLabel(key)}: ${measurementValue(key, value)}`,
-        );
+        // A measurement we have no words for is left out rather than shown
+        // under its key: an identifier in a sentence is worse than a shorter
+        // sentence (core/labels.js).
+        const readings = Object.entries(item.measurements)
+          .map(([key, value]) => [measurementLabel(key), measurementValue(key, value)])
+          .filter(([label]) => label !== null)
+          .map(([label, value]) => `${label}: ${value}`);
         if (readings.length) {
           parts.push(readings.join(', '));
         }
@@ -238,10 +219,9 @@ export const coachTab = {
           })}`,
         );
       }
-      if (prefs.show_confidence !== false && item.confidence) {
-        parts.push(
-          `betrouwbaarheid ${CONFIDENCE_LABELS[item.confidence] || item.confidence}`,
-        );
+      const confidence = confidenceLabel(item.confidence);
+      if (prefs.show_confidence !== false && confidence) {
+        parts.push(`betrouwbaarheid ${confidence}`);
       }
       return parts.join(' · ');
     }
@@ -309,14 +289,17 @@ export const coachTab = {
       );
 
       setVisible(confidenceRow.element, prefs.show_confidence !== false);
-      confidenceRow.set(
-        primary?.confidence
-          ? CONFIDENCE_LABELS[primary.confidence] || primary.confidence
-          : null,
-      );
+      confidenceRow.set(confidenceLabel(primary?.confidence));
 
-      setVisible(reasonRow.element, prefs.show_technical_explanation !== false);
-      reasonRow.set(primary?.reason_code || null);
+      // The reason is a machine identifier. Showing it was the defect: the
+      // customer read "missing_required_data" where a sentence belonged. A code
+      // we have no words for hides the row altogether (core/labels.js).
+      const reason = reasonLabel(primary?.reason_code);
+      setVisible(
+        reasonRow.element,
+        prefs.show_technical_explanation !== false && reason !== null,
+      );
+      reasonRow.set(reason);
 
       calculatedRow.set(formatTimestamp(live.generated_at));
 
@@ -329,12 +312,13 @@ export const coachTab = {
     }
 
     function renderMissing(items) {
+      // A checklist key with no words behind it is left off the list. The
+      // customer is told what is missing, never in what identifier it is missing.
+      const named = items.map(checklistLabel).filter((label) => label !== null);
       missingList.replaceChildren(
-        ...items.map((item) =>
-          el('li', { class: 'plain-item', text: ITEM_LABELS[item] || item }),
-        ),
+        ...named.map((label) => el('li', { class: 'plain-item', text: label })),
       );
-      setVisible(missingList, items.length > 0);
+      setVisible(missingList, named.length > 0);
       missingNotice.set(
         items.length
           ? ''

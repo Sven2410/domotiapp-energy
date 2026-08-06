@@ -8,9 +8,11 @@ kW->W and ct->EUR.
 """
 
 import math
+from datetime import timedelta
 from typing import Any
 
 import pytest
+from freezegun.api import FrozenDateTimeFactory
 from homeassistant.core import HomeAssistant
 
 from custom_components.domotiapp_energy.const import (
@@ -24,6 +26,7 @@ from custom_components.domotiapp_energy.const import (
     DEVICE_TYPE_EV_CHARGER,
     DEVICE_TYPE_GENERIC_MONITOR,
     DEVICE_TYPE_GENERIC_SCHEDULABLE,
+    ENTITY_STALE_AFTER_MINUTES,
     MAX_ADVICE_COUNT,
     METER_MODE_SEPARATE,
     METER_MODE_SINGLE_SIGNED,
@@ -35,7 +38,9 @@ from custom_components.domotiapp_energy.const import (
     SEVERITY_WARNING,
     SOURCE_TYPE_CURRENT_PRICE,
     SOURCE_TYPE_GRID_METER,
+    SOURCE_TYPE_HOME_BATTERY,
     SOURCE_TYPE_SOLAR,
+    UNIT_A,
     UNIT_CT_KWH,
     UNIT_EUR_KWH,
     UNIT_KW,
@@ -48,6 +53,7 @@ from custom_components.domotiapp_energy.const import (
     VALIDATION_INVALID_TIME_WINDOW,
     VALIDATION_OUT_OF_RANGE,
     VALIDATION_REQUIRED,
+    VALIDATION_UNIT_MISMATCH,
     VALIDATION_UNKNOWN_TYPE,
     VALUE_SOURCE_ATTRIBUTE,
 )
@@ -246,6 +252,47 @@ async def test_an_unavailable_attribute_value_is_refused(
 
     assert result.ok is False
     assert result.reason_code == REASON_INVALID_ENTITY_STATE
+
+
+async def test_a_meter_that_went_quiet_is_refused(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """A state older than the staleness window is no longer a measurement.
+
+    Home Assistant keeps the last state of an entity forever, so a meter that
+    stops reporting leaves a number behind that reads as current. This is the
+    check that only matters against real hardware: with a slider in a test
+    instance the value moves whenever someone moves it (SPEC.md §15).
+    """
+    hass.states.async_set(ENTITY_ID, "1500")
+    assert read_entity_value(hass, _binding(unit=UNIT_W)).ok is True
+
+    freezer.tick(timedelta(minutes=ENTITY_STALE_AFTER_MINUTES + 1))
+    result = read_entity_value(hass, _binding(unit=UNIT_W))
+
+    assert result.ok is False
+    assert result.value is None
+    # Unavailable, not unreadable: nothing is wrong with how the source is
+    # configured, the entity simply stopped reporting.
+    assert result.unavailable is True
+    assert result.reason_code == REASON_INVALID_ENTITY_STATE
+
+
+async def test_a_steady_reading_is_not_stale(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """A meter reporting the same value is alive, not quiet.
+
+    The check reads ``last_updated`` and not ``last_changed`` for exactly this:
+    a house drawing a steady load reports an unchanged number every second, and
+    judging that on ``last_changed`` would declare a healthy meter dead.
+    """
+    hass.states.async_set(ENTITY_ID, "1500")
+    freezer.tick(timedelta(minutes=ENTITY_STALE_AFTER_MINUTES + 1))
+    # Same value, reported again.
+    hass.states.async_set(ENTITY_ID, "1500", force_update=True)
+
+    assert read_entity_value(hass, _binding(unit=UNIT_W)).ok is True
 
 
 async def test_every_refusal_uses_a_stable_reason_code(hass: HomeAssistant) -> None:
@@ -533,6 +580,82 @@ def test_a_source_without_an_entity_is_incomplete() -> None:
 
     assert _fields(issues) == {"entity_id"}
     assert VALIDATION_REQUIRED in _codes(issues)
+
+
+def test_a_power_source_in_kwh_is_flagged() -> None:
+    """The mistake a real P1 meter invites, caught before it does damage.
+
+    Most Dutch smart meter integrations show the cumulative ``energy_import``
+    counter in kWh far more prominently than the instantaneous power sensor.
+    Linked to a grid meter it turns 12,000 kWh into 12,000,000 W: a permanent
+    peak warning on a perfectly healthy house, with nothing to explain it.
+    """
+    source = EnergySource.from_dict(
+        {
+            "id": "s1",
+            "type": SOURCE_TYPE_GRID_METER,
+            "entity_id": ENTITY_ID,
+            "unit": UNIT_KWH,
+            "meter_mode": METER_MODE_SINGLE_SIGNED,
+            "positive_means": POSITIVE_MEANS_IMPORT,
+        }
+    )
+
+    issues = validate_energy_source(source)
+    mismatch = [issue for issue in issues if issue.code == VALIDATION_UNIT_MISMATCH]
+
+    assert len(mismatch) == 1
+    assert mismatch[0].field == "unit"
+    # A warning, not an error: a half-finished row has to stay saveable, and
+    # this compares two choices rather than finding one of them impossible.
+    assert mismatch[0].severity == SEVERITY_WARNING
+    assert not has_errors(issues)
+    assert "kWh" in mismatch[0].message
+
+
+@pytest.mark.parametrize("unit", [UNIT_W, UNIT_KW, UNIT_NONE])
+def test_a_power_source_in_a_power_unit_is_accepted(unit: str) -> None:
+    """W, kW and "no conversion" all describe an instantaneous power."""
+    source = EnergySource.from_dict(
+        {"id": "s1", "type": SOURCE_TYPE_SOLAR, "entity_id": ENTITY_ID, "unit": unit}
+    )
+
+    codes = _codes(validate_energy_source(source))
+
+    assert VALIDATION_UNIT_MISMATCH not in codes
+
+
+def test_a_price_source_in_watts_is_flagged() -> None:
+    """A price is not a power, whichever way round the mistake was made."""
+    source = EnergySource.from_dict(
+        {
+            "id": "s1",
+            "type": SOURCE_TYPE_CURRENT_PRICE,
+            "entity_id": ENTITY_ID,
+            "unit": UNIT_W,
+            "price_basis": PRICE_BASIS_ALL_IN,
+        }
+    )
+
+    codes = _codes(validate_energy_source(source))
+
+    assert VALIDATION_UNIT_MISMATCH in codes
+
+
+def test_amperes_on_a_power_source_are_flagged() -> None:
+    """The same trap with a smaller number: nothing converts amperes."""
+    source = EnergySource.from_dict(
+        {
+            "id": "s1",
+            "type": SOURCE_TYPE_HOME_BATTERY,
+            "entity_id": ENTITY_ID,
+            "unit": UNIT_A,
+        }
+    )
+
+    codes = _codes(validate_energy_source(source))
+
+    assert VALIDATION_UNIT_MISMATCH in codes
 
 
 def test_an_unknown_source_type_short_circuits_validation() -> None:

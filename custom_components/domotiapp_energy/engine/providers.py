@@ -25,6 +25,9 @@ from custom_components.domotiapp_energy.const import (
     COMPLETENESS_ITEM_PRICE,
     COMPLETENESS_ITEM_SOLAR,
     COMPLETENESS_ITEM_TIME_WINDOWS,
+    CONFIDENCE_HIGH,
+    CONFIDENCE_LOW,
+    CONFIDENCE_MEDIUM,
     EXPLANATION_KEY_MISSING_DATA,
     EXPLANATION_KEY_PEAK_RISK,
     EXPLANATION_KEY_SCORE_BREAKDOWN,
@@ -72,6 +75,16 @@ _MEASUREMENT_LABELS: dict[str, str] = {
     MEASUREMENT_GRID_POWER_W: "netvermogen in W",
     MEASUREMENT_SOLAR_SURPLUS_W: "zonneoverschot in W",
     MEASUREMENT_MISSING_ITEMS: "ontbrekende onderdelen",
+}
+
+# The confidence levels travel as English identifiers, like every other code in
+# this project, and one of them used to end up verbatim in the answer to "Waarom
+# krijg ik dit advies?": "Betrouwbaarheid: high." A reader is owed a word here,
+# and the frontend has the same table in core/labels.js for what it renders.
+_CONFIDENCE_LABELS: dict[str, str] = {
+    CONFIDENCE_LOW: "laag",
+    CONFIDENCE_MEDIUM: "gemiddeld",
+    CONFIDENCE_HIGH: "hoog",
 }
 
 _COMPONENT_LABELS: dict[str, str] = {
@@ -134,12 +147,19 @@ def _why_advice(result: CoachResult) -> str:
         return "Er is op dit moment geen advies."
 
     parts = [primary.message]
-    if primary.measurements:
-        readings = ", ".join(
-            f"{_humanise(key)}: {value}" for key, value in primary.measurements.items()
-        )
+    readings = ", ".join(
+        f"{label}: {value}"
+        for key, value in primary.measurements.items()
+        if (label := _MEASUREMENT_LABELS.get(key)) is not None
+    )
+    if readings:
         parts.append(f"Gebaseerd op {readings}.")
-    parts.append(f"Betrouwbaarheid: {primary.confidence}.")
+
+    # A level we have no word for is left out rather than printed as its code:
+    # an identifier in a Dutch sentence is worse than a shorter sentence.
+    confidence = _CONFIDENCE_LABELS.get(primary.confidence)
+    if confidence is not None:
+        parts.append(f"Betrouwbaarheid: {confidence}.")
     return " ".join(parts)
 
 
@@ -229,8 +249,10 @@ def _missing_data(metrics: EnergyMetrics) -> str:
     if not missing:
         return "Alle gegevens voor een betrouwbaar advies zijn ingevuld."
 
-    listed = ", ".join(_ITEM_LABELS.get(item, item) for item in missing)
-    return f"Nog ontbrekend: {listed}."
+    named = [label for item in missing if (label := _ITEM_LABELS.get(item)) is not None]
+    if not named:
+        return "Alle gegevens voor een betrouwbaar advies zijn ingevuld."
+    return f"Nog ontbrekend: {', '.join(named)}."
 
 
 def _score_breakdown(metrics: EnergyMetrics) -> str:
@@ -239,12 +261,10 @@ def _score_breakdown(metrics: EnergyMetrics) -> str:
         return "De energiescore is nog niet berekend."
 
     parts = ", ".join(
-        f"{_COMPONENT_LABELS.get(key, key)} {round(value)}"
+        f"{label} {round(value)}"
         for key, value in metrics.score_components.items()
+        if (label := _COMPONENT_LABELS.get(key)) is not None
     )
+    if not parts:
+        return "De energiescore is nog niet berekend."
     return f"De score is {metrics.energy_score}, opgebouwd uit: {parts}."
-
-
-def _humanise(key: str) -> str:
-    """Turn a measurement key into readable Dutch, with its unit where known."""
-    return _MEASUREMENT_LABELS.get(key, key.replace("_", " "))

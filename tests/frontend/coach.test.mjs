@@ -76,8 +76,32 @@ describe('the primary advice', () => {
 
     assert.match(tab.textContent, /Aanvullende gegevens nodig/);
     assert.match(tab.textContent, /Vul de ontbrekende energiegegevens aan/);
-    assert.equal(rowFor(tab, 'Reden').value, 'missing_required_data');
+    // The reason is a machine identifier, and this row used to print it: a
+    // customer read "missing_required_data" where a sentence belonged.
+    assert.equal(rowFor(tab, 'Reden').value, 'Er ontbreken gegevens');
     assert.equal(rowFor(tab, 'Betrouwbaarheid').value, 'hoog');
+  });
+
+  it('never shows a raw code, whatever the backend sends', async () => {
+    const coach = answeredCoach();
+    coach.primary_advice = {
+      ...coach.primary_advice,
+      reason_code: 'some_future_code',
+      confidence: 'extremely_high',
+      measurements: { unknown_reading: 42 },
+    };
+    coach.advice = [coach.primary_advice];
+    coach.missing_data = ['a_new_checklist_item'];
+    const { tab } = await openCoachTab(fakeHass({ coach }));
+
+    // Every one of these is an identifier the panel has no words for. A missing
+    // line is a gap; a raw code is a defect the customer can see.
+    assert.doesNotMatch(tab.textContent, /some_future_code/);
+    assert.doesNotMatch(tab.textContent, /extremely_high/);
+    assert.doesNotMatch(tab.textContent, /unknown_reading/);
+    assert.doesNotMatch(tab.textContent, /a_new_checklist_item/);
+    assert.equal(rowFor(tab, 'Reden').visible, false);
+    assert.equal(rowFor(tab, 'Betrouwbaarheid').value, 'Onbekend');
   });
 
   it('says a saving could not be calculated instead of showing zero', async () => {

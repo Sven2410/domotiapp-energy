@@ -15,8 +15,10 @@ from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.domotiapp_energy.const import (
+    COMPLETENESS_POINTS,
     CONF_HOME_NAME,
     CONF_MANUAL_SETUP_ACKNOWLEDGED,
+    CONFIDENCE_LEVELS,
     DEFAULT_HOME_NAME,
     DOMAIN,
     FRONTEND_DIR_NAME,
@@ -29,6 +31,11 @@ from custom_components.domotiapp_energy.const import (
     PANEL_URL_PATH,
     VERSION,
 )
+from custom_components.domotiapp_energy.engine.providers import (
+    _CONFIDENCE_LABELS,
+    _ITEM_LABELS,
+)
+from custom_components.domotiapp_energy.engine.reason_codes import REASON_CODES
 from custom_components.domotiapp_energy.panel import async_register_panel
 
 
@@ -161,3 +168,74 @@ async def test_the_frontend_files_the_panel_loads_exist() -> None:
     assert imported, "the entry point imports nothing, which cannot be right"
     for relative in imported:
         assert (entry_point.parent / relative).is_file(), f"{relative} is missing"
+
+
+# --- Every code the customer can see has a Dutch word ------------------------
+
+
+def _label_keys(table_name: str) -> set[str]:
+    """Return the keys of one table in the panel's shared label module.
+
+    Parsed out of the JavaScript rather than duplicated here, because the point
+    of this test is that the two files cannot drift apart. The panel's texts
+    live in the frontend and not in ``translations/`` (SPEC.md §26), so this is
+    the only place a Python test can reach them.
+    """
+    source = (
+        Path(__file__).parent.parent
+        / "custom_components"
+        / DOMAIN
+        / FRONTEND_DIR_NAME
+        / "core"
+        / "labels.js"
+    ).read_text(encoding="utf-8")
+
+    body = source.split(f"const {table_name} = {{", 1)[1].split("};", 1)[0]
+    return {
+        line.split(":", 1)[0].strip()
+        for line in body.splitlines()
+        if ":" in line and not line.strip().startswith("//")
+    }
+
+
+def test_every_reason_code_has_a_dutch_label() -> None:
+    """A code without a word is a code the customer ends up reading.
+
+    This is the guard on the leak of phase A: the panel printed "REDEN:
+    missing_required_data" because the reason was rendered directly, and every
+    table that did exist fell back to the key. The fallbacks are gone, so a new
+    code without an entry now shows nothing at all — which is why the check that
+    it has one belongs in the suite rather than in someone's memory.
+    """
+    assert set(REASON_CODES) <= _label_keys("REASON_LABELS")
+
+
+def test_every_confidence_level_has_a_dutch_label() -> None:
+    """Both the panel and the coach need a word for every level."""
+    assert set(CONFIDENCE_LEVELS) <= _label_keys("CONFIDENCE_LABELS")
+    # The coach builds its own sentences in the backend, so it carries the same
+    # table; "Betrouwbaarheid: high." is what a gap here used to produce.
+    assert set(CONFIDENCE_LEVELS) <= set(_CONFIDENCE_LABELS)
+
+
+def test_every_checklist_item_has_a_dutch_label() -> None:
+    """The missing-data list names things, never checklist keys."""
+    assert set(COMPLETENESS_POINTS) <= _label_keys("CHECKLIST_LABELS")
+    assert set(COMPLETENESS_POINTS) <= set(_ITEM_LABELS)
+
+
+def test_the_panel_never_falls_back_to_a_raw_key() -> None:
+    """No lookup in the panel may use the key as its own default.
+
+    ``LABELS[key] || key`` is the pattern that caused this: it turns a missing
+    word into a visible identifier, and it does so precisely when something has
+    been forgotten.
+    """
+    tabs = (
+        Path(__file__).parent.parent / "custom_components" / DOMAIN / FRONTEND_DIR_NAME
+    ).glob("tabs/*.js")
+
+    for path in tabs:
+        source = path.read_text(encoding="utf-8")
+        for pattern in ("|| item.confidence", "|| item)", "_LABELS[item] ||"):
+            assert pattern not in source, f"{path.name} falls back to a raw key"

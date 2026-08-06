@@ -96,7 +96,13 @@ async def async_unload_entry(
 
     The panel does go: leaving it in the sidebar after an unload would offer a
     page that can no longer answer any of its questions.
+
+    A logbook counter that is still only in memory is written out first. The
+    store holds it back for up to a minute to keep the storage file from being
+    rewritten every few seconds; a reload inside that minute would otherwise
+    lose it.
     """
+    await entry.runtime_data.store.async_flush_logs()
     async_remove_panel(hass)
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 

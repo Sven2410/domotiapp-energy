@@ -25,8 +25,10 @@ from collections.abc import Callable, Sequence
 from datetime import timedelta
 from typing import Any
 
-from homeassistant.core import HomeAssistant
+from homeassistant.const import EVENT_HOMEASSISTANT_FINAL_WRITE
+from homeassistant.core import CALLBACK_TYPE, Event, HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
@@ -37,6 +39,7 @@ from .const import (
     LOG_EVENT_INVALID_CONFIGURATION,
     LOG_EVENT_INVALID_MEASUREMENT,
     LOG_EVENT_SOURCE_UNAVAILABLE,
+    LOG_FLUSH_INTERVAL_SECONDS,
     MAX_LOG_ENTRIES,
     SEVERITY_INFO,
     SEVERITY_WARNING,
@@ -111,6 +114,7 @@ class ConfigurationStore:
 
     def __init__(self, hass: HomeAssistant) -> None:
         """Set up the store without touching the filesystem yet."""
+        self._hass = hass
         self._store = DomotiAppEnergyStore(
             hass,
             STORAGE_VERSION,
@@ -119,6 +123,12 @@ class ConfigurationStore:
         )
         self._lock = asyncio.Lock()
         self._config: StoredConfiguration | None = None
+        # A bumped log counter that is in memory but not yet on disk, plus the
+        # single timer that will put it there. Together they cap the logbook at
+        # one write per LOG_FLUSH_INTERVAL_SECONDS; see the constant for why.
+        self._logs_pending = False
+        self._cancel_log_flush: CALLBACK_TYPE | None = None
+        self._unsub_final_write: CALLBACK_TYPE | None = None
         # Called after every configuration change, so the coordinator can
         # rebuild its state listener over the newly linked entities without
         # every writer having to remember to tell it (SPEC.md §18).
@@ -410,30 +420,25 @@ class ConfigurationStore:
         The logbook is persisted but is not part of what ``expected_revision``
         guards, so writing an entry leaves the revision alone: most events come
         from the engine, not from the user.
+
+        **A collapsed repeat does not reach the disk right away.** Bumping a
+        counter used to rewrite the whole storage file, and the engine bumps the
+        same counter on every recalculation — with a real meter that is a write
+        every couple of seconds, all day. The bump is applied in memory and
+        flushed at most once per ``LOG_FLUSH_INTERVAL_SECONDS``; a genuinely new
+        line is still written immediately.
         """
-
-        def _mutate(config: StoredConfiguration) -> None:
-            now = dt_util.utcnow()
-            window = timedelta(minutes=LOG_DEDUPE_WINDOW_MINUTES)
-            newest = config.logs[0] if config.logs else None
-
-            if (
-                newest is not None
-                and newest.event_type == event_type
-                and newest.subject == subject
-                and now - newest.timestamp <= window
+        async with self._lock:
+            if self._collapse_into_recent(
+                event_type, title, message, severity, subject
             ):
-                newest.count += 1
-                newest.timestamp = now
-                newest.title = title
-                newest.message = message
-                newest.severity = severity
+                self._schedule_log_flush()
                 return
 
-            config.logs.insert(
+            self.config.logs.insert(
                 0,
                 LogEntry(
-                    timestamp=now,
+                    timestamp=dt_util.utcnow(),
                     event_type=event_type,
                     title=title,
                     message=message,
@@ -442,28 +447,118 @@ class ConfigurationStore:
                 ),
             )
             # Logs are newest first, so trimming the tail drops the oldest.
-            del config.logs[MAX_LOG_ENTRIES:]
+            del self.config.logs[MAX_LOG_ENTRIES:]
+            await self._async_write(bump_revision=False)
 
-        await self._async_write_logs(_mutate)
+    def _collapse_into_recent(
+        self,
+        event_type: str,
+        title: str,
+        message: str,
+        severity: str,
+        subject: str | None,
+    ) -> bool:
+        """Fold this event into a recent matching entry, or report it as new.
+
+        The caller must hold the lock. Returning ``True`` means nothing has to
+        be written now: the change is a counter and a timestamp on a line that
+        is already on disk.
+
+        **The whole window is searched, not just the newest line.** Looking only
+        at ``logs[0]`` collapses a repeat and nothing else, and the engine does
+        not repeat itself one subject at a time: on a sunny afternoon under load
+        it reports a peak risk and a solar surplus in the same pass, so each one
+        found the *other* at the front and wrote a new line. Two lines per
+        recalculation, for as long as both situations lasted — the write
+        amplification this collapsing exists to prevent, hiding behind the very
+        rule meant to stop it. Measured against a live instance, not found by
+        the unit test that only ever sent one kind of event.
+
+        The matched entry moves back to the front, so the list stays ordered
+        newest-first and trimming still drops the oldest.
+        """
+        now = dt_util.utcnow()
+        window = timedelta(minutes=LOG_DEDUPE_WINDOW_MINUTES)
+        logs = self.config.logs
+
+        for index, entry in enumerate(logs):
+            if now - entry.timestamp > window:
+                # Ordered newest-first, so everything beyond here is older.
+                return False
+            if entry.event_type != event_type or entry.subject != subject:
+                continue
+
+            entry.count += 1
+            entry.timestamp = now
+            entry.title = title
+            entry.message = message
+            entry.severity = severity
+            if index:
+                logs.insert(0, logs.pop(index))
+            return True
+
+        return False
+
+    @callback
+    def _schedule_log_flush(self) -> None:
+        """Make sure the pending counter reaches the disk before long.
+
+        One timer at a time: further bumps ride along on the flush that is
+        already scheduled, so the interval is a hard ceiling on the write rate
+        rather than a delay that keeps being pushed forward. The final-write
+        listener covers a shutdown inside the interval.
+        """
+        self._logs_pending = True
+        if self._cancel_log_flush is None:
+            self._cancel_log_flush = async_call_later(
+                self._hass, LOG_FLUSH_INTERVAL_SECONDS, self._async_flush_log_timer
+            )
+        if self._unsub_final_write is None:
+            self._unsub_final_write = self._hass.bus.async_listen_once(
+                EVENT_HOMEASSISTANT_FINAL_WRITE, self._async_flush_on_stop
+            )
+
+    async def _async_flush_log_timer(self, _now: Any) -> None:
+        """Write the pending logbook change; called by the flush timer."""
+        self._cancel_log_flush = None
+        await self.async_flush_logs()
+
+    async def _async_flush_on_stop(self, _event: Event) -> None:
+        """Write the pending logbook change before Home Assistant stops."""
+        self._unsub_final_write = None
+        await self.async_flush_logs()
+
+    async def async_flush_logs(self) -> None:
+        """Persist a pending logbook change, if there is one.
+
+        Public because unloading the entry has to call it: a reload halfway
+        through the interval would otherwise drop the counter.
+        """
+        async with self._lock:
+            if not self._logs_pending or self._config is None:
+                return
+            await self._async_write(bump_revision=False)
+
+    @callback
+    def _cancel_pending_log_flush(self) -> None:
+        """Drop the flush timer and its listener; every write clears them."""
+        self._logs_pending = False
+        if self._cancel_log_flush is not None:
+            self._cancel_log_flush()
+            self._cancel_log_flush = None
+        if self._unsub_final_write is not None:
+            self._unsub_final_write()
+            self._unsub_final_write = None
 
     async def async_clear_logs(self) -> None:
         """Empty the logbook."""
-
-        def _mutate(config: StoredConfiguration) -> None:
-            config.logs.clear()
-
-        await self._async_write_logs(_mutate)
-
-    async def _async_write_logs(
-        self, mutate: Callable[[StoredConfiguration], None]
-    ) -> None:
-        """Persist a logbook change under the lock, without a new revision."""
         async with self._lock:
-            mutate(self.config)
+            self.config.logs.clear()
             await self._async_write(bump_revision=False)
 
     async def async_remove(self) -> None:
         """Delete the stored configuration file and drop the cache."""
+        self._cancel_pending_log_flush()
         await self._store.async_remove()
         self._config = None
 
@@ -480,6 +575,12 @@ class ConfigurationStore:
             config.revision += 1
         # Guard the limit here too: a caller may have appended logs directly.
         del config.logs[MAX_LOG_ENTRIES:]
+
+        # Whatever the reason for this write, it puts the whole configuration on
+        # disk — including any counter that was still only in memory. Clearing
+        # the timer here is what keeps a busy configuration from also paying for
+        # a logbook flush a moment later.
+        self._cancel_pending_log_flush()
 
         try:
             await self._store.async_save(config.to_dict())

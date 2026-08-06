@@ -72,6 +72,15 @@ _ADVICE_RANKS: dict[str, int] = {
 }
 
 
+def advice_rank(reason_code: str) -> int:
+    """Return how urgent this reason is; lower sorts first (SPEC.md §16).
+
+    Public because the coordinator's dwell timer needs it: a peak warning has to
+    be allowed past a timer that is holding a solar advice in place.
+    """
+    return _ADVICE_RANKS.get(reason_code, ADVICE_RANK_GENERAL)
+
+
 @dataclass(slots=True)
 class _Context:
     """Everything the rules need, gathered once."""
@@ -119,9 +128,7 @@ class Advisor:
         ]
 
         advice = _filter_by_savings(advice, config)
-        advice.sort(
-            key=lambda item: _ADVICE_RANKS.get(item.reason_code, ADVICE_RANK_GENERAL)
-        )
+        advice.sort(key=lambda item: advice_rank(item.reason_code))
 
         if not advice:
             return [_neutral_advice()]
@@ -204,9 +211,20 @@ def _advise_peak_risk(context: _Context) -> list[AdviceItem]:
 
 
 def _advise_solar_surplus(context: _Context) -> list[AdviceItem]:
-    """Suggest a flexible device when there is enough surplus to use it."""
+    """Suggest a flexible device when there is enough surplus to use it.
+
+    "Enough" is normally decided by the coordinator's latch, so a surplus
+    drifting around the threshold does not switch this advice — and the euro
+    amount under it — on and off every few seconds. Without a decision the plain
+    comparison stands, which is what the advisor produces on its own.
+    """
     surplus = context.metrics.solar_surplus_w
-    if surplus is None or surplus < context.config.home.min_solar_surplus_w:
+    if surplus is None:
+        return []
+    sufficient = context.metrics.solar_surplus_sufficient
+    if sufficient is None:
+        sufficient = surplus >= context.config.home.min_solar_surplus_w
+    if not sufficient:
         return []
     if not context.config.preferences.prefer_solar:
         return []

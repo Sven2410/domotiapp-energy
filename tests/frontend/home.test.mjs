@@ -174,6 +174,12 @@ describe('the form itself', () => {
     };
 
     const { tab } = await openHomeTab(hass);
+    // The composition belongs to a dynamic contract, so it has to be in force
+    // before these fields exist. Editing them on a fixed contract is something
+    // `ha-form` cannot do either: it does not render them, so it can never emit
+    // them — and a test that did it anyway was leaning on the merge bug this
+    // card used to have.
+    change(tab, { contract_type: 'dynamic' }, 1);
     change(tab, { energy_tax_eur_kwh: 0.1088, supplier_markup_eur_kwh: 0.02 }, 1);
     findButton(tab, 'Opslaan').click();
     await settle();
@@ -543,6 +549,86 @@ describe('the contract fields that apply', () => {
       noticeTexts(tab).some((text) => text.includes('blijven bewaard')),
       'the tab has to say that the value is kept',
     );
+  });
+
+  /** A home with both contracts filled in, which is the case that broke. */
+  function bothContractsFilled() {
+    return fakeHass({
+      config: sampleConfig({
+        home: {
+          ...sampleConfig().home,
+          contract_type: 'fixed',
+          fixed_import_price_eur_kwh: 0.3,
+          energy_tax_eur_kwh: 0.1088,
+          supplier_markup_eur_kwh: 0.02,
+          vat_percent: 21,
+          low_price_threshold_eur_kwh: 0.15,
+          high_price_threshold_eur_kwh: 0.35,
+        },
+      }),
+    });
+  }
+
+  it('keeps the other contract through a round trip', async () => {
+    const { tab } = await openHomeTab(bothContractsFilled());
+
+    // Away and back. The card is only ever handed the fields of the contract
+    // in force, so everything belonging to the other one is absent from every
+    // payload it emits — and merging that against the full schema used to
+    // clear those fields before they had ever been on screen.
+    change(tab, { contract_type: 'dynamic' }, 1);
+    change(tab, { contract_type: 'fixed' }, 1);
+
+    const contract = forms(tab)[1];
+    assert.equal(
+      contract.data.fixed_import_price_eur_kwh,
+      0.3,
+      'the fixed tariff has to survive a trip through the dynamic contract',
+    );
+  });
+
+  it('keeps the dynamic composition on the very first switch', async () => {
+    const { tab } = await openHomeTab(bothContractsFilled());
+
+    change(tab, { contract_type: 'dynamic' }, 1);
+
+    // These are the fields a fixed contract never shows, so they were the ones
+    // wiped by the switch that was supposed to reveal them.
+    const contract = forms(tab)[1];
+    assert.equal(contract.data.energy_tax_eur_kwh, 0.1088);
+    assert.equal(contract.data.supplier_markup_eur_kwh, 0.02);
+    assert.equal(contract.data.vat_percent, 21);
+    assert.equal(contract.data.low_price_threshold_eur_kwh, 0.15);
+    assert.equal(contract.data.high_price_threshold_eur_kwh, 0.35);
+  });
+
+  it('does not write the other contract away as null', async () => {
+    const sent = [];
+    const hass = bothContractsFilled();
+    const original = hass.callWS;
+    hass.callWS = async (message) => {
+      sent.push(message);
+      if (message.type === 'domotiapp_energy/home/update') {
+        return { revision: 8, item: { ...message.home }, issues: {} };
+      }
+      return original(message);
+    };
+
+    const { tab } = await openHomeTab(hass);
+    change(tab, { contract_type: 'dynamic' }, 1);
+    findButton(tab, 'Opslaan').click();
+    await settle();
+
+    // payload() sends null for anything missing from the draft, so a value
+    // cleared by the switch was not merely invisible: saving wrote the loss to
+    // storage, while the notice underneath said the values were kept.
+    const update = sent.find(
+      (message) => message.type === 'domotiapp_energy/home/update',
+    );
+    assert.equal(update.home.fixed_import_price_eur_kwh, 0.3);
+    assert.equal(update.home.energy_tax_eur_kwh, 0.1088);
+    assert.equal(update.home.supplier_markup_eur_kwh, 0.02);
+    assert.equal(update.home.vat_percent, 21);
   });
 
   it('still sends the value of the contract that is not in force', async () => {

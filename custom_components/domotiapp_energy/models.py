@@ -1221,6 +1221,12 @@ class EnergyMetrics:
     solar_surplus_confidence: str = CONFIDENCE_LOW
     grid_load_percent: float | None = None
     peak_risk: bool = False
+    # Whether the surplus counts as enough to advise on, after the coordinator's
+    # latch has had its say (engine/hysteresis.py). ``None`` means nobody has
+    # decided yet, and the advisor falls back to the plain comparison against
+    # ``min_solar_surplus_w`` — which is what the calculator on its own produces,
+    # so it stays a pure function of its input.
+    solar_surplus_sufficient: bool | None = None
     current_price_eur_kwh: float | None = None
     # Carried through from the snapshot so the Overzicht can show where the
     # all-in price came from (SPEC.md §8). Only set for a market source.
@@ -1241,6 +1247,7 @@ class EnergyMetrics:
             "solar_surplus_confidence": self.solar_surplus_confidence,
             "grid_load_percent": self.grid_load_percent,
             "peak_risk": self.peak_risk,
+            "solar_surplus_sufficient": self.solar_surplus_sufficient,
             "current_price_eur_kwh": self.current_price_eur_kwh,
             "market_price_eur_kwh": self.market_price_eur_kwh,
             "data_quality": self.data_quality.to_dict(),
@@ -1263,6 +1270,11 @@ class EnergyMetrics:
             ),
             grid_load_percent=_as_optional_float(data.get("grid_load_percent")),
             peak_risk=_as_bool(data.get("peak_risk"), False),
+            solar_surplus_sufficient=(
+                value
+                if isinstance(value := data.get("solar_surplus_sufficient"), bool)
+                else None
+            ),
             current_price_eur_kwh=_as_optional_float(data.get("current_price_eur_kwh")),
             market_price_eur_kwh=_as_optional_float(data.get("market_price_eur_kwh")),
             data_quality=DataQualityResult.from_dict(

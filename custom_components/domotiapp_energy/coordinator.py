@@ -39,19 +39,24 @@ from homeassistant.helpers.event import (
     async_track_time_interval,
 )
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from homeassistant.util import dt as dt_util
 
 from .const import (
     DOMAIN,
     LOG_EVENT_ADVICE_RECALCULATED,
     LOG_EVENT_PEAK_RISK_DETECTED,
     LOG_EVENT_SOLAR_SURPLUS_DETECTED,
+    PEAK_RISK_RELEASE_MARGIN_PERCENT,
+    PRIMARY_ADVICE_MIN_DWELL_SECONDS,
     RECALCULATE_DEBOUNCE_SECONDS,
     SAFETY_RECALCULATE_INTERVAL_MINUTES,
     SEVERITY_INFO,
     SEVERITY_WARNING,
+    SOLAR_SURPLUS_RELEASE_FRACTION,
 )
-from .engine.advisor import Advisor
+from .engine.advisor import Advisor, advice_rank
 from .engine.calculator import Calculator
+from .engine.hysteresis import Latch, PrimaryAdviceGate
 from .engine.providers import CoachProvider
 from .models import CoachResult, EnergyMetrics, StoredConfiguration
 from .storage import ConfigurationStore
@@ -149,6 +154,15 @@ class EnergyCoordinator(DataUpdateCoordinator[CoachResult]):
         # states twice and race each other into the entities.
         self._calculation_lock = asyncio.Lock()
         self._unsub_states: CALLBACK_TYPE | None = None
+        # Everything that has to remember the previous answer lives here, so the
+        # calculator and the advisor stay pure functions of their input
+        # (engine/hysteresis.py). A configuration change resets all three: the
+        # thresholds they were holding an answer against no longer apply.
+        self._peak_latch = Latch()
+        self._surplus_latch = Latch()
+        self._advice_gate = PrimaryAdviceGate(
+            minimum_seconds=PRIMARY_ADVICE_MIN_DWELL_SECONDS
+        )
 
     @callback
     def async_start(self) -> None:
@@ -241,7 +255,14 @@ class EnergyCoordinator(DataUpdateCoordinator[CoachResult]):
         """React to a configuration change: rewatch, then recalculate.
 
         Runs while the store holds its write lock, so it only schedules work.
+
+        The latches are cleared as well. They hold an answer against a threshold
+        that has just been edited, and carrying that answer over would mean the
+        first result after a change still reflected the old setting.
         """
+        self._peak_latch.reset()
+        self._surplus_latch.reset()
+        self._advice_gate.reset()
         self.async_rebuild_state_listener()
         self._entry.async_create_background_task(
             self.hass,
@@ -265,7 +286,12 @@ class EnergyCoordinator(DataUpdateCoordinator[CoachResult]):
             await self._store.async_report_invalid_rows(snapshot.source_failures)
 
             metrics = self._calculator.derive_metrics(config, snapshot)
+            self._apply_hysteresis(config, metrics)
+
             advice = self._advisor.generate(config, metrics)
+            advice = self._advice_gate.choose(
+                advice, now=dt_util.utcnow(), rank_of=advice_rank
+            )
             result = CoachResult(
                 primary_advice=advice[0] if advice else None,
                 advice=advice,
@@ -275,6 +301,31 @@ class EnergyCoordinator(DataUpdateCoordinator[CoachResult]):
 
             await self._async_log_findings(config, metrics)
             return result
+
+    def _apply_hysteresis(
+        self, config: StoredConfiguration, metrics: EnergyMetrics
+    ) -> None:
+        """Let the previous answer hold where the reading hovers on a threshold.
+
+        The calculator produced the plain comparisons; this replaces them with
+        the latched ones. Both thresholds keep their configured switch-on point
+        and gain a release point below it, so a load sitting at 79-81% of the
+        maximum, or a surplus drifting either side of ``min_solar_surplus_w``,
+        no longer turns an answer on and off every few seconds (SPEC.md §16).
+        """
+        warning_percent = float(config.home.peak_warning_percent)
+        metrics.peak_risk = self._peak_latch.update(
+            metrics.grid_load_percent,
+            on_at=warning_percent,
+            off_at=warning_percent - PEAK_RISK_RELEASE_MARGIN_PERCENT,
+        )
+
+        minimum = config.home.min_solar_surplus_w
+        metrics.solar_surplus_sufficient = self._surplus_latch.update(
+            metrics.solar_surplus_w,
+            on_at=minimum,
+            off_at=minimum * SOLAR_SURPLUS_RELEASE_FRACTION,
+        )
 
     async def _async_log_findings(
         self, config: StoredConfiguration, metrics: EnergyMetrics
@@ -302,7 +353,14 @@ class EnergyCoordinator(DataUpdateCoordinator[CoachResult]):
             )
 
         surplus = metrics.solar_surplus_w
-        if surplus is not None and surplus >= config.home.min_solar_surplus_w > 0:
+        # The latched answer, not the raw comparison: the logbook would
+        # otherwise keep bumping its counter every time the surplus crossed the
+        # threshold, which is the write the flapping used to pay for.
+        if (
+            metrics.solar_surplus_sufficient
+            and surplus is not None
+            and (config.home.min_solar_surplus_w > 0)
+        ):
             await self._store.async_add_log_entry(
                 LOG_EVENT_SOLAR_SURPLUS_DETECTED,
                 "Zonneoverschot beschikbaar",

@@ -698,3 +698,90 @@ async def test_reporting_quarantined_rows_leaves_the_revision_alone(
     assert any(
         log.event_type == LOG_EVENT_INVALID_CONFIGURATION for log in store.config.logs
     )
+
+
+# --- Hysteresis against a meter that reports every second --------------------
+
+
+async def test_a_load_hovering_on_the_threshold_keeps_one_answer(
+    hass: HomeAssistant, hass_storage: dict[str, Any]
+) -> None:
+    """The peak warning stops rattling when the load sits near the limit.
+
+    This is the situation a real P1 meter produces: it reports every second, so
+    a load a few tens of watts either side of the warning level used to switch
+    the warning — and the whole primary advice — on and off continuously
+    (SPEC.md §16).
+    """
+    home = HomeProfile(main_fuse_a=25, max_grid_power_w=5000.0, peak_warning_percent=80)
+    # 80% of 5000 W is 4000 W, so this crosses the threshold.
+    hass.states.async_set(GRID_ENTITY, "4100")
+    entry = await _setup(
+        hass, hass_storage, StoredConfiguration(home=home, sources=[_grid_source()])
+    )
+    coordinator = entry.runtime_data.coordinator
+    assert coordinator.data.metrics.peak_risk is True
+
+    # Back under the threshold, but well inside the release margin: the fuse is
+    # no less loaded than it was a second ago.
+    for value in ("3950", "4050", "3920", "4010"):
+        hass.states.async_set(GRID_ENTITY, value)
+        await coordinator.async_refresh()
+        await hass.async_block_till_done()
+        assert coordinator.data.metrics.peak_risk is True, value
+
+    # 75% of 5000 W is 3750 W: past the release point, so the answer changes.
+    hass.states.async_set(GRID_ENTITY, "3700")
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+
+    assert coordinator.data.metrics.peak_risk is False
+
+
+async def test_a_surplus_hovering_on_the_threshold_keeps_its_advice(
+    hass: HomeAssistant, hass_storage: dict[str, Any]
+) -> None:
+    """The solar advice, and the amount under it, stop blinking."""
+    home = HomeProfile(
+        main_fuse_a=25, max_grid_power_w=5750.0, min_solar_surplus_w=500.0
+    )
+    hass.states.async_set(GRID_ENTITY, "-600")
+    entry = await _setup(
+        hass, hass_storage, StoredConfiguration(home=home, sources=[_grid_source()])
+    )
+    coordinator = entry.runtime_data.coordinator
+    assert coordinator.data.metrics.solar_surplus_sufficient is True
+
+    hass.states.async_set(GRID_ENTITY, "-450")
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+    assert coordinator.data.metrics.solar_surplus_sufficient is True
+
+    # Below 80% of the minimum the surplus really has gone.
+    hass.states.async_set(GRID_ENTITY, "-390")
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+    assert coordinator.data.metrics.solar_surplus_sufficient is False
+
+
+async def test_a_configuration_change_clears_the_held_answers(
+    hass: HomeAssistant, hass_storage: dict[str, Any]
+) -> None:
+    """An edited threshold is not judged against the answer it replaced."""
+    home = HomeProfile(main_fuse_a=25, max_grid_power_w=5000.0, peak_warning_percent=80)
+    hass.states.async_set(GRID_ENTITY, "4100")
+    entry = await _setup(
+        hass, hass_storage, StoredConfiguration(home=home, sources=[_grid_source()])
+    )
+    coordinator = entry.runtime_data.coordinator
+    assert coordinator.data.metrics.peak_risk is True
+
+    def _raise_the_limit(config: StoredConfiguration) -> None:
+        config.home.peak_warning_percent = 95
+
+    await entry.runtime_data.store.async_update(_raise_the_limit)
+    await hass.async_block_till_done()
+    await _flush_debouncer(hass)
+
+    # 4100 W is 82% of the maximum, which is under the new warning level.
+    assert coordinator.data.metrics.peak_risk is False

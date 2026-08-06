@@ -29,6 +29,7 @@ import {
   setVisible,
   statRow,
 } from '../core/dom.js';
+import { confidenceLabel } from '../core/labels.js';
 
 const EMPTY_NOT_CONFIGURED = 'Nog niet ingesteld';
 const EMPTY_NOT_AVAILABLE = 'Niet beschikbaar';
@@ -267,10 +268,14 @@ export const overviewTab = {
             : null,
       });
       solarPowerRow.set(formatNumber(metrics.solar_power_w));
+      // "Betrouwbaarheid: high" is what this used to read: the level travels as
+      // an English identifier and was printed as it arrived (core/labels.js).
+      const surplusConfidence = confidenceLabel(metrics.solar_surplus_confidence);
       surplusRow.set(formatNumber(metrics.solar_surplus_w), {
-        hint: metrics.solar_surplus_w
-          ? `Betrouwbaarheid: ${metrics.solar_surplus_confidence}`
-          : null,
+        hint:
+          metrics.solar_surplus_w && surplusConfidence
+            ? `Betrouwbaarheid: ${surplusConfidence}`
+            : null,
       });
       loadRow.set(formatNumber(metrics.grid_load_percent, { decimals: 1 }));
       updatePrice(config, metrics);
@@ -289,7 +294,7 @@ export const overviewTab = {
       adviceMessage.textContent =
         primary?.message ||
         'Zodra er een energiebron gekoppeld is, verschijnt hier het hoofdadvies.';
-      adviceConfidence.set(primary?.confidence ?? null);
+      adviceConfidence.set(confidenceLabel(primary?.confidence));
 
       updateWarnings(live.advice || []);
     }

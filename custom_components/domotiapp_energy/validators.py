@@ -22,9 +22,11 @@ above the theoretical maximum).
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import Any
 
 from homeassistant.core import HomeAssistant, State
+from homeassistant.util import dt as dt_util
 
 from .const import (
     ALLOWED_PHASES,
@@ -32,6 +34,7 @@ from .const import (
     CONTROL_CAPABILITIES,
     CONTROL_MODES,
     CONTROLLING_MODES,
+    ENTITY_STALE_AFTER_MINUTES,
     MAX_ADVICE_COUNT,
     MAX_MAIN_FUSE_A,
     MAX_PEAK_WARNING_PERCENT,
@@ -45,8 +48,11 @@ from .const import (
     MIN_VAT_PERCENT,
     MINUTES_PER_DAY,
     POSITIVE_MEANS_OPTIONS,
+    POWER_SOURCE_TYPES,
+    POWER_SOURCE_UNITS,
     PRICE_BASES,
     PRICE_BASIS_MARKET,
+    PRICE_SOURCE_UNITS,
     PRIORITIES,
     SEVERITY_ERROR,
     SEVERITY_WARNING,
@@ -63,6 +69,7 @@ from .const import (
     VALIDATION_INVALID_TIME_WINDOW,
     VALIDATION_OUT_OF_RANGE,
     VALIDATION_REQUIRED,
+    VALIDATION_UNIT_MISMATCH,
     VALIDATION_UNKNOWN_TYPE,
     VALUE_SOURCE_ATTRIBUTE,
 )
@@ -129,17 +136,26 @@ def read_entity_value(hass: HomeAssistant, binding: EntityBinding) -> ReadResult
     """Read one entity and return its value in the engine's own unit.
 
     The steps are those of SPEC.md §15, in that order: existence, availability,
-    attribute selection, safe conversion to float, scale factor, inversion,
+    age, attribute selection, safe conversion to float, scale factor, inversion,
     unit conversion. A value that fails any step is refused rather than
     replaced — an unavailable meter is not a meter reading zero.
+
+    The age check is the one that only matters against real hardware. Home
+    Assistant keeps the last state of an entity forever, so a meter that stops
+    reporting leaves a number behind that reads as current. Without this the
+    panel showed an hours-old figure with full confidence, and the five-minute
+    safety recalculation kept re-reading the same stale value and finding
+    nothing wrong (SPEC.md §15).
     """
     entity_id = binding.entity_id
     if entity_id is None:
         return ReadResult.failed(REASON_MISSING_REQUIRED_DATA, "")
 
-    state = hass.states.get(entity_id)
+    state = _live_state(hass, entity_id)
     if state is None:
-        # The entity has been removed or renamed: unavailable, not unreadable.
+        # Removed, renamed or gone quiet. All three are "unavailable" rather
+        # than "unreadable": nothing is wrong with how this source is
+        # configured, there is simply no current measurement behind it.
         return ReadResult.failed(
             REASON_INVALID_ENTITY_STATE, entity_id, unavailable=True
         )
@@ -189,6 +205,23 @@ def _select_raw_value(state: State, binding: EntityBinding) -> tuple[Any, str | 
 def _is_unusable(raw: Any) -> bool:
     """Return whether a raw state or attribute carries no measurement."""
     return isinstance(raw, str) and raw.strip().lower() in UNUSABLE_ENTITY_STATES
+
+
+def _live_state(hass: HomeAssistant, entity_id: str) -> State | None:
+    """Return the entity's state when it is present and recent enough.
+
+    ``last_updated`` and not ``last_changed``: a meter reporting the same value
+    every second is perfectly alive, and ``last_changed`` would call it stale
+    the moment the house draws a steady load. ``last_updated`` moves on every
+    report, whether or not the number changed.
+    """
+    state = hass.states.get(entity_id)
+    if state is None:
+        return None
+    age = dt_util.utcnow() - state.last_updated
+    if age > timedelta(minutes=ENTITY_STALE_AFTER_MINUTES):
+        return None
+    return state
 
 
 # --- Validating stored configuration ----------------------------------------
@@ -379,6 +412,48 @@ def _validate_price_thresholds(home: HomeProfile) -> list[ValidationIssue]:
     ]
 
 
+def _validate_unit_matches_type(source: EnergySource) -> list[ValidationIssue]:
+    """Warn when the chosen unit does not describe what this type measures.
+
+    Two explicit choices of the installer are compared against each other; no
+    entity is looked at and nothing is inferred (SPEC.md §2.1). A warning and
+    not an error, because a half-finished row has to stay saveable — but a loud
+    one, because the mistake it catches produces a plausible-looking house that
+    is wrong by three orders of magnitude.
+    """
+    unit = source.binding.unit
+    if unit not in UNITS:
+        # Already reported as an invalid choice; saying it twice helps nobody.
+        return []
+
+    if source.type in POWER_SOURCE_TYPES and unit not in POWER_SOURCE_UNITS:
+        return [
+            ValidationIssue(
+                "unit",
+                VALIDATION_UNIT_MISMATCH,
+                f"Deze bron meet vermogen, maar de eenheid staat op '{unit}'. "
+                f"Kies W of kW. Let op: veel slimme-meterintegraties tonen "
+                f"vooral de meterstand in kWh; die is een totaal en geen "
+                f"vermogen, en levert een netbelasting die honderden keren te "
+                f"hoog is.",
+                severity=SEVERITY_WARNING,
+            )
+        ]
+
+    if source.type == SOURCE_TYPE_CURRENT_PRICE and unit not in PRICE_SOURCE_UNITS:
+        return [
+            ValidationIssue(
+                "unit",
+                VALIDATION_UNIT_MISMATCH,
+                f"Deze bron levert een prijs, maar de eenheid staat op "
+                f"'{unit}'. Kies EUR/kWh of ct/kWh.",
+                severity=SEVERITY_WARNING,
+            )
+        ]
+
+    return []
+
+
 def validate_energy_source(source: EnergySource) -> list[ValidationIssue]:
     """Return everything wrong with one energy source (SPEC.md §8)."""
     if source.invalid_reason is not None:
@@ -402,6 +477,8 @@ def validate_energy_source(source: EnergySource) -> list[ValidationIssue]:
                 "Kies een geldige eenheid.",
             )
         )
+
+    issues.extend(_validate_unit_matches_type(source))
 
     if source.binding.scale_factor <= 0:
         issues.append(

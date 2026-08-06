@@ -294,6 +294,22 @@ export const homeTab = {
     let loadedRevision = null;
     /** The contract fields currently on screen, so they only move when needed. */
     let contractKey = '';
+    /**
+     * The contract field names that are on screen right now.
+     *
+     * The merge below has to know this, and knowing it *at the moment of the
+     * event* is the whole point. `only()` deliberately writes `undefined` for a
+     * name that is absent from the payload, because that is what a field the
+     * installer just cleared looks like. The contract card is handed only the
+     * fields of the contract in force, so every field of the *other* contract is
+     * absent from everything it emits — and merging against the full schema
+     * therefore cleared them, before they had ever been on screen. One switch of
+     * the contract type wiped the fixed tariff, the energy tax, the supplier
+     * markup, the VAT and both price thresholds from the draft, and `payload()`
+     * sends `null` for a missing field, so saving wrote that loss to storage
+     * while the notice underneath claimed the values were kept.
+     */
+    let visibleContractNames = CONTRACT_SCHEMA.map((field) => field.name);
 
     /**
      * Merge one card's fields back into the draft.
@@ -304,10 +320,14 @@ export const homeTab = {
      * snapshot of every other card's fields as well — and a card touched later
      * would quietly undo an edit made in a card touched earlier. That reverted
      * the saved profile, not only the hint on screen.
+     *
+     * `namesNow` is a function rather than a list because the contract card's
+     * set of fields moves: it has to be read when the event fires, not when the
+     * handler was built.
      */
-    function changeHandler(names) {
+    function changeHandler(namesNow) {
       return (part) => {
-        draft = { ...draft, ...only(part, names) };
+        draft = { ...draft, ...only(part, namesNow()) };
         state.setDraft(DRAFT, draft);
         refreshDirty();
       };
@@ -316,12 +336,17 @@ export const homeTab = {
     const forms = [CONNECTION_SCHEMA, CONTRACT_SCHEMA, ADVICE_SCHEMA].map(
       (schema, index) => {
         const names = schema.map((field) => field.name);
+        // The contract card asks a different set per contract type, so it is
+        // the one whose schema moves; the other two are fixed.
+        const conditional = index === 1;
         return {
           names,
-          // The contract card asks a different set per contract type, so it is
-          // the one whose schema moves; the other two are fixed.
-          conditional: index === 1,
-          form: createForm(getHass(), schema, changeHandler(names)),
+          conditional,
+          form: createForm(
+            getHass(),
+            schema,
+            changeHandler(conditional ? () => visibleContractNames : () => names),
+          ),
           host: [connection, contract, advice][index],
         };
       },
@@ -438,12 +463,17 @@ export const homeTab = {
      */
     function refreshContractFields() {
       const schema = contractSchema(draft);
-      const key = JSON.stringify(schema.map((field) => field.name));
+      const names = schema.map((field) => field.name);
+      const key = JSON.stringify(names);
       if (key !== contractKey) {
         contractKey = key;
+        // Update this together with the schema and never apart from it: the
+        // merge in changeHandler reads it, and a stale list there is exactly
+        // how the other contract's values used to disappear.
+        visibleContractNames = names;
         const entry = forms.find((item) => item.conditional);
         entry.form.setSchema(schema);
-        entry.form.setData(only(draft, schema.map((field) => field.name)));
+        entry.form.setData(only(draft, names));
       }
 
       const inactive = inactiveContractFields(draft);
@@ -485,10 +515,9 @@ export const homeTab = {
       // Each card is handed only its own fields, so it cannot carry a stale
       // copy of another card's values.
       contractKey = '';
+      visibleContractNames = contractSchema(draft).map((field) => field.name);
       for (const { form, names, conditional } of forms) {
-        form.setData(
-          only(draft, conditional ? contractSchema(draft).map((f) => f.name) : names),
-        );
+        form.setData(only(draft, conditional ? visibleContractNames : names));
       }
       showIssues(config);
       state.clearDraft(DRAFT);

@@ -72,6 +72,20 @@ MAX_LOG_ENTRIES: Final = 200
 # adding a new log line (anti-spam rule, SPEC.md §8 "Logboek").
 LOG_DEDUPE_WINDOW_MINUTES: Final = 15
 
+# How long a bumped counter may stay in memory before it reaches the disk.
+#
+# The anti-spam rule collapses repeats into a counter, but collapsing them still
+# produced a full rewrite of the storage file per event, because
+# ``Store.async_save`` writes immediately. With a real P1 meter reporting every
+# second that is a write every couple of seconds for the whole solar day —
+# invisible, because the file does not grow, and real wear on the SD card or
+# eMMC a Home Assistant OS install runs from.
+#
+# A bump is therefore kept in memory and flushed at most once per interval. A
+# *new* log line still goes to disk straight away: those are rare and each one
+# says something the installer has not been told yet.
+LOG_FLUSH_INTERVAL_SECONDS: Final = 60
+
 # Revision of a configuration that has never been written.
 INITIAL_REVISION: Final = 1
 
@@ -278,6 +292,15 @@ SOURCE_TYPES: Final[tuple[str, ...]] = (
     SOURCE_TYPE_GENERAL_CONSUMPTION,
 )
 
+# The source types whose reading is an instantaneous power in watts. Their
+# allowed units are listed with the units themselves, below.
+POWER_SOURCE_TYPES: Final[tuple[str, ...]] = (
+    SOURCE_TYPE_GRID_METER,
+    SOURCE_TYPE_SOLAR,
+    SOURCE_TYPE_HOME_BATTERY,
+    SOURCE_TYPE_GENERAL_CONSUMPTION,
+)
+
 # Source types whose readings add up when several are configured: two
 # inverters really do produce more solar together.
 ADDITIVE_SOURCE_TYPES: Final[tuple[str, ...]] = (
@@ -339,6 +362,27 @@ UNIT_CONVERSION_FACTORS: Final[dict[str, float]] = {
     UNIT_PERCENT: 1.0,
     UNIT_NONE: 1.0,
 }
+
+# Which units describe what a source type actually measures.
+#
+# The unit is an explicit choice and is never derived from the entity
+# (SPEC.md §15), which is right — but it also meant nothing stopped an installer
+# from picking one that does not describe this kind of measurement at all. That
+# is not a theoretical mistake: a Dutch P1 integration puts the cumulative
+# ``energy_import`` counter in kWh far more prominently than the instantaneous
+# power sensor, and linking that to a grid meter turns 12,000 kWh into
+# 12,000,000 W — a permanent peak warning on a healthy house, with nothing
+# anywhere to explain it. Amperes are the same trap with a smaller number:
+# nothing converts them, so they are read as watts.
+#
+# A mismatch is a *warning*, not a refusal. It compares two explicit choices the
+# installer made and says they disagree; it inspects no entity and guesses
+# nothing, so it stays well inside SPEC.md §2.1.
+#
+# ``none`` belongs in both lists: it means "no conversion", which is a statement
+# about the reading rather than a claim about its dimension.
+POWER_SOURCE_UNITS: Final[tuple[str, ...]] = (UNIT_W, UNIT_KW, UNIT_NONE)
+PRICE_SOURCE_UNITS: Final[tuple[str, ...]] = (UNIT_EUR_KWH, UNIT_CT_KWH, UNIT_NONE)
 
 METER_MODE_SINGLE_SIGNED: Final = "single_signed"
 METER_MODE_SEPARATE: Final = "separate_import_export"
@@ -470,6 +514,10 @@ VALIDATION_CONTROL_FORBIDDEN: Final = "control_forbidden"
 # Not an error: SPEC.md §8 requires a warning, never a block, when the entered
 # maximum grid power exceeds phases x 230 V x main fuse.
 VALIDATION_ABOVE_THEORETICAL_MAXIMUM: Final = "above_theoretical_maximum"
+# The chosen unit does not describe what this source type measures. A warning:
+# it compares two explicit choices and finds them inconsistent, which is worth
+# saying loudly but is not a reason to refuse a half-finished row.
+VALIDATION_UNIT_MISMATCH: Final = "unit_mismatch"
 VALIDATION_CODES: Final[tuple[str, ...]] = (
     VALIDATION_REQUIRED,
     VALIDATION_OUT_OF_RANGE,
@@ -479,6 +527,7 @@ VALIDATION_CODES: Final[tuple[str, ...]] = (
     VALIDATION_ABOVE_THEORETICAL_MAXIMUM,
     VALIDATION_CAPABILITY_MISSING,
     VALIDATION_CONTROL_FORBIDDEN,
+    VALIDATION_UNIT_MISMATCH,
 )
 
 # --- Logbook (SPEC.md §8 "Logboek") -----------------------------------------
@@ -597,8 +646,35 @@ BATTERY_POSITIVE_MEANS_CHARGING: Final = True
 
 # --- Coordinator (SPEC.md §18) ----------------------------------------------
 
-RECALCULATE_DEBOUNCE_SECONDS: Final = 2.0
+# Two seconds was right for a slider in a test instance. A real P1 meter reports
+# every second, so it meant a full recalculation every two seconds all day, and
+# every threshold in the engine flipped at that rate. An advice about an
+# appliance cycle does not need a two-second resolution.
+RECALCULATE_DEBOUNCE_SECONDS: Final = 15.0
 SAFETY_RECALCULATE_INTERVAL_MINUTES: Final = 5
+
+# --- Hysteresis and staleness (SPEC.md §16; fixed, never configurable) -------
+#
+# Deliberately constants and not settings. They exist to stop a reading that
+# hovers around a threshold from switching an answer on and off; that is a
+# property of how the engine reads meters, not a preference a customer has an
+# opinion about. A setting here would also be a setting that can be turned off.
+
+# A peak warning switches on at the configured percentage and off only once the
+# load has dropped this far below it again.
+PEAK_RISK_RELEASE_MARGIN_PERCENT: Final = 5.0
+# Solar advice switches on at min_solar_surplus_w and off below this fraction
+# of it, so a surplus drifting around the threshold does not blink the advice —
+# and with it the estimated saving — in and out of the panel.
+SOLAR_SURPLUS_RELEASE_FRACTION: Final = 0.8
+# Once a primary advice is shown it stays for at least this long, unless a more
+# urgent one arrives or the data stops supporting it (see engine/hysteresis.py).
+PRIMARY_ADVICE_MIN_DWELL_SECONDS: Final = 60.0
+# A measurement older than this is refused. An entity that quietly stops
+# reporting keeps its last state forever, so without this the panel shows an
+# hours-old number with full confidence and the safety recalculation re-reads
+# the same stale value without noticing anything (SPEC.md §15).
+ENTITY_STALE_AFTER_MINUTES: Final = 15
 
 # --- Entities (SPEC.md §19) -------------------------------------------------
 

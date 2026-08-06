@@ -179,10 +179,25 @@ script — is allowed.
   configured, but the engine does not read them.
 - **No history.** Every calculation looks at the present moment only. There are no
   trends, no daily totals and no "what did yesterday cost".
+- **Peak risk is measured across the whole connection, not per phase.** The maximum grid
+  power is one figure for the house and the grid reading is the sum over the phases. On a
+  three-phase connection the real overload is almost always on a single phase — 25 A on L2
+  while the total sits at 40% does not raise a warning. This matters most in exactly the
+  installation it is most likely to occur in: three phases with an EV charger, where the
+  charger causes the imbalance. Per-phase bindings are planned for a later release; until
+  then, size `max_grid_power_w` with this in mind.
 - **One instance.** A second configuration entry is refused.
 - **A price source is refused when it cannot be normalised.** No basis, or a market
   price without the energy tax and supplier markup, means no price rather than a guess.
 - **Advice is not a schedule.** It says what is favourable now; it does not plan.
+- **A reading older than 15 minutes is refused.** Home Assistant keeps the last state of
+  an entity forever, so a meter that stops reporting would otherwise look current. The
+  source is reported as unavailable instead, which is the honest answer.
+- **Answers are deliberately slow to change.** Thresholds switch on at their configured
+  level and off only once the measurement has moved back past a margin, and the headline
+  advice stays put for at least a minute unless something more urgent arrives. A smart
+  meter reports every second, and without this the warnings and the estimated saving
+  flickered on and off continuously. The margins are fixed and not configurable.
 
 ## Troubleshooting
 
