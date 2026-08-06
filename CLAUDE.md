@@ -193,6 +193,32 @@ iets met alleen het `hidden`-attribuut.
 Een frontendwijziging is pas geverifieerd wanneer een test faalt zónder de fix. Draai bij
 een bugfix eerst de test tegen de oude code.
 
+**jsdom stubt `ha-form` volledig.** `.schema` en `.data` zetten alleen properties; er
+wordt geen control gerenderd. Geen enkele test in deze laag kan dus bewijzen dat een
+control een klik accepteert — zo is de dagenselector kapot uitgeleverd met een groene
+suite. Toets hier wat de stub wél kan zien (bijvoorbeeld: geen enkele `select`-optie mag
+een niet-string waarde dragen) en toets de control zelf in de browser.
+
+### Verifieer frontendwijzigingen zelf in de browser (afspraak Sven, 2026-08-06)
+
+**Lever een frontendwijziging niet op zonder hem in de echte browser te hebben bediend**,
+met claude-in-chrome en **echte kliks** — niet met synthetische `value-changed`-events.
+Een synthetisch event bewijst de handler, niet de control. Ververs eerst langs de service
+worker (zie hierboven), want anders test je oude code.
+
+Reageert iets niet, vergelijk dan met een control in hetzelfde formulier die wél werkt;
+het verschil is de oorzaak. Bij de dagenselector was dat het waardetype: zeven opties
+renderen als combobox (werkt met strings), vier als checkboxes (nemen de waarde zoals hij
+is). Controleer de hele keten tot in de backend en ruim testrijen daarna weer op.
+
+### Lees testuitvoer, ga niet uit van groen
+
+`npm test` schrijft zijn samenvatting met een `ℹ`-prefix; een grep-patroon dat daar niet
+op past geeft stil niets terug. Dat is één keer misgegaan: een backtick in een
+CSS-commentaar sloot de template literal van het stylesheet en brak het hele paneel,
+terwijl de suite dat gewoon zou hebben gemeld. **Geen uitvoer is geen bewijs.** Draai
+`npm test` via PowerShell en lees de regels `tests` / `pass` / `fail` expliciet.
+
 ### Versieverschil tussen tests en de draaiende HA (bewuste keuze, niet oplossen)
 
 | | Python | Home Assistant |
