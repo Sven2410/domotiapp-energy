@@ -159,7 +159,7 @@ describe('the further advice', () => {
     assert.equal(rows.length, 1);
     assert.match(rows[0].textContent, /Zonneoverschot beschikbaar/);
     // Measurement, saving and confidence, in readable Dutch.
-    assert.match(rows[0].textContent, /zonneoverschot in W: 1500/);
+    assert.match(rows[0].textContent, /zonneoverschot in W: 1\.500/);
     assert.match(rows[0].textContent, /geschatte besparing € 0,36/);
     assert.match(rows[0].textContent, /betrouwbaarheid gemiddeld/);
   });
@@ -170,6 +170,11 @@ describe('the further advice', () => {
     assert.match(tab.querySelector('.empty-text').textContent, /geen aanvullend advies/);
   });
 });
+
+/** The dialog the coach answers in, whatever else is on screen. */
+function answerDialog(panel) {
+  return [...panel.shadowRoot.querySelectorAll('.dialog')].at(-1);
+}
 
 describe('the question selector', () => {
   it('offers the five fixed questions from SPEC.md §8', async () => {
@@ -188,38 +193,64 @@ describe('the question selector', () => {
     ]);
   });
 
-  it('answers only with what the backend produced', async () => {
-    const { tab } = await openCoachTab();
+  it('opens the answer in a dialog, with the question as its heading', async () => {
+    // Inline, the answer landed below whatever had been read last and had to be
+    // hunted for; on a phone it was off-screen entirely.
+    const { panel, tab } = await openCoachTab();
 
-    assert.match(tab.textContent, /Omdat de netbelasting hoog is/);
+    assert.equal(isVisible(answerDialog(panel)), false);
 
     buttonIn(tab, 'Is er risico op piekbelasting?').click();
     await settle();
 
-    assert.match(tab.textContent, /De woning gebruikt 87% van het maximum/);
-    assert.ok(!tab.textContent.includes('Omdat de netbelasting hoog is'));
+    const dialog = answerDialog(panel);
+    assert.equal(isVisible(dialog), true);
+    assert.equal(
+      dialog.querySelector('.dialog-title').textContent,
+      'Is er risico op piekbelasting?',
+    );
+    assert.match(dialog.textContent, /De woning gebruikt 87% van het maximum/);
   });
 
-  it('marks the selected question for a screen reader as well', async () => {
-    const { tab } = await openCoachTab();
+  it('answers only with what the backend produced', async () => {
+    const { panel, tab } = await openCoachTab();
 
-    buttonIn(tab, 'Welke gegevens ontbreken nog?').click();
+    buttonIn(tab, 'Waarom krijg ik dit advies?').click();
+    await settle();
+    assert.match(answerDialog(panel).textContent, /Omdat de netbelasting hoog is/);
+
+    answerDialog(panel).querySelector('.dialog-close').click();
+    buttonIn(tab, 'Is er risico op piekbelasting?').click();
     await settle();
 
-    const pressed = [...tab.querySelectorAll('.question-bar button')]
-      .filter((node) => node.getAttribute('aria-pressed') === 'true')
-      .map((node) => node.textContent.trim());
-    // Never colour alone: the state is in the attribute too (SPEC.md §23).
-    assert.deepEqual(pressed, ['Welke gegevens ontbreken nog?']);
+    const dialog = answerDialog(panel);
+    assert.match(dialog.textContent, /De woning gebruikt 87% van het maximum/);
+    assert.ok(!dialog.textContent.includes('Omdat de netbelasting hoog is'));
+  });
+
+  it('closes without asking, because there is nothing to lose', async () => {
+    const { panel, tab } = await openCoachTab();
+
+    buttonIn(tab, 'Waarom krijg ik dit advies?').click();
+    await settle();
+
+    // No input, so no confirmation on the way out: the backdrop just closes it.
+    answerDialog(panel).querySelector('.dialog-scrim').click();
+    await settle();
+
+    assert.equal(isVisible(answerDialog(panel)), false);
   });
 
   it('reports an unanswered question as unanswered, never invents one', async () => {
-    const { tab } = await openCoachTab(
+    const { panel, tab } = await openCoachTab(
       fakeHass({ coach: sampleCoach({ explanations: {} }) }),
     );
 
+    buttonIn(tab, 'Waarom krijg ik dit advies?').click();
+    await settle();
+
     // The frontend draws no conclusions of its own (SPEC.md §8 and §17).
-    assert.ok(noticeTexts(tab).some((t) => t.includes('nog niet beantwoord')));
+    assert.match(answerDialog(panel).textContent, /nog niet beantwoord/);
   });
 });
 
@@ -281,5 +312,32 @@ describe('missing data and recalculating', () => {
     await settle();
 
     assert.ok(noticeTexts(tab).some((t) => t.includes('niet geladen')));
+  });
+});
+
+describe('measurements as a customer reads them', () => {
+  it('does not put a six-decimal calculation in a sentence', async () => {
+    const coach = answeredCoach();
+    coach.advice = [
+      coach.primary_advice,
+      {
+        id: 'low_energy_price',
+        title: 'Lage energieprijs',
+        message: 'De actuele energieprijs is relatief laag.',
+        severity: 'info',
+        reason_code: 'low_energy_price',
+        confidence: 'high',
+        // What the backend stores: normalised to six decimals so no precision
+        // is lost on the way (SPEC.md §16).
+        measurements: { prijs_eur_kwh: 0.095348, netvermogen_w: 1234.5 },
+      },
+    ];
+    const { tab } = await openCoachTab(fakeHass({ coach }));
+
+    const text = [...tab.querySelectorAll('.row-item')][0].textContent;
+    assert.match(text, /all-in prijs in €\/kWh: 0,095/);
+    assert.ok(!text.includes('0.095348'));
+    // Watts to the tenth are noise as well.
+    assert.match(text, /netvermogen in W: 1\.235/);
   });
 });

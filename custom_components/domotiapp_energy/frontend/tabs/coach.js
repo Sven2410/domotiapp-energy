@@ -17,6 +17,7 @@
  */
 
 import { createApi, describeError } from '../core/api.js';
+import { createDialog } from '../core/dialog.js';
 import {
   adviceBlock,
   button,
@@ -76,13 +77,36 @@ function measurementLabel(key) {
   return MEASUREMENT_LABELS[key] || key.replace(/_/g, ' ');
 }
 
+/**
+ * How many decimals a measurement is worth showing.
+ *
+ * The backend keeps a normalised price to six decimals so a conversion never
+ * loses precision (SPEC.md §16). Six decimals with a dot for a separator is a
+ * calculation, not a price, and it has no business in a sentence a customer
+ * reads.
+ */
+const MEASUREMENT_DECIMALS = {
+  prijs_eur_kwh: 3,
+  netbelasting_procent: 1,
+  netvermogen_w: 0,
+  zonneoverschot_w: 0,
+  ontbrekende_onderdelen: 0,
+};
+
+function measurementValue(key, value) {
+  if (typeof value !== 'number') {
+    return value;
+  }
+  return formatNumber(value, { decimals: MEASUREMENT_DECIMALS[key] ?? 2 });
+}
+
 export const coachTab = {
   id: 'coach',
   label: 'Energiecoach',
   icon: 'mdi:lightbulb-on-outline',
   adminOnly: false,
 
-  create({ getHass, state }) {
+  create({ getHass, state, overlay }) {
     const element = el('div', { class: 'tab-content' });
 
     // --- The primary advice --------------------------------------------------
@@ -124,19 +148,33 @@ export const coachTab = {
 
     // --- The question selector ----------------------------------------------
     const questionCard = card('Vraag het de coach');
-    const questionButtons = new Map();
     const questionBar = el('div', { class: 'question-bar' });
-    const answer = el('p', { class: 'advice-message' });
-    const answerNotice = notice('mdi:comment-question-outline');
+    const questionIntro = el('p', {
+      class: 'advice-message',
+      text: 'Kies een vraag; het antwoord verschijnt in beeld.',
+    });
+
+    /**
+     * The answer opens in a dialog rather than under the buttons.
+     *
+     * Inline, the answer landed somewhere below whatever had been read last and
+     * had to be hunted for; on a phone it was off-screen entirely. A dialog
+     * gives it the attention it is for, and puts the question above it as the
+     * heading so the pair can be read as one thing.
+     *
+     * It holds no input, so there is nothing to confirm on the way out: the
+     * backdrop, Escape and the close button simply close it (SPEC.md §22).
+     */
+    const answerDialog = createDialog({ title: '', overlay });
+    const answerText = el('p', { class: 'dialog-message' });
+    answerDialog.body.appendChild(answerText);
 
     for (const question of QUESTIONS) {
       const node = button(question.label);
-      node.setAttribute('aria-pressed', 'false');
-      onTap(node, () => selectQuestion(question.key));
-      questionButtons.set(question.key, node);
+      onTap(node, () => showAnswer(question, node));
       questionBar.appendChild(node);
     }
-    questionCard.body.append(questionBar, answer, answerNotice.element);
+    questionCard.body.append(questionIntro, questionBar);
 
     element.append(
       mainCard.element,
@@ -144,9 +182,6 @@ export const coachTab = {
       missingCard.element,
       questionCard.element,
     );
-
-    /** The question on screen. The first one is answered by default. */
-    let selectedQuestion = QUESTIONS[0].key;
 
     function createAdviceRow() {
       const title = el('p', { class: 'row-name' });
@@ -186,7 +221,7 @@ export const coachTab = {
 
       if (prefs.show_technical_explanation !== false && item.measurements) {
         const readings = Object.entries(item.measurements).map(
-          ([key, value]) => `${measurementLabel(key)}: ${value}`,
+          ([key, value]) => `${measurementLabel(key)}: ${measurementValue(key, value)}`,
         );
         if (readings.length) {
           parts.push(readings.join(', '));
@@ -211,31 +246,22 @@ export const coachTab = {
       return parts.join(' · ');
     }
 
-    function selectQuestion(key) {
-      selectedQuestion = key;
-      renderAnswer();
-    }
-
-    function renderAnswer() {
-      for (const [key, node] of questionButtons) {
-        const active = key === selectedQuestion;
-        node.setAttribute('aria-pressed', String(active));
-        node.classList.toggle('button-primary', active);
-      }
-
+    /**
+     * Show the backend's answer to one question.
+     *
+     * The text comes from `CoachResult.explanations` and nowhere else. An
+     * answer the backend did not produce is reported as absent rather than
+     * filled in here (SPEC.md §8 and §17).
+     */
+    function showAnswer(question, opener) {
       const explanations = state.get().live?.explanations || {};
-      const text = explanations[selectedQuestion];
-      answer.textContent = text || '';
-      setVisible(answer, Boolean(text));
-      // The frontend never fills the gap itself: an answer the backend did not
-      // produce is reported as absent, not invented (SPEC.md §8).
-      answerNotice.set(
-        text
-          ? ''
-          : 'Deze vraag is nog niet beantwoord. Bereken opnieuw zodra er ' +
-              'gegevens gekoppeld zijn.',
-        { tone: 'info' },
-      );
+      const text = explanations[question.key];
+      answerDialog.setTitle(question.label);
+      answerText.textContent =
+        text ||
+        'Deze vraag is nog niet beantwoord. Bereken opnieuw zodra er gegevens ' +
+          'gekoppeld zijn.';
+      answerDialog.show({ focusReturnsTo: opener });
     }
 
     async function recalculate() {
@@ -300,7 +326,6 @@ export const coachTab = {
 
       const missing = live.missing_data || live.metrics?.data_quality?.missing_items;
       renderMissing(missing || []);
-      renderAnswer();
     }
 
     function renderMissing(items) {

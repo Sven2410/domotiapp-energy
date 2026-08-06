@@ -374,9 +374,14 @@ function windowFields(draft) {
         'Laat beide tijden leeg als er geen venster is. Een eindtijd vóór de ' +
         'starttijd loopt door tot de volgende dag — 22:00 tot 06:00 is het ' +
         'normale geval.',
-      selector: { time: {} },
+      // Seconds are meaningless for a window a dishwasher runs in.
+      selector: { time: { no_second: true } },
     },
-    { name: 'latest_finish', label: 'Laatste eindtijd', selector: { time: {} } },
+    {
+      name: 'latest_finish',
+      label: 'Laatste eindtijd',
+      selector: { time: { no_second: true } },
+    },
     {
       name: 'days_of_week',
       label: 'Dagen',

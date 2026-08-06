@@ -141,7 +141,8 @@ describe('the Voorkeuren tab', () => {
     });
     const { tab } = await openTab('Voorkeuren', 'preferences', hass);
 
-    assert.deepEqual(forms(tab)[2].error, {
+    // The display card is the fourth: quiet hours, weighing, threshold, display.
+    assert.deepEqual(forms(tab)[3].error, {
       max_advice_count: 'Toon minimaal 1 en maximaal 5 adviezen.',
     });
     assert.equal(forms(tab)[0].error, undefined);

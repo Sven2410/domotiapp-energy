@@ -30,9 +30,15 @@ const QUIET_SCHEMA = [
     helper:
       'Tussen deze tijden krijgen lawaaiige apparaten geen advies. Een venster ' +
       'over middernacht is het normale geval: 22:00 tot 07:00.',
-    selector: { time: {} },
+    // Home Assistant's own time selector takes no_second, and uses it in its
+    // own schemas. Quiet hours to the second is a precision nobody has.
+    selector: { time: { no_second: true } },
   },
-  { name: 'quiet_hours_end', label: 'Stille uren tot', selector: { time: {} } },
+  {
+    name: 'quiet_hours_end',
+    label: 'Stille uren tot',
+    selector: { time: { no_second: true } },
+  },
   {
     name: 'allow_advice_during_quiet_hours',
     label: 'Toch adviseren tijdens de stille uren',
@@ -61,6 +67,16 @@ const WEIGHING_SCHEMA = [
     label: 'Rekening houden met de maximale netbelasting',
     selector: { boolean: {} },
   },
+];
+
+/**
+ * The savings threshold, alone in its own card.
+ *
+ * It is a filter and not a weight, and it renders as a boxed number between
+ * three switches, which made it read as an appendix of the switch above it.
+ * Its own card says what it is, and gives its long explanation room.
+ */
+const THRESHOLD_SCHEMA = [
   {
     name: 'min_savings_eur',
     label: 'Minimale besparing',
@@ -76,6 +92,8 @@ const WEIGHING_SCHEMA = [
 ];
 
 const DISPLAY_SCHEMA = [
+  // First in its card on purpose: a boxed number between switches reads as an
+  // appendix of the switch above it, which is what happened here.
   {
     name: 'max_advice_count',
     label: 'Aantal adviezen',
@@ -103,6 +121,7 @@ const DISPLAY_SCHEMA = [
 const EDITED_FIELDS = [
   ...QUIET_SCHEMA.map((field) => field.name),
   ...WEIGHING_SCHEMA.map((field) => field.name),
+  ...THRESHOLD_SCHEMA.map((field) => field.name),
   ...DISPLAY_SCHEMA.map((field) => field.name),
 ];
 
@@ -144,6 +163,7 @@ export const preferencesTab = {
 
     const quiet = card('Stille uren');
     const weighing = card('Wat weegt mee');
+    const threshold = card('Wanneer een advies de moeite waard is');
     const display = card('Wat je te zien krijgt');
 
     let draft = {};
@@ -166,16 +186,19 @@ export const preferencesTab = {
       };
     }
 
-    const forms = [QUIET_SCHEMA, WEIGHING_SCHEMA, DISPLAY_SCHEMA].map(
-      (schema, index) => {
-        const names = schema.map((field) => field.name);
-        return {
-          names,
-          form: createForm(getHass(), schema, changeHandler(names)),
-          host: [quiet, weighing, display][index],
-        };
-      },
-    );
+    const forms = [
+      QUIET_SCHEMA,
+      WEIGHING_SCHEMA,
+      THRESHOLD_SCHEMA,
+      DISPLAY_SCHEMA,
+    ].map((schema, index) => {
+      const names = schema.map((field) => field.name);
+      return {
+        names,
+        form: createForm(getHass(), schema, changeHandler(names)),
+        host: [quiet, weighing, threshold, display][index],
+      };
+    });
     for (const { form, host } of forms) {
       host.body.appendChild(form.element);
     }
@@ -196,7 +219,13 @@ export const preferencesTab = {
       leaveActions,
     ]);
 
-    element.append(quiet.element, weighing.element, display.element, actions);
+    element.append(
+      quiet.element,
+      weighing.element,
+      threshold.element,
+      display.element,
+      actions,
+    );
 
     function isDirty() {
       return EDITED_FIELDS.some(
