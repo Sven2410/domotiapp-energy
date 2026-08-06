@@ -283,14 +283,19 @@ async def test_a_steady_reading_is_not_stale(
 ) -> None:
     """A meter reporting the same value is alive, not quiet.
 
-    The check reads ``last_updated`` and not ``last_changed`` for exactly this:
-    a house drawing a steady load reports an unchanged number every second, and
-    judging that on ``last_changed`` would declare a healthy meter dead.
+    The check reads ``last_reported`` for exactly this reason. Home Assistant
+    treats an unchanged report as no change: ``last_changed`` and
+    ``last_updated`` both stand still, and only ``last_reported`` moves. A house
+    drawing a steady load makes its meter repeat the same number indefinitely,
+    so judging age on either of the others declares a healthy meter dead.
+
+    Note there is no ``force_update`` here, deliberately: that would move
+    ``last_updated`` too and the test would pass against the wrong attribute.
     """
     hass.states.async_set(ENTITY_ID, "1500")
     freezer.tick(timedelta(minutes=ENTITY_STALE_AFTER_MINUTES + 1))
-    # Same value, reported again.
-    hass.states.async_set(ENTITY_ID, "1500", force_update=True)
+    # The same value, reported again, exactly as a real meter does it.
+    hass.states.async_set(ENTITY_ID, "1500")
 
     assert read_entity_value(hass, _binding(unit=UNIT_W)).ok is True
 

@@ -210,15 +210,20 @@ def _is_unusable(raw: Any) -> bool:
 def _live_state(hass: HomeAssistant, entity_id: str) -> State | None:
     """Return the entity's state when it is present and recent enough.
 
-    ``last_updated`` and not ``last_changed``: a meter reporting the same value
-    every second is perfectly alive, and ``last_changed`` would call it stale
-    the moment the house draws a steady load. ``last_updated`` moves on every
-    report, whether or not the number changed.
+    **``last_reported``, and neither of the other two.** A house drawing a steady
+    load makes its meter report the same number over and over, and Home Assistant
+    treats an unchanged report as no change at all: it leaves ``last_changed``
+    *and* ``last_updated`` where they were and only mutates ``last_reported``
+    (``homeassistant/core.py``: "If the state is reported without being changed,
+    the existing state will be mutated with an updated last_reported"). Judging
+    age on either of the others declares a perfectly healthy meter dead as soon
+    as the reading holds still — which is exactly the situation a constant load
+    produces.
     """
     state = hass.states.get(entity_id)
     if state is None:
         return None
-    age = dt_util.utcnow() - state.last_updated
+    age = dt_util.utcnow() - state.last_reported
     if age > timedelta(minutes=ENTITY_STALE_AFTER_MINUTES):
         return None
     return state
