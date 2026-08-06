@@ -1,9 +1,15 @@
 # Changelog
 
-## Unreleased
+## 0.1.1
 
 Findings from the first installation on a production Home Assistant OS with a real
-P1 meter, SolarEdge inverter and Easee charger.
+P1 meter, SolarEdge inverter and Easee charger. Nothing here changes what the
+integration does; it changes what it does to the hardware it runs on and what it
+tells the customer.
+
+**Upgrading is recommended for every installation with a smart meter.** The
+storage fix alone is a reason: the previous release rewrote its configuration
+file thousands of times a day on a meter that reports every second.
 
 ### Fixed
 

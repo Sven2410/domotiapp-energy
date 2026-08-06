@@ -6,6 +6,8 @@ module URL, has to be open to non-admins, and has to disappear again on unload
 so a reload does not leave a dead sidebar item behind.
 """
 
+import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -239,3 +241,41 @@ def test_the_panel_never_falls_back_to_a_raw_key() -> None:
         source = path.read_text(encoding="utf-8")
         for pattern in ("|| item.confidence", "|| item)", "_LABELS[item] ||"):
             assert pattern not in source, f"{path.name} falls back to a raw key"
+
+
+# --- One version number, in four files ---------------------------------------
+
+
+def test_the_version_is_the_same_everywhere() -> None:
+    """The four places that carry the version have to agree.
+
+    They are not decorative. ``const.VERSION`` builds the static path the panel
+    is served under, the panel module carries its own copy for the cache-busting
+    query, ``manifest.json`` is what Home Assistant and HACS show, and
+    ``pyproject.toml`` is what the package says it is. Let them drift and the
+    panel is served under one version while its entry point asks for another —
+    which is the half-old, half-new panel the versioned path exists to prevent.
+
+    Bumping a release means changing all four, and this is what says so out
+    loud instead of leaving it to whoever remembers.
+    """
+    root = Path(__file__).parent.parent
+    component = root / "custom_components" / DOMAIN
+
+    manifest = json.loads((component / "manifest.json").read_text(encoding="utf-8"))
+    panel_source = (
+        component / FRONTEND_DIR_NAME / f"{PANEL_COMPONENT_NAME}.js"
+    ).read_text(encoding="utf-8")
+    panel_version = re.search(r"const VERSION = '([^']+)'", panel_source)
+    project = re.search(
+        r'^version = "([^"]+)"',
+        (root / "pyproject.toml").read_text(encoding="utf-8"),
+        re.MULTILINE,
+    )
+
+    assert panel_version is not None, "the panel no longer declares a VERSION"
+    assert project is not None, "pyproject.toml no longer declares a version"
+
+    assert manifest["version"] == VERSION
+    assert panel_version.group(1) == VERSION
+    assert project.group(1) == VERSION

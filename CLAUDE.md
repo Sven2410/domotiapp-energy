@@ -105,6 +105,44 @@ Werk in de fases uit `SPEC.md` §30. Per fase:
 
 Begin niet aan een volgende fase voordat de tests van de huidige fase slagen.
 
+### Een ronde eindigt op main, nooit op een blijvende branch
+
+**`main` is altijd de laatste geverifieerde staat.** Sven installeert vanaf `main`
+op productie, dus alles wat "af" is hoort daar te staan en niets anders.
+
+Werk je op een branch — bij een ronde met meerdere samenhangende wijzigingen, of
+wanneer de harnasrichtlijn zegt niet rechtstreeks op de standaardbranch te
+committen — dan is de ronde pas klaar na deze stappen:
+
+1. Push de branch.
+2. **Open een PR** (`gh pr create --base main`). Dat is meteen de enige manier
+   waarop CI draait: de workflows triggeren op `push` naar `main` en op
+   `pull_request`, dus een losse branch krijgt geen enkele run. `gh workflow run`
+   op een branch is een noodgreep, geen vervanging — een handmatige trigger zegt
+   niets over wat er bij een merge gebeurt.
+3. Wacht tot **Tests én Validate groen zijn**. Loopt een run vast op
+   *"The job was not acquired by Runner of type hosted"*, dan is dat een storing
+   bij GitHub en geen testfout: opnieuw aanbieden, en dat verschil expliciet
+   melden in plaats van "CI is rood" te rapporteren.
+4. **Merge naar `main`** en verwijder de branch.
+5. Meld de merge, de CI-uitslag en de nieuwe stand van `main`.
+
+Laat nooit een afgeronde ronde als losse branch achter. Een branch die blijft
+hangen betekent dat `main` en "wat af is" uit elkaar lopen, en dan klopt de
+aanname waarop de productie-installatie rust niet meer.
+
+### Het versienummer staat op vier plaatsen
+
+`custom_components/domotiapp_energy/const.py` (`VERSION`), `manifest.json`,
+`frontend/domotiapp-energy-panel.js` (`const VERSION`) en `pyproject.toml`. Ze
+moeten gelijk zijn: `VERSION` bouwt het statische pad waaronder het paneel
+geserveerd wordt en de paneelmodule draagt zijn eigen kopie voor de
+cache-busting, dus uiteenlopen levert precies het half-oude paneel op dat het
+versiepad moest voorkomen. `tests/test_panel.py` bewaakt dit.
+
+**Tags en releases maakt Sven zelf.** Bump het versienummer en de CHANGELOG,
+meld dat `main` klaar is om te taggen, en maak nooit zelf een tag of release.
+
 ## Commando's
 
 Linten gebeurt lokaal in `.venv`, **testen gebeurt altijd in de testcontainer.**
