@@ -44,6 +44,7 @@ from custom_components.domotiapp_energy.const import (
     POSITIVE_MEANS_EXPORT,
     POSITIVE_MEANS_IMPORT,
     PRICE_BASES,
+    PRICE_BASIS_MARKET,
     PRICE_COMPONENT_FIXED_CONTRACT,
     SCORE_COMPONENT_DATA_QUALITY,
     SCORE_COMPONENT_FLEXIBILITY,
@@ -87,6 +88,8 @@ class _Readings:
     invalid_source_ids: list[str]
     failures: list[SourceFailure]
     reason_codes: list[str]
+    # The bare reading behind a normalised market price, when there was one.
+    market_price: float | None = None
 
 
 class Calculator:
@@ -113,6 +116,7 @@ class Calculator:
             ),
             battery_power_w=readings.values.get(SOURCE_TYPE_HOME_BATTERY),
             current_price_eur_kwh=readings.values.get(SOURCE_TYPE_CURRENT_PRICE),
+            market_price_eur_kwh=readings.market_price,
             invalid_source_ids=readings.invalid_source_ids,
             source_failures=readings.failures,
             reason_codes=readings.reason_codes,
@@ -152,6 +156,7 @@ class Calculator:
             grid_load_percent=load_percent,
             peak_risk=_peak_risk(config, load_percent),
             current_price_eur_kwh=snapshot.current_price_eur_kwh,
+            market_price_eur_kwh=snapshot.market_price_eur_kwh,
             data_quality=data_quality,
             energy_score=_energy_score(components),
             score_components=components,
@@ -212,7 +217,7 @@ class Calculator:
         if source.type == SOURCE_TYPE_GRID_METER:
             value, result = self._read_grid_meter(source)
         elif source.type == SOURCE_TYPE_CURRENT_PRICE:
-            value, result = self._read_price(source, home)
+            value, result = self._read_price(source, home, readings)
         else:
             result = read_entity_value(self._hass, source.binding)
             value = result.value if result.ok else None
@@ -239,7 +244,7 @@ class Calculator:
         return None
 
     def _read_price(
-        self, source: EnergySource, home: HomeProfile
+        self, source: EnergySource, home: HomeProfile, readings: _Readings
     ) -> tuple[float | None, ReadResult | None]:
         """Read the price source and normalise it to an all-in price.
 
@@ -265,6 +270,12 @@ class Calculator:
         normalised = home.all_in_price_eur_kwh(result.value, source.price_basis)
         if normalised is None:
             return None, None
+
+        if source.price_basis == PRICE_BASIS_MARKET:
+            # Kept so the panel can show the conversion next to its result: an
+            # all-in figure with no way to check it against the sensor is a
+            # number the installer has to take on faith (SPEC.md §8).
+            readings.market_price = result.value
         return normalised, result
 
     def _read_grid_meter(

@@ -23,6 +23,7 @@ import {
   displayMetric,
   el,
   formatNumber,
+  formatPrice,
   formatTimestamp,
   notice,
   setVisible,
@@ -82,12 +83,19 @@ export const overviewTab = {
       unit: '%',
       empty: EMPTY_NOT_CONFIGURED,
     });
+    // The all-in price, with the market price it was derived from underneath.
+    // Showing only the derived figure would ask the installer to trust a
+    // conversion they cannot check against the sensor in front of them.
+    const priceRow = statRow('Actuele energieprijs', {
+      empty: EMPTY_NOT_AVAILABLE,
+    });
     const peakNotice = notice('mdi:flash-alert-outline');
     powerCard.body.append(
       gridPowerRow.element,
       solarPowerRow.element,
       surplusRow.element,
       loadRow.element,
+      priceRow.element,
       peakNotice.element,
     );
 
@@ -173,6 +181,43 @@ export const overviewTab = {
       );
     }
 
+    /**
+     * Show the price the engine actually calculates with.
+     *
+     * Always the all-in price, because that is the only kind that exists past
+     * the calculator (SPEC.md §16). When it was derived from a bare market
+     * price the hint names that reading, so the conversion can be checked
+     * against the sensor rather than believed.
+     *
+     * The two empty cases are told apart on purpose: a fixed contract has no
+     * hourly price to show and never will, while a missing one is something to
+     * go and fix.
+     */
+    function updatePrice(config, metrics) {
+      if (config?.home?.contract_type !== 'dynamic') {
+        priceRow.set(null, {
+          empty: 'Niet van toepassing bij een vast contract',
+        });
+        return;
+      }
+
+      const allIn = metrics.current_price_eur_kwh;
+      if (allIn === null || allIn === undefined) {
+        priceRow.set(null, {
+          empty: 'Geen bruikbare prijsbron',
+        });
+        return;
+      }
+
+      const market = metrics.market_price_eur_kwh;
+      priceRow.set(`${formatPrice(allIn)} per kWh`, {
+        hint:
+          market === null || market === undefined
+            ? null
+            : `All-in, afgeleid van een marktprijs van ${formatPrice(market)}.`,
+      });
+    }
+
     function update(state) {
       const { config, live, status } = state;
 
@@ -228,6 +273,7 @@ export const overviewTab = {
           : null,
       });
       loadRow.set(formatNumber(metrics.grid_load_percent, { decimals: 1 }));
+      updatePrice(config, metrics);
 
       // Text plus icon, never colour alone (SPEC.md §23).
       peakNotice.set(

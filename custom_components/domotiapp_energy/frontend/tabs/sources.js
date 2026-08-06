@@ -286,7 +286,11 @@ function controlFields(draft) {
   const fields = [
     {
       name: 'capabilities',
-      label: 'Wat kan deze apparatuur?',
+      // A source is a measuring point, not an appliance. The hardware behind it
+      // may well be able to do more — a SolarEdge inverter can be read *and*
+      // limited, and that is why these fields are on a source at all
+      // (SPEC.md §8) — but the row the installer is looking at is a source.
+      label: 'Wat kan deze bron behalve uitlezen?',
       helper:
         'Alleen registreren: DomotiApp Energy stuurt in deze versie niets aan. ' +
         'Niets aanvinken betekent "niet opgegeven", niet "kan niets".',
@@ -295,7 +299,7 @@ function controlFields(draft) {
     {
       name: 'control_forbidden',
       label: 'Aansturing uitgesloten voor deze installatie',
-      helper: 'Een afspraak met de klant, los van wat de apparatuur kan.',
+      helper: 'Een afspraak met de klant, los van wat deze bron zou kunnen.',
       selector: { boolean: {} },
     },
   ];

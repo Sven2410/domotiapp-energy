@@ -1280,3 +1280,53 @@ async def test_metrics_serialise_for_the_frontend(hass: HomeAssistant) -> None:
     assert restored.energy_score == metrics.energy_score
     assert restored.score_components == metrics.score_components
     assert restored.data_quality.score == metrics.data_quality.score
+
+
+async def test_a_market_price_keeps_the_reading_it_was_derived_from(
+    hass: HomeAssistant,
+) -> None:
+    """The panel shows the conversion, so the raw reading has to survive.
+
+    An all-in figure with no way to check it against the sensor asks the
+    installer to trust a multiplication they cannot see (SPEC.md §8).
+    """
+    hass.states.async_set("sensor.price", "0.08")
+    config = _config(
+        contract_type=CONTRACT_TYPE_DYNAMIC,
+        energy_tax_eur_kwh=0.1088,
+        supplier_markup_eur_kwh=0.02,
+    )
+    config.sources.append(_price_source(price_basis=PRICE_BASIS_MARKET))
+
+    metrics = Calculator(hass).calculate(config)
+
+    assert metrics.market_price_eur_kwh == 0.08
+    assert metrics.current_price_eur_kwh == pytest.approx(0.2088 * 1.21)
+
+
+async def test_an_all_in_price_has_no_market_price_to_show(
+    hass: HomeAssistant,
+) -> None:
+    """Nothing extra to show: the two numbers would be the same one."""
+    hass.states.async_set("sensor.price", "0.28")
+    config = _config(contract_type=CONTRACT_TYPE_DYNAMIC)
+    config.sources.append(_price_source())
+
+    metrics = Calculator(hass).calculate(config)
+
+    assert metrics.current_price_eur_kwh == 0.28
+    assert metrics.market_price_eur_kwh is None
+
+
+async def test_a_refused_price_leaves_no_market_price_behind(
+    hass: HomeAssistant,
+) -> None:
+    """A price that is not used may not leave a figure on the Overzicht."""
+    hass.states.async_set("sensor.price", "0.08")
+    config = _config(contract_type=CONTRACT_TYPE_DYNAMIC)
+    config.sources.append(_price_source(price_basis=PRICE_BASIS_MARKET))
+
+    metrics = Calculator(hass).calculate(config)
+
+    assert metrics.current_price_eur_kwh is None
+    assert metrics.market_price_eur_kwh is None

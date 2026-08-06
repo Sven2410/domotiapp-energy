@@ -123,6 +123,36 @@ py -3.13 -m venv .venv
 Het testimage installeert de dependencies in een eigen laag en wordt alleen opnieuw
 gebouwd wanneer `pyproject.toml` verandert; de broncode is een bind-mount.
 
+### Een frontendwijziging zien in de browser
+
+De frontend wordt geserveerd onder een **versiepad** (`/domotiapp_energy_frontend/0.1.0/…`),
+omdat `?v=` alleen de entrypoint bust: een relatieve `import` erft die querystring niet.
+Dat lost het op voor de klant — een release verandert het pad, dus alle modules zijn nieuw.
+
+**Tijdens ontwikkeling helpt dat niet**, want dan blijft de versie gelijk. Home Assistant
+heeft een **service worker** die op exacte URL cachet en zichzelf bij elke load opnieuw
+registreert, en Chrome bewaart de bestanden daarnaast nog in de schijfcache. Een
+containerherstart is dus níet genoeg: je ziet je eigen wijziging niet, en niets wijst erop
+dat je naar oude code kijkt.
+
+Voer dit in de console van het paneel uit, en herlaad daarna:
+
+```javascript
+const regs = await navigator.serviceWorker.getRegistrations();
+await Promise.all(regs.map((r) => r.unregister()));
+const names = await caches.keys();
+await Promise.all(names.map((n) => caches.delete(n)));
+// De schijfcache van Chrome hoort er ook bij: haal elk bestand één keer op met
+// {cache: 'reload'}, dat herschrijft de opgeslagen kopie.
+for (const file of ['domotiapp-energy-panel.js?v=0.1.0', 'core/dom.js', 'tabs/overview.js']) {
+  await fetch(`/domotiapp_energy_frontend/0.1.0/${file}`, { cache: 'reload' });
+}
+```
+
+Controleer of je echt verse code ziet met
+`performance.getEntriesByType('resource')`: alles met `deliveryType: "cache-storage"`
+kwam van de service worker, niet van de server.
+
 ### Frontendtests (JavaScript)
 
 `pytest` kan geen JavaScript uitvoeren. De paneelcode heeft daarom een eigen testlaag:

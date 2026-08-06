@@ -288,9 +288,26 @@ Tabbladen: `Overzicht`, `Woning`, `Energiebronnen`, `Apparaten`, `Voorkeuren`,
 
 ### Overzicht
 Status integratie · datakwaliteit (%) · energiescore (0–100) · actueel netvermogen ·
-zonneproductie · zonneoverschot · percentage van max. netvermogen · hoofdadvies ·
-waarschuwingen · aantal geconfigureerde apparaten · tijdstip laatste berekening.
-Duidelijke lege statussen wanneer nog niets is ingesteld.
+zonneproductie · zonneoverschot · percentage van max. netvermogen · **actuele
+energieprijs** · hoofdadvies · waarschuwingen · aantal geconfigureerde apparaten ·
+tijdstip laatste berekening. Duidelijke lege statussen wanneer nog niets is ingesteld.
+
+**Actuele energieprijs (toegevoegd in fase 8b).** Het paneel toonde de prijs nergens,
+terwijl de rekenmotor er wel mee rekent — dat was een gat in deze spec. Getoond wordt het
+**all-in bedrag per kWh**, want dat is de enige prijssoort die voorbij de rekenmotor
+bestaat (§16). Kwam die uit een bron met `price_basis = market`, dan staat de gebruikte
+**marktprijs eronder** als hint, zodat de omrekening tegen de sensor te controleren is in
+plaats van geloofd te moeten worden. Twee lege statussen, bewust van elkaar te
+onderscheiden:
+
+- vast contract → "Niet van toepassing bij een vast contract" — er ís geen uurprijs, en
+  die komt er ook niet;
+- dynamisch contract zonder bruikbare prijsbron → "Geen bruikbare prijsbron" — dit is wél
+  iets om te gaan oplossen.
+
+Daarvoor dragen `EnergySnapshot` en `EnergyMetrics` naast `current_price_eur_kwh` ook
+`market_price_eur_kwh`: de ruwe meting, uitsluitend gevuld bij een marktprijsbron. Bij een
+all-in bron is er niets extra's te tonen, want dan zijn beide getallen hetzelfde.
 
 ### Woning
 - `home_name`

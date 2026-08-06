@@ -1121,7 +1121,15 @@ class EnergySnapshot:
     solar_power_w: float | None = None
     household_consumption_w: float | None = None
     battery_power_w: float | None = None
+    # Always the all-in price: the calculator normalises on reading (SPEC.md
+    # §16), so nothing downstream has to know what the source reported.
     current_price_eur_kwh: float | None = None
+    # What the source actually reported, kept **only** when it was a bare market
+    # price. The panel shows it under the all-in figure so the conversion can be
+    # checked against the sensor without opening the developer tools; there is
+    # nothing to show when the source was already all-in, because then the two
+    # numbers are the same one.
+    market_price_eur_kwh: float | None = None
     # Every source the engine could not use, including the rows of a source
     # type that occurs more than once. Feeds the data quality score.
     invalid_source_ids: list[str] = field(default_factory=list)
@@ -1140,6 +1148,7 @@ class EnergySnapshot:
             "household_consumption_w": self.household_consumption_w,
             "battery_power_w": self.battery_power_w,
             "current_price_eur_kwh": self.current_price_eur_kwh,
+            "market_price_eur_kwh": self.market_price_eur_kwh,
             "invalid_source_ids": list(self.invalid_source_ids),
             "source_failures": [failure.to_dict() for failure in self.source_failures],
             "reason_codes": list(self.reason_codes),
@@ -1158,6 +1167,7 @@ class EnergySnapshot:
             ),
             battery_power_w=_as_optional_float(data.get("battery_power_w")),
             current_price_eur_kwh=_as_optional_float(data.get("current_price_eur_kwh")),
+            market_price_eur_kwh=_as_optional_float(data.get("market_price_eur_kwh")),
             invalid_source_ids=_as_str_list(data.get("invalid_source_ids")),
             source_failures=[
                 SourceFailure.from_dict(item)
@@ -1212,6 +1222,9 @@ class EnergyMetrics:
     grid_load_percent: float | None = None
     peak_risk: bool = False
     current_price_eur_kwh: float | None = None
+    # Carried through from the snapshot so the Overzicht can show where the
+    # all-in price came from (SPEC.md §8). Only set for a market source.
+    market_price_eur_kwh: float | None = None
     data_quality: DataQualityResult = field(default_factory=DataQualityResult)
     energy_score: int | None = None
     # The individual weighted components, so the coach can explain the score.
@@ -1229,6 +1242,7 @@ class EnergyMetrics:
             "grid_load_percent": self.grid_load_percent,
             "peak_risk": self.peak_risk,
             "current_price_eur_kwh": self.current_price_eur_kwh,
+            "market_price_eur_kwh": self.market_price_eur_kwh,
             "data_quality": self.data_quality.to_dict(),
             "energy_score": self.energy_score,
             "score_components": dict(self.score_components),
@@ -1250,6 +1264,7 @@ class EnergyMetrics:
             grid_load_percent=_as_optional_float(data.get("grid_load_percent")),
             peak_risk=_as_bool(data.get("peak_risk"), False),
             current_price_eur_kwh=_as_optional_float(data.get("current_price_eur_kwh")),
+            market_price_eur_kwh=_as_optional_float(data.get("market_price_eur_kwh")),
             data_quality=DataQualityResult.from_dict(
                 _as_mapping(data.get("data_quality"))
             ),

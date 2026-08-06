@@ -282,3 +282,72 @@ describe('empty and populated configurations', () => {
     assert.equal(overview.querySelector('ha-card'), firstCard);
   });
 });
+
+describe('the actual energy price on the Overzicht', () => {
+  /** The row labelled "Actuele energieprijs", whatever its position. */
+  function priceRow(panel) {
+    const row = [...panel.shadowRoot.querySelectorAll('.stat-row')].find((node) =>
+      node.querySelector('.stat-label').textContent.includes('Actuele energieprijs'),
+    );
+    if (!row) {
+      throw new Error('No price row on the Overzicht');
+    }
+    return {
+      value: row.querySelector('.stat-value').textContent,
+      hint: row.querySelector('.stat-hint').textContent,
+      hintVisible: isVisible(row.querySelector('.stat-hint')),
+    };
+  }
+
+  function withPrice(metrics, home = {}) {
+    return fakeHass({
+      config: sampleConfig({
+        home: { ...sampleConfig().home, contract_type: 'dynamic', ...home },
+      }),
+      coach: sampleCoach({ metrics }),
+    });
+  }
+
+  it('shows the all-in price the engine calculates with', async () => {
+    const panel = await mountPanel(
+      withPrice({ current_price_eur_kwh: 0.2526, market_price_eur_kwh: null }),
+    );
+
+    // The all-in price is the only kind that exists past the calculator.
+    assert.match(priceRow(panel).value, /0,253/);
+    assert.match(priceRow(panel).value, /per kWh/);
+    assert.equal(priceRow(panel).hintVisible, false);
+  });
+
+  it('names the market price it was derived from', async () => {
+    const panel = await mountPanel(
+      withPrice({ current_price_eur_kwh: 0.2526, market_price_eur_kwh: 0.08 }),
+    );
+
+    // Without this the installer has to take a multiplication on faith that
+    // they cannot check against the sensor in front of them (SPEC.md §8).
+    assert.equal(priceRow(panel).hintVisible, true);
+    assert.match(priceRow(panel).hint, /marktprijs/);
+    assert.match(priceRow(panel).hint, /0,080/);
+  });
+
+  it('says a fixed contract has no hourly price rather than leaving it blank', async () => {
+    const panel = await mountPanel(
+      fakeHass({
+        coach: sampleCoach({ metrics: { current_price_eur_kwh: 0.3 } }),
+      }),
+    );
+
+    // The sample configuration is on a fixed contract.
+    assert.match(priceRow(panel).value, /Niet van toepassing bij een vast contract/);
+  });
+
+  it('tells a missing price source apart from a fixed contract', async () => {
+    const panel = await mountPanel(
+      withPrice({ current_price_eur_kwh: null, market_price_eur_kwh: null }),
+    );
+
+    // One of the two is something to go and fix; the other never will be.
+    assert.match(priceRow(panel).value, /Geen bruikbare prijsbron/);
+  });
+});

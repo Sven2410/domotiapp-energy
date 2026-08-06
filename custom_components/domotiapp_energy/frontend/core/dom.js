@@ -94,10 +94,17 @@ export function statRow(label, { unit = '', empty = 'Niet beschikbaar' } = {}) {
 
   return {
     element,
-    /** Set the value, or pass null/undefined to show the empty text. */
-    set(value, { hint = null } = {}) {
+    /**
+     * Set the value, or pass null/undefined to show the empty text.
+     *
+     * `empty` can be overridden per call, because one row can be blank for more
+     * than one reason and "why" is the useful part: a price is absent on a
+     * fixed contract for a different reason than when no price source can be
+     * read, and telling the two apart is what saves a support call.
+     */
+    set(value, { hint = null, empty: emptyText = empty } = {}) {
       const missing = value === null || value === undefined || value === '';
-      valueNode.textContent = missing ? empty : `${value}${unit}`;
+      valueNode.textContent = missing ? emptyText : `${value}${unit}`;
       valueNode.classList.toggle('is-empty', missing);
       hintNode.textContent = hint || '';
       setVisible(hintNode, Boolean(hint));
@@ -241,6 +248,24 @@ export function formatNumber(value, { decimals = 0 } = {}) {
   return new Intl.NumberFormat('nl-NL', {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
+  }).format(value);
+}
+
+/**
+ * Format an amount in euros per kWh.
+ *
+ * Three decimals, because a tariff is quoted in tenths of a cent and two would
+ * round two different prices onto the same figure.
+ */
+export function formatPrice(value) {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return null;
+  }
+  return new Intl.NumberFormat('nl-NL', {
+    style: 'currency',
+    currency: 'EUR',
+    minimumFractionDigits: 3,
+    maximumFractionDigits: 3,
   }).format(value);
 }
 
