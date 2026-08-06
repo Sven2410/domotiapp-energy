@@ -189,14 +189,14 @@ export const preferencesTab = {
     const leaveActions = el('div', { class: 'actions' }, [leaveDiscard, leaveStay]);
     setVisible(leaveActions, false);
 
-    display.body.append(
+    const actions = el('div', { class: 'tab-actions' }, [
       el('div', { class: 'actions' }, [saveButton, resetButton]),
       saveNotice.element,
       leaveNotice.element,
       leaveActions,
-    );
+    ]);
 
-    element.append(quiet.element, weighing.element, display.element);
+    element.append(quiet.element, weighing.element, display.element, actions);
 
     function isDirty() {
       return EDITED_FIELDS.some(

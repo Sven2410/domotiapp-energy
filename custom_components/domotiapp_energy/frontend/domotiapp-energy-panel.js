@@ -400,6 +400,56 @@ const STYLES = `
     color: var(--secondary-text-color);
   }
 
+  /*
+   * The actions of a whole tab, after its cards rather than inside the last
+   * one: a save button under a topic heading reads as if it saved that topic.
+   */
+  .tab-actions .actions {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: none;
+  }
+
+  /* --- Folding sections inside a dialog ----------------------------------- */
+
+  .section + .section {
+    border-top: 1px solid var(--divider-color);
+  }
+  .section-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
+    /* The 44 px tap target SPEC.md §11 asks for, on the full width. */
+    min-height: 44px;
+    padding: 12px 0;
+    border: none;
+    background: none;
+    color: var(--primary-text-color);
+    text-align: left;
+    cursor: pointer;
+  }
+  .section-toggle:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 2px;
+  }
+  .section-title {
+    font-size: 0.7rem;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--secondary-text-color);
+  }
+  .section-chevron {
+    flex: none;
+    --mdc-icon-size: 20px;
+    color: var(--secondary-text-color);
+  }
+  .section-body {
+    padding-bottom: var(--domotiapp-space-row);
+  }
+
   /* --- The coach's question selector -------------------------------------- */
 
   .question-bar {
@@ -513,6 +563,79 @@ const STYLES = `
   .button-danger {
     border-color: var(--error-color);
     color: var(--error-color);
+  }
+
+  /* --- Narrow screens ------------------------------------------------------ */
+
+  /*
+   * The desktop rhythm is deliberately generous, and on a phone it is simply in
+   * the way: 32 px of card padding on a 358 px column leaves little for the
+   * content, and the tab bar took a fifth of the screen before anything was
+   * read. Nothing is hidden here — the tabs still wrap and every target keeps
+   * its 44 px — the air is only taken in (SPEC.md §11).
+   *
+   * A **container** query rather than a media query, because the question is
+   * how wide *this panel* is, not how wide the screen is: with the Home
+   * Assistant sidebar open on a tablet the viewport is roomy while the panel is
+   * not. It also makes the rule testable without resizing a browser window.
+   *
+   * The containment sits on .layout and not on :host on purpose. A
+   * container-type of inline-size applies layout containment, which makes the
+   * element a containing block for fixed-position descendants — on the host
+   * that would pull the dialog's backdrop in from the viewport to the panel,
+   * the exact failure that was checked for when the dialog was built. The
+   * dialog lives outside .layout, so it keeps the viewport.
+   *
+   * No backticks in this stylesheet: it is a template literal, and one closes
+   * it. That cost a load of the whole panel once.
+   */
+  .layout {
+    container-type: inline-size;
+    container-name: panel;
+  }
+
+  @container panel (max-width: 600px) {
+    .tabs {
+      gap: 0 16px;
+      margin-bottom: var(--domotiapp-space-row);
+    }
+    .tab-content {
+      gap: var(--domotiapp-space-row);
+    }
+    .card-title {
+      padding: 20px 20px 0;
+      font-size: 1.3rem;
+    }
+    .card-body {
+      padding: 16px 20px 24px;
+    }
+    .display-row {
+      gap: 24px;
+    }
+    .display-value {
+      font-size: 2.4rem;
+    }
+  }
+
+  /*
+   * The dialog is not inside that container, so its phone behaviour is a media
+   * query: on a narrow screen it is a full sheet, because the frame around it
+   * is wasted space in a meter cupboard.
+   */
+  @media (max-width: 600px) {
+    :host {
+      padding: 16px 12px;
+      padding-bottom: calc(16px + env(safe-area-inset-bottom));
+    }
+    .dialog {
+      padding: 0;
+    }
+    .dialog-surface {
+      max-width: none;
+      height: 100%;
+      border-radius: 0;
+      padding-bottom: env(safe-area-inset-bottom);
+    }
   }
 
   /* --- Status banner ------------------------------------------------------ */

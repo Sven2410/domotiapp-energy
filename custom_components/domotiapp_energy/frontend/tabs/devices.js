@@ -37,7 +37,7 @@ import {
   warningMessages,
 } from '../core/api.js';
 import { createConfirmDialog, createDialog } from '../core/dialog.js';
-import { button, card, el, notice } from '../core/dom.js';
+import { button, card, el, notice, section, setVisible } from '../core/dom.js';
 import { createForm } from '../core/forms.js';
 import { createRowList } from '../core/rows.js';
 import { onTap } from '../core/tap.js';
@@ -588,6 +588,57 @@ function daysToStorage(value) {
     .filter((day) => Number.isInteger(day) && day >= 0 && day <= 6);
 }
 
+/**
+ * How the questions are grouped in the dialog.
+ *
+ * The three sections an installer needs on every visit are open; the agreement
+ * about control and the optional entity links are folded away, because most
+ * visits do not touch them. Together that turns a scroll of twenty-odd fields
+ * into a form that fits a phone with two things left to open (SPEC.md §11).
+ *
+ * The fields themselves still come from one `schemaFor`, so this list groups
+ * and never defines: a field that is not mentioned here would simply not be
+ * shown, which the test at the bottom of the device tests guards against.
+ */
+const SECTIONS = [
+  {
+    title: 'Apparaat',
+    open: true,
+    fields: ['name', 'device_type', 'enabled', 'location', 'priority'],
+  },
+  {
+    title: 'Verbruik',
+    open: true,
+    fields: ['nominal_power_w', 'energy_per_cycle_kwh', 'duration_minutes'],
+  },
+  {
+    title: 'Wanneer het mag draaien',
+    open: true,
+    fields: [
+      'is_flexible',
+      'is_noisy',
+      'earliest_start',
+      'latest_finish',
+      'days_of_week',
+    ],
+  },
+  {
+    title: 'Aansturing',
+    open: false,
+    fields: [
+      'control_mode',
+      'capabilities',
+      'control_forbidden',
+      'control_forbidden_reason',
+    ],
+  },
+  {
+    title: 'Koppelingen en notities',
+    open: false,
+    fields: [...ENTITY_LINKS.map((link) => link.name), 'notes'],
+  },
+];
+
 export const devicesTab = {
   id: 'devices',
   label: 'Apparaten',
@@ -638,24 +689,45 @@ export const devicesTab = {
     const warningNotice = notice('mdi:alert-outline');
     const dialogNotice = notice('mdi:content-save-outline');
 
-    const form = createForm(getHass(), schemaFor(NEW_DEVICE), (part) => {
-      const previousType = draft.device_type;
-      for (const [key, value] of Object.entries(part)) {
-        if (differs(value, draft[key])) {
-          touched.add(key);
+    /**
+     * One form per section, each handed only its own fields.
+     *
+     * Never the whole payload it emits: `ha-form` hands back the complete data
+     * object it was given with one field changed, so a form holding a stale
+     * copy of another section's values would quietly undo an edit made
+     * elsewhere. That is the bug phase 7b was fixed for.
+     */
+    function changeHandler(names) {
+      return (part) => {
+        const previousType = draft.device_type;
+        for (const name of names) {
+          if (differs(part[name], draft[name])) {
+            touched.add(name);
+          }
         }
-      }
-      draft = { ...draft, ...part };
-      if (draft.device_type !== previousType) {
-        applyTypeDefaults();
-      }
-      state.setDraft(DRAFT, draft);
-      refreshDialog();
+        const mine = {};
+        for (const name of names) {
+          mine[name] = part[name];
+        }
+        draft = { ...draft, ...mine };
+        if (draft.device_type !== previousType) {
+          applyTypeDefaults();
+        }
+        state.setDraft(DRAFT, draft);
+        refreshDialog();
+      };
+    }
+
+    const forms = SECTIONS.map((definition) => {
+      const host = section(definition.title, { open: definition.open });
+      const form = createForm(getHass(), [], changeHandler(definition.fields));
+      host.body.appendChild(form.element);
+      return { definition, host, form };
     });
 
     dialog.body.append(
       requiredNotice.element,
-      form.element,
+      ...forms.map(({ host }) => host.element),
       orphanNotice.element,
       warningNotice.element,
       dialogNotice.element,
@@ -803,8 +875,13 @@ export const devicesTab = {
 
       dialog.setTitle(device ? 'Apparaat bewerken' : 'Apparaat toevoegen');
       dialogNotice.set('');
+      // Every visit starts with the same three sections open, so the dialog
+      // looks the same each time rather than remembering a previous mood.
+      for (const { definition, host } of forms) {
+        host.setOpen(definition.open);
+      }
       refreshDialog();
-      form.setErrors(editing ? fieldErrors(currentIssues(), editing.id) : null);
+      showErrors();
       dialog.show({ focusReturnsTo: opener });
     }
 
@@ -815,11 +892,23 @@ export const devicesTab = {
       // away whatever control the installer had open — a multi-select loses the
       // choice they were in the middle of making.
       const key = JSON.stringify(schema);
-      if (key !== schemaKey) {
-        schemaKey = key;
-        form.setSchema(schema);
+      const schemaMoved = key !== schemaKey;
+      schemaKey = key;
+
+      for (const { definition, host, form } of forms) {
+        const mine = schema.filter((field) => definition.fields.includes(field.name));
+        if (schemaMoved) {
+          form.setSchema(mine);
+        }
+        const data = {};
+        for (const field of mine) {
+          data[field.name] = draft[field.name];
+        }
+        form.setData(data);
+        // A section with nothing left to ask disappears rather than standing
+        // there as an empty heading.
+        setVisible(host.element, mine.length > 0);
       }
-      form.setData(draft);
 
       // The marker on a field only helps someone already looking at it. In a
       // form of twenty questions the useful answer to "what is missing" is a
@@ -850,13 +939,29 @@ export const devicesTab = {
       saveButton.disabled = !isDirty();
     }
 
+    /** Put every section's own errors on its own form. */
+    function showErrors() {
+      const errors = editing ? fieldErrors(currentIssues(), editing.id) : null;
+      for (const { definition, form } of forms) {
+        const mine = {};
+        for (const name of definition.fields) {
+          if (errors && name in errors) {
+            mine[name] = errors[name];
+          }
+        }
+        form.setErrors(Object.keys(mine).length ? mine : null);
+      }
+    }
+
     function isDirty() {
       const names = new Set([...Object.keys(draft), ...Object.keys(saved)]);
       return [...names].some((name) => differs(draft[name], saved[name]));
     }
 
     function setBusy(busy) {
-      form.setDisabled(busy);
+      for (const { form } of forms) {
+        form.setDisabled(busy);
+      }
       saveButton.disabled = busy || !isDirty();
       cancelButton.disabled = busy;
     }
@@ -1030,9 +1135,11 @@ export const devicesTab = {
         return;
       }
       rowList.sync(config.devices || []);
-      form.setHass(getHass());
+      for (const { form } of forms) {
+        form.setHass(getHass());
+      }
       if (dialog.isOpen() && editing) {
-        form.setErrors(fieldErrors(currentIssues(), editing.id));
+        showErrors();
       }
     }
 

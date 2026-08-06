@@ -170,6 +170,57 @@ export function adviceBlock() {
 }
 
 /**
+ * A titled part of a dialog that can be folded away.
+ *
+ * A device has twenty-odd questions, and on a phone in a meter cupboard that is
+ * one long scroll with no sense of where you are. Folding the parts nobody
+ * needs on most visits — the control agreement, the optional entity links —
+ * turns it into a short form with two things left to open.
+ *
+ * Built from a semantic `<button>` with `aria-expanded`, so a screen reader
+ * announces the state and the keyboard opens it without anything of ours: the
+ * chevron only repeats what the attribute already says (SPEC.md §23).
+ */
+let sectionCount = 0;
+
+export function section(title, { open = true } = {}) {
+  sectionCount += 1;
+  const bodyId = `section-body-${sectionCount}`;
+
+  const chevron = el('ha-icon', {
+    class: 'section-chevron',
+    attrs: { icon: 'mdi:chevron-down', 'aria-hidden': 'true' },
+  });
+  const toggle = el('button', {
+    class: 'section-toggle',
+    type: 'button',
+    attrs: { 'aria-expanded': String(open), 'aria-controls': bodyId },
+  });
+  toggle.append(el('span', { class: 'section-title', text: title }), chevron);
+
+  const body = el('div', { class: 'section-body', attrs: { id: bodyId } });
+  const element = el('div', { class: 'section' }, [toggle, body]);
+
+  function setOpen(next) {
+    toggle.setAttribute('aria-expanded', String(next));
+    chevron.setAttribute('icon', next ? 'mdi:chevron-down' : 'mdi:chevron-right');
+    setVisible(body, next);
+  }
+
+  setOpen(open);
+  toggle.addEventListener('click', () =>
+    setOpen(toggle.getAttribute('aria-expanded') !== 'true'),
+  );
+
+  return {
+    element,
+    body,
+    setOpen,
+    isOpen: () => toggle.getAttribute('aria-expanded') === 'true',
+  };
+}
+
+/**
  * A line of text that can be hidden, with an icon beside it.
  *
  * The icon is always accompanied by text: information is never carried by an

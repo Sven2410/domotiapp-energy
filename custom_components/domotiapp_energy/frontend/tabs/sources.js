@@ -30,7 +30,7 @@ import {
   warningMessages,
 } from '../core/api.js';
 import { createConfirmDialog, createDialog } from '../core/dialog.js';
-import { button, card, el, notice } from '../core/dom.js';
+import { button, card, el, notice, section, setVisible } from '../core/dom.js';
 import { createForm } from '../core/forms.js';
 import { createRowList } from '../core/rows.js';
 import { onTap } from '../core/tap.js';
@@ -404,6 +404,40 @@ function differs(left, right) {
   return (left ?? null) !== (right ?? null);
 }
 
+/**
+ * How the questions are grouped in the dialog.
+ *
+ * Same reasoning as the device dialog: what an installer touches on every visit
+ * is open, the agreement about control and the notes are folded away. The
+ * fields come from one `schemaFor`; this list only groups them.
+ */
+const SECTIONS = [
+  { title: 'Bron', open: true, fields: ['name', 'type', 'enabled'] },
+  {
+    title: 'Wat er gemeten wordt',
+    open: true,
+    fields: [
+      'meter_mode',
+      'entity_id',
+      'positive_means',
+      'import_entity_id',
+      'export_entity_id',
+      'price_basis',
+      'value_source',
+      'attribute_name',
+      'unit',
+      'scale_factor',
+      'invert_value',
+    ],
+  },
+  {
+    title: 'Aansturing',
+    open: false,
+    fields: ['capabilities', 'control_forbidden', 'control_forbidden_reason'],
+  },
+  { title: 'Notities', open: false, fields: ['notes'] },
+];
+
 export const sourcesTab = {
   id: 'sources',
   label: 'Energiebronnen',
@@ -446,15 +480,35 @@ export const sourcesTab = {
     const warningNotice = notice('mdi:alert-outline');
     const dialogNotice = notice('mdi:content-save-outline');
 
-    const form = createForm(getHass(), schemaFor(NEW_SOURCE), (part) => {
-      draft = { ...draft, ...part };
-      state.setDraft(DRAFT, draft);
-      refreshDialog();
+    /**
+     * One form per section, each handed only its own fields.
+     *
+     * Never the whole payload it emits: a form holding a stale copy of another
+     * section's values would quietly undo an edit made elsewhere, which is the
+     * bug phase 7b was fixed for.
+     */
+    function changeHandler(names) {
+      return (part) => {
+        const mine = {};
+        for (const name of names) {
+          mine[name] = part[name];
+        }
+        draft = { ...draft, ...mine };
+        state.setDraft(DRAFT, draft);
+        refreshDialog();
+      };
+    }
+
+    const forms = SECTIONS.map((definition) => {
+      const host = section(definition.title, { open: definition.open });
+      const form = createForm(getHass(), [], changeHandler(definition.fields));
+      host.body.appendChild(form.element);
+      return { definition, host, form };
     });
 
     dialog.body.append(
       batteryNotice.element,
-      form.element,
+      ...forms.map(({ host }) => host.element),
       warningNotice.element,
       dialogNotice.element,
     );
@@ -567,8 +621,11 @@ export const sourcesTab = {
 
       dialog.setTitle(source ? 'Energiebron bewerken' : 'Energiebron toevoegen');
       dialogNotice.set('');
+      for (const { definition, host } of forms) {
+        host.setOpen(definition.open);
+      }
       refreshDialog();
-      form.setErrors(editing ? fieldErrors(currentIssues(), editing.id) : null);
+      showErrors();
       dialog.show({ focusReturnsTo: opener });
     }
 
@@ -578,11 +635,21 @@ export const sourcesTab = {
       // schema on every keystroke makes it rebuild every field, which throws
       // away whatever control the installer had open.
       const key = JSON.stringify(schema);
-      if (key !== schemaKey) {
-        schemaKey = key;
-        form.setSchema(schema);
+      const schemaMoved = key !== schemaKey;
+      schemaKey = key;
+
+      for (const { definition, host, form } of forms) {
+        const mine = schema.filter((field) => definition.fields.includes(field.name));
+        if (schemaMoved) {
+          form.setSchema(mine);
+        }
+        const data = {};
+        for (const field of mine) {
+          data[field.name] = draft[field.name];
+        }
+        form.setData(data);
+        setVisible(host.element, mine.length > 0);
       }
-      form.setData(draft);
 
       batteryNotice.set(
         draft.type === 'home_battery'
@@ -598,13 +665,29 @@ export const sourcesTab = {
       saveButton.disabled = !isDirty();
     }
 
+    /** Put every section's own errors on its own form. */
+    function showErrors() {
+      const errors = editing ? fieldErrors(currentIssues(), editing.id) : null;
+      for (const { definition, form } of forms) {
+        const mine = {};
+        for (const name of definition.fields) {
+          if (errors && name in errors) {
+            mine[name] = errors[name];
+          }
+        }
+        form.setErrors(Object.keys(mine).length ? mine : null);
+      }
+    }
+
     function isDirty() {
       const names = new Set([...Object.keys(draft), ...Object.keys(saved)]);
       return [...names].some((name) => differs(draft[name], saved[name]));
     }
 
     function setBusy(busy) {
-      form.setDisabled(busy);
+      for (const { form } of forms) {
+        form.setDisabled(busy);
+      }
       saveButton.disabled = busy || !isDirty();
       cancelButton.disabled = busy;
     }
@@ -787,9 +870,11 @@ export const sourcesTab = {
         return;
       }
       rowList.sync(config.sources || []);
-      form.setHass(getHass());
+      for (const { form } of forms) {
+        form.setHass(getHass());
+      }
       if (dialog.isOpen() && editing) {
-        form.setErrors(fieldErrors(currentIssues(), editing.id));
+        showErrors();
       }
     }
 

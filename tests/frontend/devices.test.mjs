@@ -42,12 +42,50 @@ function confirmDialog(panel) {
   return dialogs(panel)[1];
 }
 
+/**
+ * Every form in the dialog, one per folding section.
+ *
+ * The dialog is split so it fits a phone; the tests treat the sections as one
+ * form again, because what an installer is promised is about the questions and
+ * not about which fold they sit in.
+ */
+function forms(panel) {
+  return [...formDialog(panel).querySelectorAll('ha-form')];
+}
+
+/** The whole schema, in the order the sections present it. */
+function schema(panel) {
+  return forms(panel).flatMap((node) => node.schema || []);
+}
+
+/** The merged data of every section. */
+function formData(panel) {
+  return forms(panel).reduce((all, node) => ({ ...all, ...(node.data || {}) }), {});
+}
+
+/** The merged per-field errors of every section. */
+function formErrors(panel) {
+  const merged = forms(panel).reduce(
+    (all, node) => ({ ...all, ...(node.error || {}) }),
+    {},
+  );
+  return Object.keys(merged).length ? merged : undefined;
+}
+
+/** A stand-in for the single form the tests used before the split. */
 function form(panel) {
-  return formDialog(panel).querySelector('ha-form');
+  return { schema: schema(panel), data: formData(panel), error: formErrors(panel) };
 }
 
 function fieldNames(panel) {
-  return form(panel).schema.map((field) => field.name);
+  return schema(panel).map((field) => field.name);
+}
+
+/** The sections, by their visible heading. */
+function sectionTitles(panel) {
+  return [...formDialog(panel).querySelectorAll('.section')]
+    .filter(isVisible)
+    .map((node) => node.querySelector('.section-title').textContent);
 }
 
 function buttonIn(root, label) {
@@ -70,14 +108,28 @@ function noticeTexts(root) {
     .map((node) => node.querySelector('.notice-text').textContent);
 }
 
+/**
+ * Change fields the way the installer does: in the section that owns them.
+ *
+ * Each `ha-form` emits its **own** data object, so a test that sent everything
+ * through one of them would not exercise what the panel actually receives.
+ */
 function change(panel, values) {
-  const node = form(panel);
-  node.data = { ...node.data, ...values };
-  node.dispatchEvent(
-    new node.ownerDocument.defaultView.CustomEvent('value-changed', {
-      detail: { value: node.data },
-    }),
-  );
+  for (const node of forms(panel)) {
+    const names = (node.schema || []).map((field) => field.name);
+    const mine = Object.fromEntries(
+      Object.entries(values).filter(([key]) => names.includes(key)),
+    );
+    if (!Object.keys(mine).length) {
+      continue;
+    }
+    node.data = { ...node.data, ...mine };
+    node.dispatchEvent(
+      new node.ownerDocument.defaultView.CustomEvent('value-changed', {
+        detail: { value: node.data },
+      }),
+    );
+  }
 }
 
 function lastSent(hass, type) {
@@ -512,17 +564,18 @@ describe('unsaved changes in the device dialog', () => {
 describe('the schema is only replaced when the questions change', () => {
   /** Count how often the form is handed a new schema. */
   function watchSchema(panel) {
-    const node = form(panel);
-    let current = node.schema;
     const counter = { sets: 0 };
-    Object.defineProperty(node, 'schema', {
-      configurable: true,
-      get: () => current,
-      set: (value) => {
-        counter.sets += 1;
-        current = value;
-      },
-    });
+    for (const node of forms(panel)) {
+      let current = node.schema;
+      Object.defineProperty(node, 'schema', {
+        configurable: true,
+        get: () => current,
+        set: (value) => {
+          counter.sets += 1;
+          current = value;
+        },
+      });
+    }
     return counter;
   }
 
@@ -836,5 +889,97 @@ describe('helper texts that know what type this is', () => {
       form(panel).schema.find((f) => f.name === 'nominal_power_w').helper,
       /elektrische opgenomen vermogen, niet het thermische/,
     );
+  });
+});
+
+describe('the dialog folds into sections a phone can hold', () => {
+  it('opens the three sections an installer needs on every visit', async () => {
+    const { panel, tab } = await openDevicesTab();
+    buttonIn(tab, 'Apparaat toevoegen').click();
+    await settle();
+
+    assert.deepEqual(sectionTitles(panel), [
+      'Apparaat',
+      'Verbruik',
+      'Wanneer het mag draaien',
+      'Aansturing',
+      'Koppelingen en notities',
+    ]);
+
+    const open = [...formDialog(panel).querySelectorAll('.section-toggle')]
+      .filter((node) => node.getAttribute('aria-expanded') === 'true')
+      .map((node) => node.querySelector('.section-title').textContent);
+    // The agreement about control and the optional links stay folded: most
+    // visits do not touch them, and the scroll is what made this unusable.
+    assert.deepEqual(open, ['Apparaat', 'Verbruik', 'Wanneer het mag draaien']);
+  });
+
+  it('folds a section open and shut from the keyboard', async () => {
+    const { panel, tab } = await openDevicesTab();
+    buttonIn(tab, 'Apparaat toevoegen').click();
+    await settle();
+
+    const toggle = [...formDialog(panel).querySelectorAll('.section-toggle')].find(
+      (node) => node.querySelector('.section-title').textContent === 'Aansturing',
+    );
+    const body = formDialog(panel).querySelector(
+      `#${toggle.getAttribute('aria-controls')}`,
+    );
+
+    assert.equal(isVisible(body), false);
+
+    // A semantic button: a click is what a keyboard press produces too, and
+    // the state travels in aria-expanded rather than in the chevron alone.
+    toggle.click();
+
+    assert.equal(toggle.getAttribute('aria-expanded'), 'true');
+    assert.equal(isVisible(body), true);
+  });
+
+  it('shows every field the schema asks for, in some section', async () => {
+    // The sections group; they never define. A field nobody assigned would
+    // simply disappear from the form, and only this test would notice.
+    const { panel, tab } = await openDevicesTab();
+    buttonIn(tab, 'Apparaat toevoegen').click();
+    await settle();
+
+    for (const type of ['dishwasher', 'home_battery', 'ev_charger', 'heat_pump']) {
+      change(panel, { device_type: type });
+      change(panel, { control_forbidden: true });
+
+      const shown = new Set(fieldNames(panel));
+      for (const name of [
+        'name',
+        'device_type',
+        'enabled',
+        'location',
+        'priority',
+        'nominal_power_w',
+        'energy_per_cycle_kwh',
+        'duration_minutes',
+        'is_noisy',
+        'is_flexible',
+        'control_mode',
+        'capabilities',
+        'control_forbidden',
+        'control_forbidden_reason',
+        'notes',
+      ]) {
+        assert.ok(shown.has(name), `${name} is in no section for ${type}`);
+      }
+    }
+  });
+
+  it('hides a section that has nothing left to ask', async () => {
+    const { panel, tab } = await openDevicesTab();
+    buttonIn(tab, 'Apparaat toevoegen').click();
+    await settle();
+
+    // A monitor-only device has no links of its own beyond the three every
+    // type has, so the section stays; the window section is what empties.
+    change(panel, { is_flexible: false, device_type: 'generic_monitor' });
+
+    assert.ok(fieldNames(panel).includes('is_flexible'));
+    assert.ok(!fieldNames(panel).includes('earliest_start'));
   });
 });

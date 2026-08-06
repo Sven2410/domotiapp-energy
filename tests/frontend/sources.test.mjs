@@ -45,12 +45,34 @@ function confirmDialog(panel) {
   return dialogs(panel)[1];
 }
 
+/** Every form in the dialog, one per folding section. */
+function forms(panel) {
+  return [...formDialog(panel).querySelectorAll('ha-form')];
+}
+
+function schema(panel) {
+  return forms(panel).flatMap((node) => node.schema || []);
+}
+
+function formData(panel) {
+  return forms(panel).reduce((all, node) => ({ ...all, ...(node.data || {}) }), {});
+}
+
+function formErrors(panel) {
+  const merged = forms(panel).reduce(
+    (all, node) => ({ ...all, ...(node.error || {}) }),
+    {},
+  );
+  return Object.keys(merged).length ? merged : undefined;
+}
+
+/** A stand-in for the single form the tests used before the split. */
 function form(panel) {
-  return formDialog(panel).querySelector('ha-form');
+  return { schema: schema(panel), data: formData(panel), error: formErrors(panel) };
 }
 
 function fieldNames(panel) {
-  return form(panel).schema.map((field) => field.name);
+  return schema(panel).map((field) => field.name);
 }
 
 function buttonIn(root, label) {
@@ -73,15 +95,28 @@ function noticeTexts(root) {
     .map((node) => node.querySelector('.notice-text').textContent);
 }
 
-/** Simulate the installer changing fields in the dialog's form. */
+/**
+ * Change fields the way the installer does: in the section that owns them.
+ *
+ * Each `ha-form` emits its own data object, so sending everything through one
+ * of them would not exercise what the panel actually receives.
+ */
 function change(panel, values) {
-  const node = form(panel);
-  node.data = { ...node.data, ...values };
-  node.dispatchEvent(
-    new node.ownerDocument.defaultView.CustomEvent('value-changed', {
-      detail: { value: node.data },
-    }),
-  );
+  for (const node of forms(panel)) {
+    const names = (node.schema || []).map((field) => field.name);
+    const mine = Object.fromEntries(
+      Object.entries(values).filter(([key]) => names.includes(key)),
+    );
+    if (!Object.keys(mine).length) {
+      continue;
+    }
+    node.data = { ...node.data, ...mine };
+    node.dispatchEvent(
+      new node.ownerDocument.defaultView.CustomEvent('value-changed', {
+        detail: { value: node.data },
+      }),
+    );
+  }
 }
 
 async function openDialogFor(panel, tab, label = 'Bron toevoegen') {
@@ -283,17 +318,17 @@ describe('fields that only apply sometimes', () => {
     );
   });
 
-  it('keeps the same form element while the fields change', async () => {
+  it('keeps the same form elements while the fields change', async () => {
     const { panel, tab } = await openSourcesTab();
     await openDialogFor(panel, tab);
-    const before = form(panel);
+    const before = forms(panel);
 
     change(panel, { type: 'solar' });
     change(panel, { value_source: 'attribute' });
 
-    // Re-creating the form mid-edit would throw away what was being typed
-    // (SPEC.md §9).
-    assert.equal(form(panel), before);
+    // Re-creating a form mid-edit would throw away what was being typed
+    // (SPEC.md §9). The sections only get a new schema, never a new element.
+    assert.deepEqual(forms(panel), before);
   });
 });
 
@@ -313,12 +348,10 @@ describe('saving', () => {
     const { panel, tab, hass } = await openSourcesTab();
     await openDialogFor(panel, tab);
 
-    change(panel, {
-      name: 'Slimme meter',
-      meter_mode: 'single_signed',
-      positive_means: 'import',
-      entity_id: 'sensor.p1',
-    });
+    // Two steps, because that is the only order a real installer can work in:
+    // positive_means does not exist until the meter mode says it should.
+    change(panel, { name: 'Slimme meter', meter_mode: 'single_signed' });
+    change(panel, { positive_means: 'import', entity_id: 'sensor.p1' });
     buttonIn(formDialog(panel), 'Opslaan').click();
     await settle();
 
@@ -337,8 +370,10 @@ describe('saving', () => {
     const { panel, tab, hass } = await openSourcesTab();
     await openDialogFor(panel, tab);
 
-    change(panel, { meter_mode: 'single_signed', positive_means: 'import' });
-    change(panel, { type: 'current_price', price_basis: 'all_in' });
+    change(panel, { meter_mode: 'single_signed' });
+    change(panel, { positive_means: 'import' });
+    change(panel, { type: 'current_price' });
+    change(panel, { price_basis: 'all_in' });
     buttonIn(formDialog(panel), 'Opslaan').click();
     await settle();
 
@@ -384,7 +419,7 @@ describe('saving', () => {
     await settle();
 
     // In flight: locked, and nothing claiming success yet (SPEC.md §22).
-    assert.equal(form(panel).disabled, true);
+    assert.ok(forms(panel).every((node) => node.disabled));
     assert.ok(noticeTexts(formDialog(panel)).some((t) => t.includes('Bezig met opslaan')));
     assert.ok(!noticeTexts(tab).some((t) => t.includes('toegevoegd')));
 

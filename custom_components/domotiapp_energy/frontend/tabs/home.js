@@ -67,6 +67,52 @@ const CONNECTION_SCHEMA = [
   },
 ];
 
+/**
+ * The contract fields, filtered by the contract that is actually in force.
+ *
+ * A fixed tariff on a dynamic contract with "alleen nodig bij een vast
+ * contract" underneath is the same fault as a battery level on a dishwasher:
+ * a question with no answer, kept on screen.
+ *
+ * **The value is kept, and still sent.** This is the opposite of what the
+ * device form does with an orphaned field, and the difference is deliberate: a
+ * device type says what the thing *is*, so a battery level on a dishwasher is
+ * meaningless and is dropped. A contract type is a mode that flips back and
+ * forth — a customer who moves to a dynamic contract for a year has not stopped
+ * having a fixed tariff on file. Dropping it would mean retyping it on the way
+ * back, and there is nothing to gain by forgetting it.
+ *
+ * The rule, for both forms: a value is dropped when the new choice makes it
+ * meaningless, and kept when it is merely inactive.
+ */
+function contractSchema(draft) {
+  const dynamic = draft.contract_type === 'dynamic';
+  const onlyFor = {
+    fixed_import_price_eur_kwh: 'fixed',
+    low_price_threshold_eur_kwh: 'dynamic',
+    high_price_threshold_eur_kwh: 'dynamic',
+    energy_tax_eur_kwh: 'dynamic',
+    supplier_markup_eur_kwh: 'dynamic',
+    vat_percent: 'dynamic',
+  };
+  return CONTRACT_SCHEMA.filter((field) => {
+    const needs = onlyFor[field.name];
+    return !needs || needs === (dynamic ? 'dynamic' : 'fixed');
+  });
+}
+
+/** Contract fields that are filled in but not in force right now. */
+function inactiveContractFields(draft) {
+  const shown = new Set(contractSchema(draft).map((field) => field.name));
+  return CONTRACT_SCHEMA.filter(
+    (field) =>
+      !shown.has(field.name) &&
+      draft[field.name] !== undefined &&
+      draft[field.name] !== null &&
+      draft[field.name] !== '',
+  ).map((field) => field.label);
+}
+
 const CONTRACT_SCHEMA = [
   {
     name: 'contract_type',
@@ -85,8 +131,8 @@ const CONTRACT_SCHEMA = [
     name: 'fixed_import_price_eur_kwh',
     label: 'Vast leveringstarief (all-in)',
     helper:
-      'Alleen nodig bij een vast contract. Het all-in bedrag per kWh, ' +
-      'inclusief energiebelasting en btw — dus wat de klant werkelijk betaalt.',
+      'Het all-in bedrag per kWh, inclusief energiebelasting en btw — dus wat ' +
+      'de klant werkelijk betaalt.',
     selector: { number: { min: 0, step: 0.001, unit_of_measurement: '€/kWh' } },
   },
   {
@@ -151,16 +197,16 @@ const CONTRACT_SCHEMA = [
     // all-in prices, so an installer who enters what their market-price sensor
     // shows would set the threshold about three times too low (SPEC.md §16).
     helper:
-      'Alleen bij een dynamisch contract. Vergelijk met de all-in prijs, niet ' +
-      'met de kale marktprijs van je prijsbron.',
+      'Vergelijk met de all-in prijs, niet met de kale marktprijs van je ' +
+      'prijsbron.',
     selector: { number: { min: 0, step: 0.001, unit_of_measurement: '€/kWh' } },
   },
   {
     name: 'high_price_threshold_eur_kwh',
     label: 'Hoge prijsgrens (all-in)',
     helper:
-      'Alleen bij een dynamisch contract. Vergelijk met de all-in prijs, niet ' +
-      'met de kale marktprijs van je prijsbron.',
+      'Vergelijk met de all-in prijs, niet met de kale marktprijs van je ' +
+      'prijsbron.',
     selector: { number: { min: 0, step: 0.001, unit_of_measurement: '€/kWh' } },
   },
 ];
@@ -234,7 +280,7 @@ export const homeTab = {
 
     const connection = card('Woning en aansluiting');
     const contract = card('Contract en prijzen');
-    const advice = card('Advies');
+    const advice = card('Adviesinstellingen');
     const control = card('Bedieningsniveau');
 
     /** What is on screen. Never written into config (SPEC.md §22). */
@@ -246,6 +292,8 @@ export const homeTab = {
     /** What to do once the installer resolves their unsaved changes. */
     let leaveRequested = null;
     let loadedRevision = null;
+    /** The contract fields currently on screen, so they only move when needed. */
+    let contractKey = '';
 
     /**
      * Merge one card's fields back into the draft.
@@ -270,6 +318,9 @@ export const homeTab = {
         const names = schema.map((field) => field.name);
         return {
           names,
+          // The contract card asks a different set per contract type, so it is
+          // the one whose schema moves; the other two are fixed.
+          conditional: index === 1,
           form: createForm(getHass(), schema, changeHandler(names)),
           host: [connection, contract, advice][index],
         };
@@ -281,6 +332,8 @@ export const homeTab = {
 
     const maxPowerNotice = notice('mdi:calculator-variant-outline');
     connection.body.appendChild(maxPowerNotice.element);
+
+    const inactiveNotice = notice('mdi:archive-outline');
 
     // The one place the whole price composition is stated in plain Dutch. Every
     // number below and every threshold above is an all-in amount, and an
@@ -295,7 +348,7 @@ export const homeTab = {
         'welke van de twee het is.',
       { tone: 'info' },
     );
-    contract.body.appendChild(priceNotice.element);
+    contract.body.append(priceNotice.element, inactiveNotice.element);
 
     // --- The control level, fixed in 0.1.0 ----------------------------------
     const controlForm = createForm(
@@ -339,18 +392,21 @@ export const homeTab = {
     const leaveActions = el('div', { class: 'actions' }, [leaveDiscard, leaveStay]);
     setVisible(leaveActions, false);
 
-    advice.body.append(
+    // The actions belong to the tab, not to the card they happen to sit under.
+    // Inside "Adviesinstellingen" they read as if they saved that card alone.
+    const actions = el('div', { class: 'tab-actions' }, [
       el('div', { class: 'actions' }, [saveButton, resetButton]),
       saveNotice.element,
       leaveNotice.element,
       leaveActions,
-    );
+    ]);
 
     element.append(
       connection.element,
       contract.element,
       advice.element,
       control.element,
+      actions,
     );
 
     // --- Behaviour ----------------------------------------------------------
@@ -370,6 +426,34 @@ export const homeTab = {
         setVisible(leaveActions, false);
       }
       updateMaxPowerHint();
+      refreshContractFields();
+    }
+
+    /**
+     * Show the contract fields that are in force, and say what is kept.
+     *
+     * The values of the other contract stay in the draft and are still sent, so
+     * switching back restores them; the notice is what keeps that from being
+     * invisible.
+     */
+    function refreshContractFields() {
+      const schema = contractSchema(draft);
+      const key = JSON.stringify(schema.map((field) => field.name));
+      if (key !== contractKey) {
+        contractKey = key;
+        const entry = forms.find((item) => item.conditional);
+        entry.form.setSchema(schema);
+        entry.form.setData(only(draft, schema.map((field) => field.name)));
+      }
+
+      const inactive = inactiveContractFields(draft);
+      inactiveNotice.set(
+        inactive.length
+          ? `Deze gegevens horen bij het andere contracttype en worden nu niet ` +
+              `gebruikt, maar blijven bewaard: ${inactive.join(', ')}.`
+          : '',
+        { tone: 'info' },
+      );
     }
 
     function updateMaxPowerHint() {
@@ -400,8 +484,11 @@ export const homeTab = {
       loadedRevision = revision;
       // Each card is handed only its own fields, so it cannot carry a stale
       // copy of another card's values.
-      for (const { form, names } of forms) {
-        form.setData(only(draft, names));
+      contractKey = '';
+      for (const { form, names, conditional } of forms) {
+        form.setData(
+          only(draft, conditional ? contractSchema(draft).map((f) => f.name) : names),
+        );
       }
       showIssues(config);
       state.clearDraft(DRAFT);

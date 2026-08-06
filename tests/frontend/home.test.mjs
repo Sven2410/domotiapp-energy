@@ -108,6 +108,8 @@ describe('the form itself', () => {
 
   it('asks for the price composition per kWh, not per month', async () => {
     const { tab } = await openHomeTab();
+    // The composition belongs to a dynamic contract; a fixed one is not asked.
+    change(tab, { contract_type: 'dynamic' }, 1);
     const contract = forms(tab)[1];
     const field = (name) => contract.schema.find((entry) => entry.name === name);
 
@@ -125,6 +127,7 @@ describe('the form itself', () => {
 
   it('says that the price thresholds are all-in amounts', async () => {
     const { tab } = await openHomeTab();
+    change(tab, { contract_type: 'dynamic' }, 1);
     const contract = forms(tab)[1];
 
     for (const name of [
@@ -498,5 +501,76 @@ describe('unsaved changes', () => {
     await settle();
 
     assert.equal(tabPanels(panel).filter(isVisible)[0].id, 'panel-overview');
+  });
+});
+
+describe('the contract fields that apply', () => {
+  /** The names the contract card is asking about right now. */
+  function contractFields(tab) {
+    return forms(tab)[1].schema.map((field) => field.name);
+  }
+
+  it('does not ask about a fixed tariff on a dynamic contract', async () => {
+    const { tab } = await openHomeTab();
+
+    // A fixed contract: the tariff is asked, the thresholds are not.
+    assert.ok(contractFields(tab).includes('fixed_import_price_eur_kwh'));
+    assert.ok(!contractFields(tab).includes('low_price_threshold_eur_kwh'));
+
+    change(tab, { contract_type: 'dynamic' }, 1);
+
+    // And the other way round. A question with no answer, kept on screen with
+    // "alleen nodig bij een vast contract" underneath, is what this replaces.
+    assert.ok(!contractFields(tab).includes('fixed_import_price_eur_kwh'));
+    assert.ok(contractFields(tab).includes('low_price_threshold_eur_kwh'));
+    assert.ok(contractFields(tab).includes('energy_tax_eur_kwh'));
+  });
+
+  it('keeps a hidden value and says that it is kept', async () => {
+    const { tab } = await openHomeTab(
+      fakeHass({
+        config: sampleConfig({
+          home: { ...sampleConfig().home, fixed_import_price_eur_kwh: 0.3 },
+        }),
+      }),
+    );
+
+    change(tab, { contract_type: 'dynamic' }, 1);
+
+    // Unlike a device type, a contract type flips back and forth: forgetting
+    // the tariff would mean retyping it on the way back.
+    assert.ok(
+      noticeTexts(tab).some((text) => text.includes('blijven bewaard')),
+      'the tab has to say that the value is kept',
+    );
+  });
+
+  it('still sends the value of the contract that is not in force', async () => {
+    const sent = [];
+    const hass = fakeHass({
+      config: sampleConfig({
+        home: { ...sampleConfig().home, fixed_import_price_eur_kwh: 0.3 },
+      }),
+    });
+    const original = hass.callWS;
+    hass.callWS = async (message) => {
+      sent.push(message);
+      if (message.type === 'domotiapp_energy/home/update') {
+        return { revision: 8, item: { ...message.home }, issues: {} };
+      }
+      return original(message);
+    };
+
+    const { tab } = await openHomeTab(hass);
+    change(tab, { contract_type: 'dynamic' }, 1);
+    findButton(tab, 'Opslaan').click();
+    await settle();
+
+    const update = sent.find(
+      (message) => message.type === 'domotiapp_energy/home/update',
+    );
+    assert.equal(update.home.contract_type, 'dynamic');
+    // Hidden, not dropped.
+    assert.equal(update.home.fixed_import_price_eur_kwh, 0.3);
   });
 });
