@@ -58,6 +58,7 @@ from custom_components.domotiapp_energy.engine.reason_codes import (
     REASON_MISSING_REQUIRED_DATA,
 )
 from custom_components.domotiapp_energy.models import (
+    DataQualityResult,
     DeviceProfile,
     EnergySnapshot,
     EnergySource,
@@ -1330,3 +1331,56 @@ async def test_a_refused_price_leaves_no_market_price_behind(
 
     assert metrics.current_price_eur_kwh is None
     assert metrics.market_price_eur_kwh is None
+
+
+def test_the_checklist_asks_a_device_for_exactly_these_fields() -> None:
+    """Pin what a device must have, because a form marks its fields from it.
+
+    The Apparaten tab marks "· nodig" on the fields the data quality checklist
+    needs, and that marking is written in JavaScript where this rule cannot be
+    imported. This test is the guard: change what `completeness.py` asks of a
+    device and it fails here, instead of leaving the form quietly marking the
+    wrong things.
+
+    The rule, in full:
+
+    * ``device_profile_complete`` wants one usable device with **both** a
+      nominal power and an energy per cycle;
+    * ``flexible_devices_have_time_window`` wants **both** ends of a window on
+      every usable flexible device.
+    """
+    snapshot = EnergySnapshot()
+
+    def _score(**overrides: Any) -> DataQualityResult:
+        device = DeviceProfile(id="d1", device_type=DEVICE_TYPE_DISHWASHER, **overrides)
+        config = StoredConfiguration(devices=[device])
+        return evaluate_completeness(config, snapshot)
+
+    complete: dict[str, Any] = {
+        "nominal_power_w": 2000.0,
+        "energy_per_cycle_kwh": 1.2,
+        "earliest_start": "22:00",
+        "latest_finish": "06:00",
+    }
+
+    passed = _score(**complete).completed_items
+    assert COMPLETENESS_ITEM_DEVICE_PROFILE in passed
+    assert COMPLETENESS_ITEM_TIME_WINDOWS in passed
+
+    # Drop any one of the four and the item it belongs to fails.
+    for field_name, item in (
+        ("nominal_power_w", COMPLETENESS_ITEM_DEVICE_PROFILE),
+        ("energy_per_cycle_kwh", COMPLETENESS_ITEM_DEVICE_PROFILE),
+        ("earliest_start", COMPLETENESS_ITEM_TIME_WINDOWS),
+        ("latest_finish", COMPLETENESS_ITEM_TIME_WINDOWS),
+    ):
+        without = _score(**{**complete, field_name: None})
+        assert item in without.missing_items, field_name
+
+    # A device that is not flexible is never moved, so it needs no window —
+    # which is why the form stops marking those two fields as well.
+    inflexible = _score(
+        nominal_power_w=2000.0, energy_per_cycle_kwh=1.2, is_flexible=False
+    )
+    assert COMPLETENESS_ITEM_DEVICE_PROFILE in inflexible.completed_items
+    assert COMPLETENESS_ITEM_TIME_WINDOWS in inflexible.missing_items

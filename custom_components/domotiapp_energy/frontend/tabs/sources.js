@@ -111,7 +111,12 @@ function schemaFor(draft) {
   if (draft.type === 'grid_meter') {
     schema.push(...gridMeterFields(draft));
   } else {
-    schema.push({ name: 'entity_id', label: 'Entiteit', selector: { entity: {} } });
+    schema.push({
+      name: 'entity_id',
+      label: 'Entiteit',
+      helper: entityHelper(draft.type),
+      selector: { entity: {} },
+    });
   }
 
   if (draft.type === 'current_price') {
@@ -239,7 +244,7 @@ function readingFields(draft) {
       label: 'Eenheid',
       // The conversion follows this choice and the scale factor only, never the
       // entity's own unit_of_measurement or its name (SPEC.md §15).
-      helper: 'De eenheid waarin deze entiteit meet, zoals jij hem vaststelt.',
+      helper: unitHelper(draft.type),
       selector: { select: { mode: 'dropdown', options: UNIT_OPTIONS } },
     },
     {
@@ -257,6 +262,45 @@ function readingFields(draft) {
   );
 
   return fields;
+}
+
+/**
+ * What this source's entity is expected to report.
+ *
+ * A generic "link an entity" is the same mistake as a generic unit: correct for
+ * every type and useful for none. What a solar source needs is not what a price
+ * source needs, and saying so here is cheaper than a support call.
+ */
+function entityHelper(sourceType) {
+  const perType = {
+    solar: 'De entiteit die de actuele zonneproductie meldt, niet de dagopbrengst.',
+    current_price:
+      'De entiteit met de prijs van dit moment. Hieronder geef je aan of dat ' +
+      'de kale marktprijs of de all-in prijs is.',
+    price_forecast: 'De entiteit met de prijzen van de komende uren.',
+    solar_forecast: 'De entiteit met de verwachte opbrengst.',
+    home_battery:
+      'De entiteit die het laad- of ontlaadvermogen meldt, niet de laadtoestand.',
+    general_consumption: 'De entiteit die het totale huishoudelijke verbruik meldt.',
+  };
+  return perType[sourceType] || 'De entiteit waar deze bron uit gelezen wordt.';
+}
+
+/** Which units make sense here, which differs sharply per type. */
+function unitHelper(sourceType) {
+  const perType = {
+    current_price: 'Voor een prijs: EUR/kWh of ct/kWh.',
+    price_forecast: 'Voor een prijs: EUR/kWh of ct/kWh.',
+    solar: 'Voor een vermogen: W of kW.',
+    home_battery: 'Voor een vermogen: W of kW.',
+    general_consumption: 'Voor een vermogen: W of kW.',
+    solar_forecast: 'Voor een verwachte opbrengst meestal Wh of kWh.',
+  };
+  return (
+    (perType[sourceType] || 'De eenheid waarin deze entiteit meet.') +
+    ' Zoals jij hem vaststelt: de eenheid van de entiteit zelf wordt nooit ' +
+    'gebruikt om te converteren.'
+  );
 }
 
 /**
@@ -378,7 +422,8 @@ export const sourcesTab = {
     let draft = {};
     let saved = {};
     let revision = null;
-    let discardArmed = false;
+    /** The schema currently on the form, so it is only replaced when it moves. */
+    let schemaKey = '';
 
     const rowList = createRowList({
       emptyText:
@@ -400,7 +445,6 @@ export const sourcesTab = {
     const batteryNotice = notice('mdi:battery-charging-outline');
     const warningNotice = notice('mdi:alert-outline');
     const dialogNotice = notice('mdi:content-save-outline');
-    const unsavedNotice = notice('mdi:alert-outline');
 
     const form = createForm(getHass(), schemaFor(NEW_SOURCE), (part) => {
       draft = { ...draft, ...part };
@@ -413,7 +457,6 @@ export const sourcesTab = {
       form.element,
       warningNotice.element,
       dialogNotice.element,
-      unsavedNotice.element,
     );
 
     const saveButton = button('Opslaan', { primary: true });
@@ -520,18 +563,25 @@ export const sourcesTab = {
       draft = draftFrom(source || {});
       saved = { ...draft };
       revision = state.get().config?.revision ?? null;
-      discardArmed = false;
+      schemaKey = '';
 
       dialog.setTitle(source ? 'Energiebron bewerken' : 'Energiebron toevoegen');
       dialogNotice.set('');
-      unsavedNotice.set('');
       refreshDialog();
       form.setErrors(editing ? fieldErrors(currentIssues(), editing.id) : null);
       dialog.show({ focusReturnsTo: opener });
     }
 
     function refreshDialog() {
-      form.setSchema(schemaFor(draft));
+      const schema = schemaFor(draft);
+      // Only when the questions actually changed. Handing `ha-form` a fresh
+      // schema on every keystroke makes it rebuild every field, which throws
+      // away whatever control the installer had open.
+      const key = JSON.stringify(schema);
+      if (key !== schemaKey) {
+        schemaKey = key;
+        form.setSchema(schema);
+      }
       form.setData(draft);
 
       batteryNotice.set(
@@ -678,25 +728,42 @@ export const sourcesTab = {
     // --- Leaving with unsaved changes ---------------------------------------
 
     /**
-     * Closing a dialog that holds changes asks first (SPEC.md §22).
+     * Closing a dialog that holds changes asks first, visibly (SPEC.md §22).
      *
-     * The first attempt explains and leaves everything as it was; only a second,
-     * explicit close throws the edit away. The question stays inside the dialog
-     * it is about, rather than in a browser modal we neither control nor style.
+     * A notice at the bottom of a long form is not a question: it can sit below
+     * the fold while the installer clicks the backdrop a second time and loses
+     * the lot. So the question is a dialog of its own, and Escape, the close
+     * button, the backdrop and Annuleren all reach it through here.
      */
     function mayClose() {
-      if (!isDirty() || discardArmed) {
-        discardArmed = false;
+      if (!isDirty()) {
         state.clearDraft(DRAFT);
         return true;
       }
-      discardArmed = true;
-      unsavedNotice.set(
-        'Je hebt wijzigingen die nog niet zijn opgeslagen. Sla ze op, of kies ' +
-          'nogmaals sluiten om ze te verwerpen.',
-        { tone: 'warning' },
-      );
+      askDiscard();
       return false;
+    }
+
+    function askDiscard(afterDiscard = null) {
+      confirmDialog.ask(
+        {
+          title: 'Wijzigingen verwerpen?',
+          text:
+            'Je hebt wijzigingen die nog niet zijn opgeslagen. Verwerp je ze, ' +
+            'dan zijn ze weg.',
+          confirmLabel: 'Verwerpen',
+          cancelLabel: 'Terug naar het formulier',
+          // Nothing behind this question is reachable while it stands, not even
+          // the form it is about.
+          inertWhileOpen: dialog.element,
+        },
+        () => {
+          state.clearDraft(DRAFT);
+          draft = { ...saved };
+          dialog.close();
+          afterDiscard?.();
+        },
+      );
     }
 
     dialog.onCloseRequest(mayClose);
@@ -727,17 +794,18 @@ export const sourcesTab = {
     }
 
     /** The tab may not be left while a dialog holds unsaved changes. */
-    function canLeave() {
+    function canLeave(proceed) {
       if (confirmDialog.isOpen()) {
-        confirmDialog.close();
+        return false;
       }
       if (!dialog.isOpen()) {
         return true;
       }
-      if (mayClose()) {
+      if (!isDirty()) {
         dialog.close();
         return true;
       }
+      askDiscard(proceed);
       return false;
     }
 

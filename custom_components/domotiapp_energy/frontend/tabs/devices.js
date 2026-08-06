@@ -1,9 +1,8 @@
 /**
  * The Apparaten tab (SPEC.md §8, §9, §11, §22 and §23).
  *
- * The second CRUD tab, on the machinery 8a built: the same dialog, the same
- * keyed list, the same save cycle and the same issues-per-field. What is new
- * here is what a device *is*, as opposed to a source:
+ * The second CRUD tab, on the machinery 8a built. What is different about a
+ * device, as opposed to a source:
  *
  * * it carries an **intention** — `control_mode` — next to what the hardware
  *   can do and what was agreed. Those three are deliberately not merged
@@ -12,10 +11,22 @@
  *   somebody picks from a dropdown later;
  * * two flags follow from the device type unless the installer says otherwise
  *   — a dishwasher is noisy, a heat pump is not flexible (SPEC.md §8). The form
- *   follows the type only for a field nobody has touched yet, so a deliberate
- *   choice is never quietly overwritten by picking a different type;
+ *   follows the type only for a field nobody has touched yet;
  * * a time window that may cross midnight, which is the normal case for a
  *   dishwasher and not an error (SPEC.md §16).
+ *
+ * Two rules govern which questions appear, and they are different in kind:
+ *
+ * 1. **What the type can answer.** A battery level on a dishwasher is a
+ *    question with no answer, and leaving it on screen invites a wrong link.
+ * 2. **What the installer decided.** The time window follows `is_flexible`
+ *    rather than the type, because that is what the data quality checklist
+ *    actually asks about — a window is required of every flexible device.
+ *
+ * **Hiding is never deleting.** A value that scrolls out of view with a type
+ * change stays in the draft, so switching back restores it, and the dialog says
+ * out loud what saving would drop. Silently discarding it would be the same
+ * class of mistake as the shared-draft bug of phase 7b.
  */
 
 import {
@@ -95,14 +106,57 @@ const DAY_OPTIONS = [
   { value: 6, label: 'Zondag' },
 ];
 
-/** The optional entity links, all six of them (SPEC.md §8). */
+/**
+ * The optional entity links, and which types each one means something for.
+ *
+ * `types: null` means every type. The three that are restricted are the ones
+ * that are actively misleading elsewhere: a battery level on a dishwasher, or
+ * a remaining time on a heat pump, is an invitation to link the wrong entity.
+ */
 const ENTITY_LINKS = [
-  { name: 'status_entity', label: 'Statusentiteit' },
-  { name: 'power_entity', label: 'Vermogensentiteit' },
-  { name: 'energy_entity', label: 'Energieverbruikentiteit' },
-  { name: 'remaining_time_entity', label: 'Resterende tijd' },
-  { name: 'temperature_entity', label: 'Temperatuur' },
-  { name: 'battery_level_entity', label: 'Batterijniveau' },
+  {
+    name: 'status_entity',
+    label: 'Statusentiteit',
+    types: null,
+    helper: 'De entiteit die zegt of het apparaat aan staat of draait.',
+  },
+  {
+    name: 'power_entity',
+    label: 'Vermogensentiteit',
+    types: null,
+    helper: 'Het actuele vermogen van dit apparaat.',
+  },
+  {
+    name: 'energy_entity',
+    label: 'Energieverbruikentiteit',
+    types: null,
+    helper: 'De meterstand of het verbruik van dit apparaat.',
+  },
+  {
+    name: 'remaining_time_entity',
+    label: 'Resterende tijd',
+    types: ['dishwasher', 'washing_machine', 'dryer', 'ev_charger'],
+    helper: 'Hoe lang de lopende cyclus nog duurt.',
+  },
+  {
+    name: 'temperature_entity',
+    label: 'Temperatuursensor',
+    types: ['heat_pump', 'electric_boiler', 'air_conditioning'],
+    helpers: {
+      heat_pump: 'De aanvoertemperatuur van de warmtepomp.',
+      electric_boiler: 'De watertemperatuur in de boiler.',
+      air_conditioning: 'De ruimtetemperatuur die deze airco regelt.',
+    },
+  },
+  {
+    name: 'battery_level_entity',
+    label: 'Batterijniveau',
+    types: ['home_battery', 'ev_charger'],
+    helpers: {
+      home_battery: 'De laadtoestand van de thuisbatterij, in procenten.',
+      ev_charger: 'De laadtoestand van de auto, als de laadpaal die meldt.',
+    },
+  },
 ];
 
 const NEW_DEVICE = {
@@ -126,9 +180,41 @@ function flexibleByDefault(deviceType) {
   return !INFLEXIBLE_BY_DEFAULT.has(deviceType);
 }
 
-/** Build the schema for one draft. */
+/**
+ * The fields the data quality checklist actually asks of a device.
+ *
+ * This mirrors `engine/completeness.py`, which is the real source of truth:
+ * `_has_complete_device_profile` wants a power **and** an energy per cycle, and
+ * `_flexible_devices_have_windows` wants both ends of a window on every usable
+ * flexible device. `tests/test_calculator.py` pins those two rules, so a change
+ * there fails a test rather than quietly leaving this marking behind.
+ */
+function requiredFields(draft) {
+  const required = ['nominal_power_w', 'energy_per_cycle_kwh'];
+  if (draft.is_flexible) {
+    required.push('earliest_start', 'latest_finish');
+  }
+  return required;
+}
+
+/** Mark a label as one of the fields the checklist needs. */
+function markRequired(field, required) {
+  if (!required.includes(field.name)) {
+    return field;
+  }
+  return { ...field, label: `${field.label} · nodig` };
+}
+
+/**
+ * Build the schema for one draft.
+ *
+ * Every branch answers "does this question mean anything for what the installer
+ * has chosen so far". Nothing is hidden that could still be answered, and
+ * nothing is asked that could not.
+ */
 function schemaFor(draft) {
-  return [
+  const required = requiredFields(draft);
+  const fields = [
     { name: 'name', label: 'Naam', selector: { text: {} } },
     {
       name: 'device_type',
@@ -161,26 +247,24 @@ function schemaFor(draft) {
         },
       },
     },
-    ...powerFields(),
-    ...windowFields(),
+    ...powerFields(draft),
     ...behaviourFields(draft),
+    ...windowFields(draft),
     ...controlFields(draft),
-    ...ENTITY_LINKS.map((link) => ({
-      name: link.name,
-      label: link.label,
-      selector: { entity: {} },
-    })),
+    ...entityLinkFields(draft),
     { name: 'notes', label: 'Notities', selector: { text: { multiline: true } } },
   ];
+
+  return fields.map((field) => markRequired(field, required));
 }
 
 /** What the device uses, which is what a saving can be calculated from. */
-function powerFields() {
+function powerFields(draft) {
   return [
     {
       name: 'nominal_power_w',
       label: 'Nominaal vermogen',
-      helper: 'Het vermogen tijdens gebruik.',
+      helper: powerHelper(draft.device_type),
       selector: { number: { min: 0, step: 10, unit_of_measurement: 'W' } },
     },
     {
@@ -188,7 +272,7 @@ function powerFields() {
       label: 'Energie per cyclus',
       // Without this there is no saving to calculate, so the advice can only
       // say "now is a good moment" and never what it is worth (SPEC.md §16).
-      helper: 'Nodig om een besparing te kunnen berekenen.',
+      helper: energyHelper(draft.device_type),
       selector: { number: { min: 0, step: 0.1, unit_of_measurement: 'kWh' } },
     },
     {
@@ -200,8 +284,43 @@ function powerFields() {
   ];
 }
 
-/** The allowed time window, which may cross midnight (SPEC.md §16). */
-function windowFields() {
+/** What "a cycle" means differs enough per type to be worth saying. */
+function powerHelper(deviceType) {
+  const perType = {
+    ev_charger: 'Het laadvermogen waarmee deze paal levert.',
+    home_battery: 'Het laad- of ontlaadvermogen van de batterij.',
+    heat_pump: 'Het elektrische opgenomen vermogen, niet het thermische.',
+    electric_boiler: 'Het vermogen van het verwarmingselement.',
+  };
+  return perType[deviceType] || 'Het vermogen tijdens gebruik.';
+}
+
+function energyHelper(deviceType) {
+  const perType = {
+    ev_charger: 'De energie van een gemiddelde laadbeurt.',
+    dishwasher: 'De energie van één programma, bijvoorbeeld 1,0 tot 1,5 kWh.',
+    washing_machine: 'De energie van één wasbeurt.',
+    dryer: 'De energie van één droogbeurt.',
+    heat_pump: 'De energie van een gemiddelde draaiperiode.',
+  };
+  return (
+    (perType[deviceType] || 'De energie van één cyclus.') +
+    ' Zonder dit getal is er geen besparing te berekenen.'
+  );
+}
+
+/**
+ * The allowed time window, shown only for a device that may be moved.
+ *
+ * Tied to `is_flexible` and not to the type, because that is exactly what the
+ * data quality checklist asks: every *usable flexible* device needs a window.
+ * A device the installer marked as not flexible is never moved, so a window
+ * would be a question about something that will not happen.
+ */
+function windowFields(draft) {
+  if (!draft.is_flexible) {
+    return [];
+  }
   return [
     {
       name: 'earliest_start',
@@ -238,7 +357,8 @@ function behaviourFields(draft) {
       label: 'Verplaatsbaar in de tijd',
       helper: `Standaard voor dit type: ${
         flexibleByDefault(draft.device_type) ? 'ja' : 'nee'
-      }. Alleen verplaatsbare apparaten krijgen een verplaatsingsadvies.`,
+      }. Alleen verplaatsbare apparaten krijgen een verplaatsingsadvies, en ` +
+        'alleen die hebben een tijdvenster nodig.',
       selector: { boolean: {} },
     },
   ];
@@ -299,6 +419,18 @@ function controlFields(draft) {
   return fields;
 }
 
+/** The optional entity links that mean something for this type. */
+function entityLinkFields(draft) {
+  return ENTITY_LINKS.filter(
+    (link) => link.types === null || link.types.includes(draft.device_type),
+  ).map((link) => ({
+    name: link.name,
+    label: link.label,
+    helper: link.helpers?.[draft.device_type] ?? link.helper,
+    selector: { entity: {} },
+  }));
+}
+
 /** Read the editable fields out of a stored device. */
 function draftFrom(device) {
   const draft = { ...NEW_DEVICE, ...device };
@@ -314,6 +446,47 @@ function draftFrom(device) {
     }
   }
   return draft;
+}
+
+/** The names of every field this form can ever ask about. */
+const ALL_FIELD_NAMES = new Set(
+  [
+    ...schemaFor({ ...NEW_DEVICE, is_flexible: true, control_forbidden: true }),
+    ...ENTITY_LINKS.map((link) => ({ name: link.name })),
+  ].map((field) => field.name),
+);
+
+/**
+ * Values that are filled in but no longer asked for.
+ *
+ * These are what a type change would drop on save. They stay in the draft while
+ * the dialog is open, so switching the type back restores them without
+ * retyping, and the dialog names them out loud before the irreversible step.
+ */
+function orphanedFields(draft, schema) {
+  const asked = new Set(schema.map((field) => field.name));
+  return [...ALL_FIELD_NAMES].filter(
+    (name) =>
+      !asked.has(name) &&
+      draft[name] !== undefined &&
+      draft[name] !== null &&
+      draft[name] !== '',
+  );
+}
+
+/** The Dutch label of a field, for the sentence about what would be dropped. */
+function labelOf(name) {
+  const link = ENTITY_LINKS.find((entry) => entry.name === name);
+  if (link) {
+    return link.label;
+  }
+  const known = {
+    earliest_start: 'Vroegste start',
+    latest_finish: 'Laatste eindtijd',
+    days_of_week: 'Dagen',
+    control_forbidden_reason: 'Reden',
+  };
+  return known[name] || name;
 }
 
 /** The payload to send: the schema's fields, cleared ones as null. */
@@ -340,6 +513,20 @@ function differs(left, right) {
   return (left ?? null) !== (right ?? null);
 }
 
+/**
+ * Weekdays as numbers, whatever the select handed back.
+ *
+ * The option values are numbers, but a select renders its values as strings.
+ * A day that comes back as `"0"` never matches the option `0`, so the choice
+ * would not show as made — the field looks broken while the value is there.
+ */
+function asDayNumbers(value) {
+  if (!Array.isArray(value)) {
+    return value;
+  }
+  return value.map((day) => (typeof day === 'string' ? Number(day) : day));
+}
+
 export const devicesTab = {
   id: 'devices',
   label: 'Apparaten',
@@ -357,7 +544,6 @@ export const devicesTab = {
     let draft = {};
     let saved = {};
     let revision = null;
-    let discardArmed = false;
     /**
      * The fields the installer changed by hand in this dialog.
      *
@@ -366,6 +552,8 @@ export const devicesTab = {
      * not noisy" with the default for the new type.
      */
     let touched = new Set();
+    /** The schema currently on the form, so it is only replaced when it moves. */
+    let schemaKey = '';
 
     const rowList = createRowList({
       emptyText:
@@ -384,12 +572,16 @@ export const devicesTab = {
     // --- The dialog ---------------------------------------------------------
 
     const dialog = createDialog({ title: 'Apparaat', overlay });
+    const requiredNotice = notice('mdi:asterisk');
+    const orphanNotice = notice('mdi:eye-off-outline');
     const warningNotice = notice('mdi:alert-outline');
     const dialogNotice = notice('mdi:content-save-outline');
-    const unsavedNotice = notice('mdi:alert-outline');
 
     const form = createForm(getHass(), schemaFor(NEW_DEVICE), (part) => {
       const previousType = draft.device_type;
+      if ('days_of_week' in part) {
+        part = { ...part, days_of_week: asDayNumbers(part.days_of_week) };
+      }
       for (const [key, value] of Object.entries(part)) {
         if (differs(value, draft[key])) {
           touched.add(key);
@@ -404,10 +596,11 @@ export const devicesTab = {
     });
 
     dialog.body.append(
+      requiredNotice.element,
       form.element,
+      orphanNotice.element,
       warningNotice.element,
       dialogNotice.element,
-      unsavedNotice.element,
     );
 
     const saveButton = button('Opslaan', { primary: true });
@@ -478,8 +671,8 @@ export const devicesTab = {
      * The one line under a row that says where this device stands.
      *
      * The agreement not to control it comes with its reason, because that is
-     * what Sven or his successor reads two years later — which is the whole
-     * point of writing it down (SPEC.md §12).
+     * what someone reads two years later — which is the whole point of writing
+     * it down (SPEC.md §12).
      */
     function statusOf(device) {
       if (device.invalid_reason === 'unknown_type') {
@@ -513,11 +706,11 @@ export const devicesTab = {
           }`,
         };
       }
-      if (device.energy_per_cycle_kwh === null || device.nominal_power_w === null) {
+      if (!device.energy_per_cycle_kwh || !device.nominal_power_w) {
         return {
           icon: 'mdi:information-outline',
           tone: 'info',
-          text: 'Compleet, maar zonder vermogen of energie per cyclus is er geen besparing te berekenen.',
+          text: 'Zonder vermogen en energie per cyclus is er geen besparing te berekenen.',
         };
       }
       return { icon: 'mdi:check-circle-outline', tone: 'info', text: 'Compleet.' };
@@ -534,26 +727,59 @@ export const devicesTab = {
       draft = draftFrom(device || {});
       saved = { ...draft };
       revision = state.get().config?.revision ?? null;
-      discardArmed = false;
-      // A stored device already has its flags; only a fresh dialog starts with
-      // nothing touched.
       touched = new Set();
+      schemaKey = '';
 
       dialog.setTitle(device ? 'Apparaat bewerken' : 'Apparaat toevoegen');
       dialogNotice.set('');
-      unsavedNotice.set('');
       refreshDialog();
       form.setErrors(editing ? fieldErrors(currentIssues(), editing.id) : null);
       dialog.show({ focusReturnsTo: opener });
     }
 
     function refreshDialog() {
-      form.setSchema(schemaFor(draft));
+      const schema = schemaFor(draft);
+      // Only when the questions actually changed. Handing `ha-form` a fresh
+      // schema on every keystroke makes it rebuild every field, which throws
+      // away whatever control the installer had open — a multi-select loses the
+      // choice they were in the middle of making.
+      const key = JSON.stringify(schema);
+      if (key !== schemaKey) {
+        schemaKey = key;
+        form.setSchema(schema);
+      }
       form.setData(draft);
+
+      const required = requiredFields(draft);
+      requiredNotice.set(
+        `Met "· nodig" gemarkeerde velden zijn wat de datakwaliteit van dit ` +
+          `apparaat vraagt: ${required.map(labelForRequired).join(', ')}.`,
+        { tone: 'info' },
+      );
+
+      const orphans = orphanedFields(draft, schema);
+      orphanNotice.set(
+        orphans.length
+          ? 'Deze ingevulde gegevens horen niet bij dit apparaattype en ' +
+              `verdwijnen bij opslaan: ${orphans.map(labelOf).join(', ')}. ` +
+              'Zet het type terug om ze te behouden.'
+          : '',
+        { tone: 'warning' },
+      );
 
       const warnings = editing ? warningMessages(currentIssues(), editing.id) : [];
       warningNotice.set(warnings.join(' '), { tone: 'warning' });
       saveButton.disabled = !isDirty();
+    }
+
+    function labelForRequired(name) {
+      const known = {
+        nominal_power_w: 'nominaal vermogen',
+        energy_per_cycle_kwh: 'energie per cyclus',
+        earliest_start: 'vroegste start',
+        latest_finish: 'laatste eindtijd',
+      };
+      return known[name] || name;
     }
 
     function isDirty() {
@@ -599,8 +825,8 @@ export const devicesTab = {
             { tone: 'warning' },
           );
         } else {
-          // The one refusal the backend makes is this one, and it has to read
-          // as an instruction rather than as a failure (SPEC.md §12).
+          // The one refusal the backend makes has to read as an instruction
+          // rather than as a failure (SPEC.md §12).
           dialogNotice.set(describeError(error), { tone: 'warning' });
         }
       } finally {
@@ -676,19 +902,43 @@ export const devicesTab = {
 
     // --- Leaving with unsaved changes ---------------------------------------
 
+    /**
+     * Closing a dialog that holds changes asks first, visibly (SPEC.md §22).
+     *
+     * A notice at the bottom of a long form is not a question: it can sit below
+     * the fold while the installer clicks the backdrop a second time and loses
+     * the lot. So the question is a dialog of its own, and Escape, the close
+     * button, the backdrop and Annuleren all reach it through here.
+     */
     function mayClose() {
-      if (!isDirty() || discardArmed) {
-        discardArmed = false;
+      if (!isDirty()) {
         state.clearDraft(DRAFT);
         return true;
       }
-      discardArmed = true;
-      unsavedNotice.set(
-        'Je hebt wijzigingen die nog niet zijn opgeslagen. Sla ze op, of kies ' +
-          'nogmaals sluiten om ze te verwerpen.',
-        { tone: 'warning' },
-      );
+      askDiscard();
       return false;
+    }
+
+    function askDiscard(afterDiscard = null) {
+      confirmDialog.ask(
+        {
+          title: 'Wijzigingen verwerpen?',
+          text:
+            'Je hebt wijzigingen die nog niet zijn opgeslagen. Verwerp je ze, ' +
+            'dan zijn ze weg.',
+          confirmLabel: 'Verwerpen',
+          cancelLabel: 'Terug naar het formulier',
+          // Nothing behind this question is reachable while it stands, not even
+          // the form it is about.
+          inertWhileOpen: dialog.element,
+        },
+        () => {
+          state.clearDraft(DRAFT);
+          draft = { ...saved };
+          dialog.close();
+          afterDiscard?.();
+        },
+      );
     }
 
     dialog.onCloseRequest(mayClose);
@@ -718,17 +968,19 @@ export const devicesTab = {
       }
     }
 
-    function canLeave() {
+    function canLeave(proceed) {
       if (confirmDialog.isOpen()) {
-        confirmDialog.close();
+        return false;
       }
       if (!dialog.isOpen()) {
         return true;
       }
-      if (mayClose()) {
+      if (!isDirty()) {
         dialog.close();
         return true;
       }
+      // The same question, and leaving continues once it is answered.
+      askDiscard(proceed);
       return false;
     }
 

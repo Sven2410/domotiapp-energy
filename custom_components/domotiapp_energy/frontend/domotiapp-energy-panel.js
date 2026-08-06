@@ -523,6 +523,8 @@ class DomotiAppEnergyPanel extends HTMLElement {
     this._lastCalculated = null;
     this._unsubscribe = null;
     this._loading = false;
+    /** How many dialogs are holding the page behind them inert. */
+    this._inertDepth = 0;
   }
 
   /**
@@ -643,8 +645,16 @@ class DomotiAppEnergyPanel extends HTMLElement {
   _overlay() {
     return {
       mount: (node) => this._overlayHost.appendChild(node),
+      /**
+       * Counted rather than set, because dialogs stack.
+       *
+       * A confirmation opens on top of a form dialog and closes again first.
+       * With a plain boolean its close would hand the page behind *both* of
+       * them back to the keyboard while the form is still open.
+       */
       setBackgroundInert: (inert) => {
-        this._layout.inert = inert;
+        this._inertDepth = Math.max(0, this._inertDepth + (inert ? 1 : -1));
+        this._layout.inert = this._inertDepth > 0;
       },
     };
   }

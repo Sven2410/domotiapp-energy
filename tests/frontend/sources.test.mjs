@@ -509,7 +509,7 @@ describe('deleting', () => {
 });
 
 describe('unsaved changes', () => {
-  it('refuses the first close and explains, then discards on the second', async () => {
+  it('asks a visible question before throwing an edit away', async () => {
     const { panel, tab } = await openSourcesTab();
     await openDialogFor(panel, tab);
     change(panel, { name: 'Halverwege' });
@@ -518,14 +518,42 @@ describe('unsaved changes', () => {
     await settle();
 
     assert.equal(isVisible(formDialog(panel)), true);
-    assert.ok(
-      noticeTexts(formDialog(panel)).some((t) => t.includes('nog niet zijn opgeslagen')),
-    );
+    assert.equal(isVisible(confirmDialog(panel)), true);
 
-    buttonIn(formDialog(panel), 'Annuleren').click();
+    buttonIn(confirmDialog(panel), 'Verwerpen').click();
     await settle();
 
     assert.equal(isVisible(formDialog(panel)), false);
+  });
+
+  it('asks the same question for a click beside the dialog', async () => {
+    // The click that cost an almost-finished form: the backdrop went through a
+    // different route than the close button and closed without asking.
+    const { panel, tab } = await openSourcesTab();
+    await openDialogFor(panel, tab);
+    change(panel, { name: 'Bijna klaar' });
+
+    formDialog(panel).querySelector('.dialog-scrim').click();
+    await settle();
+
+    assert.equal(isVisible(formDialog(panel)), true);
+    assert.equal(isVisible(confirmDialog(panel)), true);
+    assert.equal(form(panel).data.name, 'Bijna klaar');
+  });
+
+  it('asks the same question for Escape', async () => {
+    const { panel, tab } = await openSourcesTab();
+    await openDialogFor(panel, tab);
+    change(panel, { name: 'Bijna klaar' });
+
+    const view = formDialog(panel).ownerDocument.defaultView;
+    formDialog(panel).dispatchEvent(
+      new view.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+    );
+    await settle();
+
+    assert.equal(isVisible(formDialog(panel)), true);
+    assert.equal(isVisible(confirmDialog(panel)), true);
   });
 
   it('closes without a question when nothing was changed', async () => {
@@ -547,9 +575,7 @@ describe('unsaved changes', () => {
     await settle();
 
     assert.equal(tabPanels(panel).filter(isVisible)[0].id, 'panel-sources');
-    assert.ok(
-      noticeTexts(formDialog(panel)).some((t) => t.includes('nog niet zijn opgeslagen')),
-    );
+    assert.equal(isVisible(confirmDialog(panel)), true);
   });
 
   it('lets the installer leave once the dialog is clean', async () => {
@@ -561,5 +587,39 @@ describe('unsaved changes', () => {
 
     assert.equal(tabPanels(panel).filter(isVisible)[0].id, 'panel-overview');
     assert.equal(isVisible(formDialog(panel)), false);
+  });
+});
+
+
+describe('helper texts that know what kind of source this is', () => {
+  it('explains the entity differently per source type', async () => {
+    const { panel, tab } = await openSourcesTab();
+    await openDialogFor(panel, tab);
+
+    change(panel, { type: 'solar' });
+    assert.match(
+      form(panel).schema.find((f) => f.name === 'entity_id').helper,
+      /actuele zonneproductie/,
+    );
+
+    change(panel, { type: 'home_battery' });
+    assert.match(
+      form(panel).schema.find((f) => f.name === 'entity_id').helper,
+      /laad- of ontlaadvermogen/,
+    );
+  });
+
+  it('names the units that make sense for this type', async () => {
+    const { panel, tab } = await openSourcesTab();
+    await openDialogFor(panel, tab);
+
+    change(panel, { type: 'current_price' });
+    assert.match(
+      form(panel).schema.find((f) => f.name === 'unit').helper,
+      /EUR\/kWh of ct\/kWh/,
+    );
+
+    change(panel, { type: 'solar' });
+    assert.match(form(panel).schema.find((f) => f.name === 'unit').helper, /W of kW/);
   });
 });

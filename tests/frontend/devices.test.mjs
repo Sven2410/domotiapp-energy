@@ -310,7 +310,9 @@ describe('saving a device', () => {
 
     const sent = lastSent(hass, 'domotiapp_energy/devices/create');
     assert.equal(sent.device.status_entity, null);
-    assert.equal(sent.device.temperature_entity, null);
+    // A temperature on a dishwasher is not asked, and therefore not sent: the
+    // backend clears it rather than storing an answer to a missing question.
+    assert.ok(!('temperature_entity' in sent.device));
   });
 
   it('confirms only after the backend answers', async () => {
@@ -386,7 +388,7 @@ describe('deleting a device', () => {
 });
 
 describe('unsaved changes in the device dialog', () => {
-  it('refuses the first close and explains, then discards on the second', async () => {
+  it('asks a visible question instead of arming a second click', async () => {
     const { panel, tab } = await openDevicesTab();
     buttonIn(tab, 'Apparaat toevoegen').click();
     await settle();
@@ -394,10 +396,40 @@ describe('unsaved changes in the device dialog', () => {
 
     buttonIn(formDialog(panel), 'Annuleren').click();
     await settle();
+
+    // A notice under a 23-field form can sit below the fold; a dialog cannot.
     assert.equal(isVisible(formDialog(panel)), true);
+    assert.equal(isVisible(confirmDialog(panel)), true);
+    assert.match(confirmDialog(panel).textContent, /verwerpen/i);
+  });
+
+  it('goes back to the form with the edit intact', async () => {
+    const { panel, tab } = await openDevicesTab();
+    buttonIn(tab, 'Apparaat toevoegen').click();
+    await settle();
+    change(panel, { name: 'Halverwege' });
 
     buttonIn(formDialog(panel), 'Annuleren').click();
     await settle();
+    buttonIn(confirmDialog(panel), 'Terug naar het formulier').click();
+    await settle();
+
+    assert.equal(isVisible(confirmDialog(panel)), false);
+    assert.equal(isVisible(formDialog(panel)), true);
+    assert.equal(form(panel).data.name, 'Halverwege');
+  });
+
+  it('closes only once the discard is confirmed', async () => {
+    const { panel, tab } = await openDevicesTab();
+    buttonIn(tab, 'Apparaat toevoegen').click();
+    await settle();
+    change(panel, { name: 'Halverwege' });
+
+    buttonIn(formDialog(panel), 'Annuleren').click();
+    await settle();
+    buttonIn(confirmDialog(panel), 'Verwerpen').click();
+    await settle();
+
     assert.equal(isVisible(formDialog(panel)), false);
   });
 
@@ -411,5 +443,279 @@ describe('unsaved changes in the device dialog', () => {
     await settle();
 
     assert.equal(tabPanels(panel).filter(isVisible)[0].id, 'panel-devices');
+    assert.equal(isVisible(confirmDialog(panel)), true);
+  });
+
+  it('continues to the other tab once the discard is confirmed', async () => {
+    const { panel, tab } = await openDevicesTab();
+    buttonIn(tab, 'Apparaat toevoegen').click();
+    await settle();
+    change(panel, { name: 'Halverwege' });
+
+    clickTab(panel, 'Overzicht');
+    await settle();
+    buttonIn(confirmDialog(panel), 'Verwerpen').click();
+    await settle();
+
+    assert.equal(tabPanels(panel).filter(isVisible)[0].id, 'panel-overview');
+  });
+});
+
+
+describe('the schema is only replaced when the questions change', () => {
+  /** Count how often the form is handed a new schema. */
+  function watchSchema(panel) {
+    const node = form(panel);
+    let current = node.schema;
+    const counter = { sets: 0 };
+    Object.defineProperty(node, 'schema', {
+      configurable: true,
+      get: () => current,
+      set: (value) => {
+        counter.sets += 1;
+        current = value;
+      },
+    });
+    return counter;
+  }
+
+  it('leaves the form alone when only a value changed', async () => {
+    // This is the days bug. `ha-form` rebuilds every field when it is handed a
+    // schema, and rebuilding while a multi-select is open throws away the
+    // choice being made: emptying the days and then picking one did nothing at
+    // all, because the pick landed on a control that no longer existed.
+    const { panel, tab } = await openDevicesTab();
+    buttonIn(tab, 'Apparaat toevoegen').click();
+    await settle();
+    const watcher = watchSchema(panel);
+
+    change(panel, { name: 'Vaatwasser' });
+    change(panel, { days_of_week: [] });
+    change(panel, { days_of_week: [2] });
+
+    assert.equal(watcher.sets, 0);
+  });
+
+  it('does replace it when the type changes what is asked', async () => {
+    const { panel, tab } = await openDevicesTab();
+    buttonIn(tab, 'Apparaat toevoegen').click();
+    await settle();
+    const watcher = watchSchema(panel);
+
+    change(panel, { device_type: 'heat_pump' });
+
+    assert.ok(watcher.sets > 0);
+  });
+
+  it('keeps a day chosen after the list was emptied', async () => {
+    const { panel, tab } = await openDevicesTab();
+    buttonIn(tab, 'Apparaat toevoegen').click();
+    await settle();
+
+    change(panel, { days_of_week: [] });
+    change(panel, { days_of_week: [2] });
+
+    assert.deepEqual(form(panel).data.days_of_week, [2]);
+  });
+
+  it('stores a day as the number the options use, not as text', async () => {
+    // A select renders its values as strings; a day that comes back as "2"
+    // never matches the option 2, so the choice would not show as made.
+    const { panel, tab, hass } = await openDevicesTab();
+    buttonIn(tab, 'Apparaat toevoegen').click();
+    await settle();
+
+    change(panel, { name: 'Vaatwasser', days_of_week: ['0', '6'] });
+    buttonIn(formDialog(panel), 'Opslaan').click();
+    await settle();
+
+    assert.deepEqual(form(panel).data.days_of_week, [0, 6]);
+    assert.deepEqual(
+      lastSent(hass, 'domotiapp_energy/devices/create').device.days_of_week,
+      [0, 6],
+    );
+  });
+});
+
+describe('only the questions this type can answer', () => {
+  it('does not offer a battery level on a dishwasher', async () => {
+    const { panel, tab } = await openDevicesTab();
+    buttonIn(tab, 'Apparaat toevoegen').click();
+    await settle();
+
+    // A battery level here is an invitation to link the wrong entity.
+    assert.ok(!fieldNames(panel).includes('battery_level_entity'));
+    assert.ok(!fieldNames(panel).includes('temperature_entity'));
+    // A remaining time does mean something for a dishwasher.
+    assert.ok(fieldNames(panel).includes('remaining_time_entity'));
+  });
+
+  it('offers a battery level on the two types that have one', async () => {
+    const { panel, tab } = await openDevicesTab();
+    buttonIn(tab, 'Apparaat toevoegen').click();
+    await settle();
+
+    change(panel, { device_type: 'home_battery' });
+    assert.ok(fieldNames(panel).includes('battery_level_entity'));
+    assert.ok(!fieldNames(panel).includes('remaining_time_entity'));
+
+    change(panel, { device_type: 'ev_charger' });
+    assert.ok(fieldNames(panel).includes('battery_level_entity'));
+    assert.ok(fieldNames(panel).includes('remaining_time_entity'));
+  });
+
+  it('asks for a time window only where one will be used', async () => {
+    const { panel, tab } = await openDevicesTab();
+    buttonIn(tab, 'Apparaat toevoegen').click();
+    await settle();
+
+    assert.ok(fieldNames(panel).includes('earliest_start'));
+
+    // Tied to is_flexible, not to the type: that is exactly what the data
+    // quality checklist asks about.
+    change(panel, { is_flexible: false });
+
+    assert.ok(!fieldNames(panel).includes('earliest_start'));
+    assert.ok(!fieldNames(panel).includes('days_of_week'));
+  });
+
+  it('keeps a hidden value in the draft, so switching back restores it', async () => {
+    // Hiding is not deleting. This is the same class of mistake as the shared
+    // draft of phase 7b: work disappearing without anybody being told.
+    const { panel, tab } = await openDevicesTab();
+    buttonIn(tab, 'Apparaat toevoegen').click();
+    await settle();
+
+    change(panel, { device_type: 'home_battery' });
+    change(panel, { battery_level_entity: 'sensor.accu' });
+    change(panel, { device_type: 'dishwasher' });
+
+    assert.ok(!fieldNames(panel).includes('battery_level_entity'));
+
+    change(panel, { device_type: 'home_battery' });
+
+    assert.equal(form(panel).data.battery_level_entity, 'sensor.accu');
+  });
+
+  it('says out loud what saving would drop', async () => {
+    const { panel, tab } = await openDevicesTab();
+    buttonIn(tab, 'Apparaat toevoegen').click();
+    await settle();
+
+    change(panel, { device_type: 'home_battery' });
+    change(panel, { battery_level_entity: 'sensor.accu' });
+    change(panel, { device_type: 'dishwasher' });
+
+    const warning = noticeTexts(formDialog(panel)).find((t) =>
+      t.includes('verdwijnen bij opslaan'),
+    );
+    assert.ok(warning, 'the dialog has to name what would be lost');
+    assert.match(warning, /Batterijniveau/);
+  });
+
+  it('drops it on save, which is what the warning announced', async () => {
+    const { panel, tab, hass } = await openDevicesTab();
+    buttonIn(tab, 'Apparaat toevoegen').click();
+    await settle();
+
+    change(panel, { device_type: 'home_battery' });
+    change(panel, { battery_level_entity: 'sensor.accu', name: 'Accu' });
+    change(panel, { device_type: 'dishwasher' });
+    buttonIn(formDialog(panel), 'Opslaan').click();
+    await settle();
+
+    const sent = lastSent(hass, 'domotiapp_energy/devices/create');
+    assert.ok(!('battery_level_entity' in sent.device));
+  });
+});
+
+describe('what the data quality checklist needs', () => {
+  it('marks the fields the checklist asks for', async () => {
+    const { panel, tab } = await openDevicesTab();
+    buttonIn(tab, 'Apparaat toevoegen').click();
+    await settle();
+
+    const marked = form(panel)
+      .schema.filter((field) => field.label.includes('nodig'))
+      .map((field) => field.name);
+
+    // Exactly what engine/completeness.py asks of a device: power and energy
+    // per cycle, plus both ends of a window for a flexible one.
+    assert.deepEqual(marked.sort(), [
+      'earliest_start',
+      'energy_per_cycle_kwh',
+      'latest_finish',
+      'nominal_power_w',
+    ]);
+  });
+
+  it('stops asking for a window once the device is not flexible', async () => {
+    const { panel, tab } = await openDevicesTab();
+    buttonIn(tab, 'Apparaat toevoegen').click();
+    await settle();
+
+    change(panel, { is_flexible: false });
+
+    const marked = form(panel)
+      .schema.filter((field) => field.label.includes('nodig'))
+      .map((field) => field.name);
+
+    assert.deepEqual(marked.sort(), ['energy_per_cycle_kwh', 'nominal_power_w']);
+  });
+
+  it('explains what the marking means', async () => {
+    const { panel, tab } = await openDevicesTab();
+    buttonIn(tab, 'Apparaat toevoegen').click();
+    await settle();
+
+    assert.ok(noticeTexts(formDialog(panel)).some((t) => t.includes('datakwaliteit')));
+  });
+});
+
+describe('helper texts that know what type this is', () => {
+  it('explains a temperature sensor differently per type', async () => {
+    const { panel, tab } = await openDevicesTab();
+    buttonIn(tab, 'Apparaat toevoegen').click();
+    await settle();
+
+    change(panel, { device_type: 'heat_pump' });
+    const heatPump = form(panel).schema.find((f) => f.name === 'temperature_entity');
+    assert.match(heatPump.helper, /aanvoertemperatuur/);
+
+    change(panel, { device_type: 'electric_boiler' });
+    const boiler = form(panel).schema.find((f) => f.name === 'temperature_entity');
+    assert.match(boiler.helper, /watertemperatuur/);
+  });
+
+  it('explains a battery level differently for a car and for a house', async () => {
+    const { panel, tab } = await openDevicesTab();
+    buttonIn(tab, 'Apparaat toevoegen').click();
+    await settle();
+
+    change(panel, { device_type: 'home_battery' });
+    assert.match(
+      form(panel).schema.find((f) => f.name === 'battery_level_entity').helper,
+      /thuisbatterij/,
+    );
+
+    change(panel, { device_type: 'ev_charger' });
+    assert.match(
+      form(panel).schema.find((f) => f.name === 'battery_level_entity').helper,
+      /auto/,
+    );
+  });
+
+  it('says what a nominal power means for this type', async () => {
+    const { panel, tab } = await openDevicesTab();
+    buttonIn(tab, 'Apparaat toevoegen').click();
+    await settle();
+
+    change(panel, { device_type: 'heat_pump' });
+
+    // The distinction that costs a factor of three or four when missed.
+    assert.match(
+      form(panel).schema.find((f) => f.name === 'nominal_power_w').helper,
+      /elektrische opgenomen vermogen, niet het thermische/,
+    );
   });
 });

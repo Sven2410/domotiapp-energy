@@ -87,6 +87,8 @@ export function createDialog({ title = '', overlay }) {
 
   let open = false;
   let returnFocusTo = null;
+  /** A dialog underneath this one, unreachable while this one is up. */
+  let blocked = null;
   /** Asked before every close; returning false keeps the dialog open. */
   let mayClose = () => true;
 
@@ -103,6 +105,12 @@ export function createDialog({ title = '', overlay }) {
     open = false;
     setVisible(element, false);
     overlay.setBackgroundInert(false);
+    // Released before focus moves, or focus would be handed to an element the
+    // browser still considers unreachable.
+    if (blocked) {
+      blocked.inert = false;
+      blocked = null;
+    }
     // Focus goes back where it came from, so a keyboard user is not dropped at
     // the top of the page after saving (SPEC.md §23).
     returnFocusTo?.focus?.();
@@ -142,13 +150,23 @@ export function createDialog({ title = '', overlay }) {
       mayClose = callback;
     },
 
-    /** Show the dialog and move focus into it. */
-    show({ focusReturnsTo = null } = {}) {
+    /**
+     * Show the dialog and move focus into it.
+     *
+     * `inertWhileOpen` is for a dialog that opens on top of another one: the
+     * dialog underneath is made unreachable for as long as this one is up, and
+     * released again *before* focus goes back to it.
+     */
+    show({ focusReturnsTo = null, inertWhileOpen = null } = {}) {
       if (open) {
         return;
       }
       open = true;
       returnFocusTo = focusReturnsTo;
+      blocked = inertWhileOpen;
+      if (blocked) {
+        blocked.inert = true;
+      }
       setVisible(element, true);
       overlay.setBackgroundInert(true);
       surface.focus();
@@ -195,13 +213,30 @@ export function createConfirmDialog({ overlay }) {
     element: dialog.element,
     isOpen: dialog.isOpen,
 
-    /** Ask the question; `callback` runs only when the installer confirms. */
-    ask({ title, text, confirmLabel = 'Verwijderen', focusReturnsTo = null }, callback) {
+    /**
+     * Ask the question; `callback` runs only when the installer confirms.
+     *
+     * `cancelLabel` matters when this sits on top of a form: "Annuleren" is
+     * ambiguous there — it could mean cancelling the question or cancelling the
+     * edit — so the caller says what going back means.
+     */
+    ask(
+      {
+        title,
+        text,
+        confirmLabel = 'Verwijderen',
+        cancelLabel = 'Annuleren',
+        focusReturnsTo = null,
+        inertWhileOpen = null,
+      },
+      callback,
+    ) {
       dialog.setTitle(title);
       message.textContent = text;
       confirmButton.textContent = confirmLabel;
+      cancelButton.textContent = cancelLabel;
       onConfirm = callback;
-      dialog.show({ focusReturnsTo });
+      dialog.show({ focusReturnsTo, inertWhileOpen });
     },
 
     close: dialog.close,
