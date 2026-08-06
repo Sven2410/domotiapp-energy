@@ -24,9 +24,34 @@ Usage::
 
     # call a WebSocket command, optionally as another user
     py -3.13 scripts/ha_check.py --ws domotiapp_energy/config/get
-    py -3.13 scripts/ha_check.py --ws domotiapp_energy/sources/create \
-        --data '{"expected_revision": 1, "source": {...}}'
     py -3.13 scripts/ha_check.py --ws domotiapp_energy/config/get --as READONLY
+
+There are three ways to give a command its payload, because typing JSON on a
+Windows PowerShell 5 command line is a fight nobody should have to win::
+
+    # 1. --field, repeatable. No JSON, no quoting problem. Dotted keys nest,
+    #    and each value is read as JSON when it can be, as text otherwise.
+    py -3.13 scripts/ha_check.py --ws domotiapp_energy/sources/create `
+        --field expected_revision=3 `
+        --field source.type=current_price `
+        --field source.name="Dynamische prijs" `
+        --field source.price_basis=all_in `
+        --field source.enabled=true
+
+    # 2. --data-file, for a payload that is easier to keep in a file. Use "-"
+    #    to read it from stdin. A UTF-8 BOM is accepted, because that is what
+    #    Set-Content writes in PowerShell 5.
+    py -3.13 scripts/ha_check.py --ws domotiapp_energy/sources/create `
+        --data-file scratch/source.json
+
+    # 3. --data, the raw JSON string. Fine in bash, painful in PowerShell 5.
+    py -3.13 scripts/ha_check.py --ws domotiapp_energy/sources/create \
+        --data '{"expected_revision": 1, "source": {}}'
+
+``--field`` merges on top of ``--data`` or ``--data-file``, so a payload from a
+file can be reused with one value changed. ``--dry-run`` prints the frame that
+would be sent and stops there; it needs neither a token nor a running instance,
+which makes it the quickest way to check that an invocation quotes correctly.
 
 ``--set`` calls ``input_number.set_value`` on the helper that stands in for a
 grid meter, so a recalculation can be triggered without clicking through the
@@ -391,6 +416,85 @@ def print_report(states: dict[str, dict[str, Any]]) -> bool:
     return complete
 
 
+def _read_data_file(path: str) -> str:
+    """Return the contents of a payload file, or of stdin for "-".
+
+    ``utf-8-sig`` rather than ``utf-8`` on purpose: ``Set-Content -Encoding
+    UTF8`` in Windows PowerShell 5 writes a byte order mark, and a plain UTF-8
+    read would hand that BOM to the JSON parser as a stray character.
+    """
+    if path == "-":
+        return sys.stdin.read()
+    try:
+        return Path(path).read_text(encoding="utf-8-sig")
+    except OSError as err:
+        raise HomeAssistantError(f"Could not read {path}: {err}") from err
+
+
+def _field_value(raw: str) -> Any:
+    """Return a --field value as JSON when it is JSON, as text otherwise.
+
+    So ``expected_revision=3`` is a number, ``enabled=true`` is a boolean and
+    ``name=Slimme meter`` is a string, without anyone having to say which is
+    which. A value that has to stay text but happens to look like JSON can be
+    quoted the JSON way: ``name="42"``.
+    """
+    try:
+        return json.loads(raw)
+    except ValueError:
+        return raw
+
+
+def _assign(payload: dict[str, Any], path: str, value: Any) -> None:
+    """Set a possibly nested key, creating the objects along the way.
+
+    ``source.binding.unit`` builds the two objects it needs. Walking into
+    something that is not an object is refused rather than overwritten: that is
+    a typo in the invocation, and silently dropping the earlier value would
+    send a payload nobody asked for.
+    """
+    keys = path.split(".")
+    target = payload
+    for index, key in enumerate(keys[:-1]):
+        existing = target.setdefault(key, {})
+        if not isinstance(existing, dict):
+            walked = ".".join(keys[: index + 1])
+            raise HomeAssistantError(
+                f"--field {path}: {walked} is already a value, not an object"
+            )
+        target = existing
+    target[keys[-1]] = value
+
+
+def _build_payload(args: argparse.Namespace) -> dict[str, Any]:
+    """Assemble the command payload from --data, --data-file and --field."""
+    if args.data is not None and args.data_file is not None:
+        raise HomeAssistantError("Use either --data or --data-file, not both")
+
+    raw = args.data
+    if args.data_file is not None:
+        raw = _read_data_file(args.data_file)
+
+    payload: dict[str, Any] = {}
+    if raw is not None and raw.strip():
+        try:
+            parsed = json.loads(raw)
+        except ValueError as err:
+            source = "--data-file" if args.data_file is not None else "--data"
+            raise HomeAssistantError(f"{source} is not valid JSON: {err}") from err
+        if not isinstance(parsed, dict):
+            raise HomeAssistantError("The payload must be a JSON object")
+        payload = parsed
+
+    for field in args.field or []:
+        key, separator, value = field.partition("=")
+        if not separator or not key:
+            raise HomeAssistantError(f"--field {field!r} is not key=value")
+        _assign(payload, key, _field_value(value))
+
+    return payload
+
+
 def _run_websocket(env: dict[str, str], args: argparse.Namespace) -> int:
     """Send one WebSocket command and print the answer verbatim.
 
@@ -403,14 +507,7 @@ def _run_websocket(env: dict[str, str], args: argparse.Namespace) -> int:
     if not token:
         raise HomeAssistantError(f"{ENV_FILE.name} has no {key}")
 
-    try:
-        payload = json.loads(args.data)
-    except ValueError as err:
-        raise HomeAssistantError(f"--data is not valid JSON: {err}") from err
-    if not isinstance(payload, dict):
-        raise HomeAssistantError("--data must be a JSON object")
-
-    result = call_websocket(env, token, args.ws, payload)
+    result = call_websocket(env, token, args.ws, _build_payload(args))
     print(json.dumps(result, indent=2, ensure_ascii=False))
     return 0 if result.get("success") else 1
 
@@ -443,8 +540,25 @@ def main() -> int:
     parser.add_argument(
         "--data",
         metavar="JSON",
-        default="{}",
         help="extra fields for --ws, as a JSON object",
+    )
+    parser.add_argument(
+        "--data-file",
+        metavar="PATH",
+        help='read the --ws payload from this file, or from stdin for "-"',
+    )
+    parser.add_argument(
+        "--field",
+        action="append",
+        metavar="KEY=VALUE",
+        help=(
+            "one payload field, repeatable; dotted keys nest (source.name=Slimme meter)"
+        ),
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="print the frame --ws would send and stop, without connecting",
     )
     parser.add_argument(
         "--as",
@@ -455,6 +569,15 @@ def main() -> int:
     args = parser.parse_args()
 
     try:
+        if args.dry_run:
+            # Deliberately before read_env(): checking how an invocation is
+            # quoted should not need a token or a running instance.
+            if not args.ws:
+                raise HomeAssistantError("--dry-run only applies to --ws")
+            frame = {"id": 1, "type": args.ws, **_build_payload(args)}
+            print(json.dumps(frame, indent=2, ensure_ascii=False))
+            return 0
+
         env = read_env()
 
         if args.ws:

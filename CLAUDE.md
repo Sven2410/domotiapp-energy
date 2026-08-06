@@ -182,13 +182,45 @@ py -3.13 .\scripts\ha_check.py --json          # ruwe states, om zelf door te sp
 
 # WebSocket-commando's, eventueel als een andere gebruiker
 py -3.13 .\scripts\ha_check.py --ws domotiapp_energy/config/get
-py -3.13 .\scripts\ha_check.py --ws domotiapp_energy/sources/create --data '{...}'
 py -3.13 .\scripts\ha_check.py --ws domotiapp_energy/config/get --as READONLY
 ```
 
 `--as SUFFIX` pakt `HA_TOKEN_<SUFFIX>` uit `.env`, zodat de rechtencontrole met een
 niet-admin token aantoonbaar is. `--ws` verstuurt uitsluitend `domotiapp_energy/*` en
 `auth/current_user`; dat laatste om te bewijzen bij wélke gebruiker een token hoort.
+
+### Een payload meegeven: gebruik `--field`, niet `--data`
+
+JSON tussen aanhalingstekens is vanuit Windows PowerShell 5 vrijwel niet te typen: enkele
+quotes, ingesloten dubbele quotes en regeleindes vechten met elkaar. **Gebruik daarom
+`--field key=value`**, herhaalbaar, met een punt voor nesting. Er komt dan geen JSON aan
+te pas. Elke waarde wordt als JSON gelezen wanneer dat kan (`3`, `true`, `null`) en
+anders als tekst, dus alleen een waarde mét spatie heeft nog aanhalingstekens nodig.
+
+Onderstaand voorbeeld is precies zo in PowerShell uitgevoerd (geverifieerd 2026-08-06):
+
+```powershell
+py -3.13 .\scripts\ha_check.py --ws domotiapp_energy/sources/create `
+    --field expected_revision=12 `
+    --field source.id=prijs `
+    --field source.type=current_price `
+    --field source.name="Dynamische prijs" `
+    --field source.price_basis=market `
+    --field source.entity_id=input_number.stroomprijs `
+    --field source.unit=EUR/kWh
+```
+
+Twee hulpmiddelen erbij:
+
+- **`--dry-run`** print het frame dat verstuurd zou worden en stopt. Het leest `.env`
+  niet en heeft geen draaiende instance nodig, dus het is de snelste manier om te
+  controleren of een aanroep goed quoteert vóór je hem echt afvuurt.
+- **`--data-file PAD`** leest de payload uit een bestand (`-` is stdin), voor een grote
+  payload of om er één met `--field` op aan te passen. Een UTF-8 BOM is toegestaan, want
+  dat is wat `Set-Content -Encoding UTF8` in PowerShell 5 schrijft.
+
+`--data '<json>'` bestaat nog voor bash, maar is in PowerShell de weg van de minste
+weerstand niet.
 
 **Dit is een verificatiehulpmiddel, geen vervanging van de testsuite.** Een fase is pas
 klaar wanneer `pytest` slaagt; dit script vangt wat de testharnas per definitie niet ziet
