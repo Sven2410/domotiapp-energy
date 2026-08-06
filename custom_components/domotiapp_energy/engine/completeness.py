@@ -25,6 +25,7 @@ from custom_components.domotiapp_energy.const import (
 )
 from custom_components.domotiapp_energy.models import (
     DataQualityResult,
+    DeviceProfile,
     EnergySnapshot,
     StoredConfiguration,
 )
@@ -78,10 +79,29 @@ def _price_information_available(
     return config.home.fixed_import_price_eur_kwh is not None
 
 
+def is_complete_device_profile(device: DeviceProfile) -> bool:
+    """Return whether this device is described well enough to act on.
+
+    Public, and the only definition of "a complete device" in the project. The
+    data quality checklist asks it of at least one device, the energy score's
+    flexibility component asks it of the device it is about to award points for,
+    and the Apparaten tab marks exactly these two fields. One predicate, so the
+    three cannot drift apart.
+
+    The time window is deliberately **not** part of it. A device without one is
+    allowed at any hour, so it is *more* available for advice, not less;
+    requiring a window here would punish the freer device and would count the
+    checklist's own time-window item a second time (SPEC.md §16).
+    """
+    return (
+        device.nominal_power_w is not None and device.energy_per_cycle_kwh is not None
+    )
+
+
 def _has_complete_device_profile(config: StoredConfiguration) -> bool:
     """Return whether one usable device has both power and energy per cycle."""
     return any(
-        device.nominal_power_w is not None and device.energy_per_cycle_kwh is not None
+        is_complete_device_profile(device)
         for device in config.devices
         if device.is_usable
     )

@@ -1,18 +1,323 @@
 /**
- * The Energiecoach tab (SPEC.md §8).
+ * The Energiecoach tab (SPEC.md §8 "Energiecoach", §17 and §23).
  *
- * Placeholder until phase 8.
- * The id is English and fixed like every other identifier in this project; only
- * the label the customer reads is Dutch.
+ * The one tab the customer reads rather than fills in. It shows the current
+ * situation, the primary advice, up to five further ones with their reason and
+ * measurements, what is still missing, and a button to recalculate now.
+ *
+ * **The frontend draws no conclusions.** Every sentence here comes from the
+ * backend: the advice texts from the advisor, the answers to the five fixed
+ * questions from `CoachResult.explanations`, which the coach provider filled
+ * (SPEC.md §8 and §17). There is no free chat and no reasoning of our own —
+ * this file arranges text, it does not produce it.
+ *
+ * Three preferences decide how much of it is shown at all
+ * (`show_technical_explanation`, `show_estimated_savings`, `show_confidence`),
+ * so a customer who does not want the machinery does not get it.
  */
 
-import { placeholderTab } from '../core/dom.js';
+import { createApi, describeError } from '../core/api.js';
+import {
+  adviceBlock,
+  button,
+  card,
+  el,
+  formatNumber,
+  formatTimestamp,
+  notice,
+  setVisible,
+  statRow,
+} from '../core/dom.js';
+import { createRowList } from '../core/rows.js';
+import { onTap } from '../core/tap.js';
 
-export const coachTab = placeholderTab({
+/** The five questions of SPEC.md §8, in the order they are listed there. */
+const QUESTIONS = [
+  { key: 'why_advice', label: 'Waarom krijg ik dit advies?' },
+  { key: 'use_device_now', label: 'Kan ik nu het beste een apparaat gebruiken?' },
+  { key: 'peak_risk', label: 'Is er risico op piekbelasting?' },
+  { key: 'missing_data', label: 'Welke gegevens ontbreken nog?' },
+  { key: 'score_breakdown', label: 'Hoe is mijn energiescore berekend?' },
+];
+
+/** Dutch for the checklist keys, so a missing item reads as a sentence. */
+const ITEM_LABELS = {
+  home_profile_complete: 'de woninggegevens',
+  grid_source_valid: 'een geldige netbron',
+  solar_source_valid: 'een geldige zonnebron',
+  price_information_available: 'prijsinformatie',
+  device_profile_complete: 'een compleet apparaatprofiel',
+  flexible_devices_have_time_window: 'tijdvensters voor flexibele apparaten',
+};
+
+const CONFIDENCE_LABELS = {
+  low: 'laag',
+  medium: 'gemiddeld',
+  high: 'hoog',
+};
+
+const SEVERITY_MARKERS = {
+  info: 'Advies',
+  success: 'Advies',
+  warning: 'Waarschuwing',
+  error: 'Probleem',
+};
+
+/** Turn a measurement key into readable Dutch, with its unit where known. */
+const MEASUREMENT_LABELS = {
+  prijs_eur_kwh: 'all-in prijs in €/kWh',
+  netbelasting_procent: 'netbelasting in %',
+  netvermogen_w: 'netvermogen in W',
+  zonneoverschot_w: 'zonneoverschot in W',
+  ontbrekende_onderdelen: 'ontbrekende onderdelen',
+};
+
+function measurementLabel(key) {
+  return MEASUREMENT_LABELS[key] || key.replace(/_/g, ' ');
+}
+
+export const coachTab = {
   id: 'coach',
   label: 'Energiecoach',
   icon: 'mdi:lightbulb-on-outline',
   adminOnly: false,
-  description:
-    'Hier zie je alle adviezen met hun onderbouwing, de ontbrekende gegevens en de opbouw van je energiescore.',
-});
+
+  create({ getHass, state }) {
+    const element = el('div', { class: 'tab-content' });
+
+    // --- The primary advice --------------------------------------------------
+    const mainCard = card('Hoofdadvies');
+    const adviceTitle = el('p', { class: 'advice-title' });
+    const adviceMessage = el('p', { class: 'advice-message' });
+    const savingRow = statRow('Geschatte besparing', { empty: 'Niet te berekenen' });
+    const confidenceRow = statRow('Betrouwbaarheid', { empty: 'Onbekend' });
+    const reasonRow = statRow('Reden', { empty: 'Onbekend' });
+    const calculatedRow = statRow('Laatste berekening', { empty: 'Nog niet berekend' });
+
+    const recalculateButton = button('Opnieuw berekenen', { primary: true });
+    const recalculateNotice = notice('mdi:refresh');
+
+    mainCard.body.append(
+      adviceTitle,
+      adviceMessage,
+      savingRow.element,
+      confidenceRow.element,
+      reasonRow.element,
+      calculatedRow.element,
+      el('div', { class: 'actions' }, [recalculateButton]),
+      recalculateNotice.element,
+    );
+
+    // --- The further advice --------------------------------------------------
+    const listCard = card('Overige adviezen');
+    const adviceList = createRowList({
+      emptyText: 'Er is op dit moment geen aanvullend advies.',
+      createRow: () => createAdviceRow(),
+    });
+    listCard.body.appendChild(adviceList.element);
+
+    // --- What is still missing ----------------------------------------------
+    const missingCard = card('Ontbrekende gegevens');
+    const missingList = el('ul', { class: 'plain-list' });
+    const missingNotice = notice('mdi:check-circle-outline');
+    missingCard.body.append(missingList, missingNotice.element);
+
+    // --- The question selector ----------------------------------------------
+    const questionCard = card('Vraag het de coach');
+    const questionButtons = new Map();
+    const questionBar = el('div', { class: 'question-bar' });
+    const answer = el('p', { class: 'advice-message' });
+    const answerNotice = notice('mdi:comment-question-outline');
+
+    for (const question of QUESTIONS) {
+      const node = button(question.label);
+      node.setAttribute('aria-pressed', 'false');
+      onTap(node, () => selectQuestion(question.key));
+      questionButtons.set(question.key, node);
+      questionBar.appendChild(node);
+    }
+    questionCard.body.append(questionBar, answer, answerNotice.element);
+
+    element.append(
+      mainCard.element,
+      listCard.element,
+      missingCard.element,
+      questionCard.element,
+    );
+
+    /** The question on screen. The first one is answered by default. */
+    let selectedQuestion = QUESTIONS[0].key;
+
+    function createAdviceRow() {
+      const title = el('p', { class: 'row-name' });
+      const marker = el('span', { class: 'label' });
+      const message = el('p', { class: 'row-meta' });
+      const details = el('p', { class: 'row-meta' });
+
+      const row = el('div', { class: 'row-item' }, [
+        el('div', { class: 'row-main' }, [marker, title, message, details]),
+      ]);
+
+      return {
+        element: row,
+        update(item) {
+          marker.textContent = SEVERITY_MARKERS[item.severity] || 'Advies';
+          title.textContent = item.title;
+          message.textContent = item.message;
+          details.textContent = describeAdvice(item, preferences());
+          setVisible(details, Boolean(details.textContent));
+        },
+      };
+    }
+
+    function preferences() {
+      return state.get().config?.preferences || {};
+    }
+
+    /**
+     * The line under one advice: measurements, saving and confidence.
+     *
+     * Each of the three is a preference, because a customer who does not want
+     * the machinery should not be shown it (SPEC.md §8). Nothing is invented
+     * when a value is absent — the part is simply left out.
+     */
+    function describeAdvice(item, prefs) {
+      const parts = [];
+
+      if (prefs.show_technical_explanation !== false && item.measurements) {
+        const readings = Object.entries(item.measurements).map(
+          ([key, value]) => `${measurementLabel(key)}: ${value}`,
+        );
+        if (readings.length) {
+          parts.push(readings.join(', '));
+        }
+      }
+      if (
+        prefs.show_estimated_savings !== false &&
+        item.estimated_savings_eur !== null &&
+        item.estimated_savings_eur !== undefined
+      ) {
+        parts.push(
+          `geschatte besparing € ${formatNumber(item.estimated_savings_eur, {
+            decimals: 2,
+          })}`,
+        );
+      }
+      if (prefs.show_confidence !== false && item.confidence) {
+        parts.push(
+          `betrouwbaarheid ${CONFIDENCE_LABELS[item.confidence] || item.confidence}`,
+        );
+      }
+      return parts.join(' · ');
+    }
+
+    function selectQuestion(key) {
+      selectedQuestion = key;
+      renderAnswer();
+    }
+
+    function renderAnswer() {
+      for (const [key, node] of questionButtons) {
+        const active = key === selectedQuestion;
+        node.setAttribute('aria-pressed', String(active));
+        node.classList.toggle('button-primary', active);
+      }
+
+      const explanations = state.get().live?.explanations || {};
+      const text = explanations[selectedQuestion];
+      answer.textContent = text || '';
+      setVisible(answer, Boolean(text));
+      // The frontend never fills the gap itself: an answer the backend did not
+      // produce is reported as absent, not invented (SPEC.md §8).
+      answerNotice.set(
+        text
+          ? ''
+          : 'Deze vraag is nog niet beantwoord. Bereken opnieuw zodra er ' +
+              'gegevens gekoppeld zijn.',
+        { tone: 'info' },
+      );
+    }
+
+    async function recalculate() {
+      state.setSaving(true);
+      recalculateButton.disabled = true;
+      recalculateNotice.set('Bezig met berekenen…', { tone: 'info' });
+      try {
+        // Open to every user: a recalculation produces a result, never a
+        // configuration change (SPEC.md §14).
+        state.setLive(await createApi(getHass()).recalculate());
+        recalculateNotice.set('Het advies is opnieuw berekend.', { tone: 'success' });
+      } catch (error) {
+        recalculateNotice.set(describeError(error), { tone: 'warning' });
+      } finally {
+        state.setSaving(false);
+        recalculateButton.disabled = false;
+      }
+    }
+
+    onTap(recalculateButton, () => {
+      if (!recalculateButton.disabled) {
+        recalculate();
+      }
+    });
+
+    function update(panelState) {
+      const live = panelState.live;
+      if (!live) {
+        return;
+      }
+      const prefs = preferences();
+
+      const primary = live.primary_advice;
+      adviceTitle.textContent = primary?.title || 'Nog geen advies berekend';
+      adviceMessage.textContent =
+        primary?.message ||
+        'Zodra er een energiebron gekoppeld is, verschijnt hier het hoofdadvies.';
+
+      setVisible(savingRow.element, prefs.show_estimated_savings !== false);
+      savingRow.set(
+        primary?.estimated_savings_eur === null ||
+          primary?.estimated_savings_eur === undefined
+          ? null
+          : `€ ${formatNumber(primary.estimated_savings_eur, { decimals: 2 })}`,
+      );
+
+      setVisible(confidenceRow.element, prefs.show_confidence !== false);
+      confidenceRow.set(
+        primary?.confidence
+          ? CONFIDENCE_LABELS[primary.confidence] || primary.confidence
+          : null,
+      );
+
+      setVisible(reasonRow.element, prefs.show_technical_explanation !== false);
+      reasonRow.set(primary?.reason_code || null);
+
+      calculatedRow.set(formatTimestamp(live.generated_at));
+
+      // The primary advice is the first of the list, so it is not repeated.
+      const rest = (live.advice || []).slice(1);
+      adviceList.sync(rest.map((item, index) => ({ ...item, id: item.id || index })));
+
+      const missing = live.missing_data || live.metrics?.data_quality?.missing_items;
+      renderMissing(missing || []);
+      renderAnswer();
+    }
+
+    function renderMissing(items) {
+      missingList.replaceChildren(
+        ...items.map((item) =>
+          el('li', { class: 'plain-item', text: ITEM_LABELS[item] || item }),
+        ),
+      );
+      setVisible(missingList, items.length > 0);
+      missingNotice.set(
+        items.length
+          ? ''
+          : 'Alle gegevens voor een betrouwbaar advies zijn ingevuld.',
+        { tone: 'success' },
+      );
+    }
+
+    return { element, update };
+  },
+};

@@ -1240,16 +1240,85 @@ async def test_a_price_above_the_high_threshold_scores_zero(
     assert metrics.score_components[SCORE_COMPONENT_PRICE] == 0.0
 
 
-async def test_a_usable_flexible_device_scores_the_flexibility_points(
+async def test_a_device_with_only_a_name_scores_no_flexibility_points(
     hass: HomeAssistant,
 ) -> None:
-    """One usable flexible device is enough for the full component."""
+    """Adding an empty row may not raise the score (SPEC.md §16).
+
+    Before this, "usable and flexible" was the whole test, and a row with
+    nothing but a name and a type satisfied it — so adding a blank appliance was
+    worth ten points. A meter that rewards having created something rather than
+    what the home can do is not measuring anything.
+    """
     config = _config()
     config.devices.append(DeviceProfile(id="d1", device_type=DEVICE_TYPE_DISHWASHER))
 
     metrics = Calculator(hass).calculate(config)
 
+    assert metrics.score_components[SCORE_COMPONENT_FLEXIBILITY] == 0.0
+
+
+async def test_half_a_device_scores_no_flexibility_points(
+    hass: HomeAssistant,
+) -> None:
+    """Either field on its own is still not something to advise about."""
+    config = _config()
+    config.devices.append(
+        DeviceProfile(
+            id="d1", device_type=DEVICE_TYPE_DISHWASHER, nominal_power_w=2000.0
+        )
+    )
+
+    metrics = Calculator(hass).calculate(config)
+
+    # Without the energy per cycle there is no saving to name, so advice about
+    # this appliance would say nothing concrete.
+    assert metrics.score_components[SCORE_COMPONENT_FLEXIBILITY] == 0.0
+
+
+async def test_a_complete_flexible_device_scores_the_flexibility_points(
+    hass: HomeAssistant,
+) -> None:
+    """Power and energy per cycle are what make it count."""
+    config = _config()
+    config.devices.append(
+        DeviceProfile(
+            id="d1",
+            device_type=DEVICE_TYPE_DISHWASHER,
+            nominal_power_w=2000.0,
+            energy_per_cycle_kwh=1.2,
+        )
+    )
+
+    metrics = Calculator(hass).calculate(config)
+
     assert metrics.score_components[SCORE_COMPONENT_FLEXIBILITY] == 100.0
+
+
+async def test_a_missing_time_window_does_not_cost_flexibility_points(
+    hass: HomeAssistant,
+) -> None:
+    """The boundary sits before the window, deliberately (SPEC.md §16).
+
+    A device without a window may run at any hour, so it is *more* available for
+    advice, not less. Counting the window here would punish the freer appliance
+    and would charge for the checklist's own time-window item twice — which it
+    still does, in the data quality, where it belongs.
+    """
+    config = _config()
+    config.devices.append(
+        DeviceProfile(
+            id="d1",
+            device_type=DEVICE_TYPE_DISHWASHER,
+            nominal_power_w=2000.0,
+            energy_per_cycle_kwh=1.2,
+        )
+    )
+
+    metrics = Calculator(hass).calculate(config)
+
+    assert metrics.score_components[SCORE_COMPONENT_FLEXIBILITY] == 100.0
+    assert COMPLETENESS_ITEM_TIME_WINDOWS in metrics.data_quality.missing_items
 
 
 async def test_only_inflexible_devices_score_no_flexibility_points(

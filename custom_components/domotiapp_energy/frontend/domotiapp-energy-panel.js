@@ -400,6 +400,28 @@ const STYLES = `
     color: var(--secondary-text-color);
   }
 
+  /* --- The coach's question selector -------------------------------------- */
+
+  .question-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: var(--domotiapp-space-row);
+  }
+  /*
+   * A list of missing items, without the bullets: a long Dutch sentence behind
+   * a bullet reads as an error list rather than as a to-do (SPEC.md §8).
+   */
+  .plain-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .plain-item {
+    padding: 12px 0;
+    border-top: 1px solid var(--divider-color);
+  }
+
   /* --- Dialogs ------------------------------------------------------------ */
 
   .dialog {

@@ -74,7 +74,7 @@ from custom_components.domotiapp_energy.models import (
 )
 from custom_components.domotiapp_energy.validators import ReadResult, read_entity_value
 
-from .completeness import evaluate_completeness
+from .completeness import evaluate_completeness, is_complete_device_profile
 from .reason_codes import REASON_MISSING_REQUIRED_DATA
 
 _LOGGER = logging.getLogger(__name__)
@@ -480,9 +480,23 @@ def _price_component(config: StoredConfiguration, snapshot: EnergySnapshot) -> f
 
 
 def _flexibility_component(config: StoredConfiguration) -> float:
-    """Return 100 when at least one usable flexible device exists."""
+    """Return 100 when one device could actually be advised, else 0.
+
+    "Usable and flexible" is not enough: a row with nothing but a name and a
+    type satisfied that, so adding an empty appliance raised the score by ten
+    points. That is a meter rewarding what has been *created* rather than what
+    the home can *do*, and a customer whose figure climbs by adding a blank line
+    is looking at a number that does not measure anything.
+
+    The line sits at the same place as the data quality checklist's idea of a
+    complete device — a nominal power and an energy per cycle — because that is
+    what makes advice about this appliance say something: without the energy per
+    cycle there is no saving to name (SPEC.md §16). It is one shared predicate,
+    so the score, the checklist and the form cannot disagree about it.
+    """
     has_flexible = any(
-        device.is_usable and device.is_flexible for device in config.devices
+        device.is_usable and device.is_flexible and is_complete_device_profile(device)
+        for device in config.devices
     )
     return COMPONENT_MAX if has_flexible else COMPONENT_MIN
 

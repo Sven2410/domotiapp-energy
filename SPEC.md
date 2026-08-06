@@ -949,8 +949,29 @@ score = 0.30 × data_quality_score
                                       0 bij onbekend)
       + 0.15 × price_component       (dynamisch: 100 bij prijs ≤ laag, 0 bij ≥ hoog,
                                       lineair ertussen; vast contract: 50)
-      + 0.10 × flexibility_component (100 bij ≥1 bruikbaar flexibel apparaat, anders 0)
+      + 0.10 × flexibility_component (100 bij ≥1 bruikbaar, flexibel én compleet
+                                      apparaat, anders 0)
 ```
+
+**Wat "compleet" hier betekent (aangescherpt in fase 8b).** Oorspronkelijk telde elk
+bruikbaar flexibel apparaat mee. Een rij met alleen een naam en een type voldeed daaraan,
+dus een lege regel toevoegen leverde meteen tien scorepunten op — een meter die beloont
+dat je iets hébt aangemaakt in plaats van wat de woning kán. Een klant wiens cijfer stijgt
+door een lege regel kijkt naar een getal dat niets meet.
+
+De grens ligt daarom op dezelfde plek als de datakwaliteitschecklist: een apparaat telt
+mee wanneer het **bruikbaar, flexibel én compleet** is, waarbij compleet betekent
+`nominal_power_w` **en** `energy_per_cycle_kwh` ingevuld. Zonder energie per cyclus valt er
+geen besparing te noemen, en dan zegt een advies over dat apparaat niets concreets.
+
+**Het tijdvenster hoort er bewust níet bij.** Een apparaat zonder venster mag op elk uur,
+en is dus juist méér beschikbaar voor advies, niet minder. Het venster meewegen zou het
+vrijere apparaat straffen en zou het aparte checklistitem voor tijdvensters een tweede keer
+meetellen.
+
+Eén gedeelde functie (`engine/completeness.py: is_complete_device_profile`) draagt deze
+definitie, zodat de checklist, de energiescore en de markering in het apparaatformulier
+niet uit elkaar kunnen lopen.
 
 Afronden op hele getallen. Componentwaarden meegeven in het resultaat zodat de
 vraagselector "Hoe is mijn energiescore berekend?" ze kan tonen.
