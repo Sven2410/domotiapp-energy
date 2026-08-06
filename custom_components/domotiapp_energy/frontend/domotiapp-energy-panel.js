@@ -295,13 +295,6 @@ const STYLES = `
     color: var(--secondary-text-color);
   }
 
-  .placeholder-text {
-    margin: 0 0 var(--domotiapp-space-row);
-    max-width: 58ch;
-    line-height: 1.6;
-    color: var(--secondary-text-color);
-  }
-
   /* --- Forms and buttons -------------------------------------------------- */
 
   ha-form {
@@ -486,10 +479,18 @@ const STYLES = `
     padding-bottom: calc(16px + env(safe-area-inset-bottom));
     box-sizing: border-box;
   }
+  /*
+   * The backdrop takes Home Assistant's own scrim colour, so a theme that
+   * changes it changes ours too. The fallback is the only colour literal in
+   * this stylesheet and it is deliberately neutral: a scrim has to be *some*
+   * darkening even when no theme defines one, and reaching for the brand
+   * colour there would be worse than a neutral black (SPEC.md §10).
+   */
   .dialog-scrim {
     position: absolute;
     inset: 0;
-    background: rgba(0, 0, 0, 0.5);
+    background: var(--mdc-dialog-scrim-color, rgba(0, 0, 0, 0.5));
+    backdrop-filter: var(--ha-dialog-scrim-backdrop-filter, none);
   }
   .dialog-surface {
     position: relative;
@@ -502,7 +503,8 @@ const STYLES = `
     border-radius: 8px;
     background: var(--card-background-color);
     color: var(--primary-text-color);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+    /* The theme's own card shadow, so the sheet lifts the way its cards do. */
+    box-shadow: var(--ha-card-box-shadow, none);
     overflow: hidden;
   }
   .dialog-surface:focus {

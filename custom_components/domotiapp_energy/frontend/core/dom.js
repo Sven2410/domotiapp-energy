@@ -261,36 +261,6 @@ export function button(label, { primary = false } = {}) {
   });
 }
 
-/**
- * A tab that is announced but not built yet.
- *
- * Used by the tabs that phase 7b and phase 8 fill in. It states plainly what
- * the tab will do and that it is not there yet, rather than showing an empty
- * page that reads as a broken panel. Delete this helper once every tab is real.
- */
-export function placeholderTab({ id, label, icon, adminOnly, description }) {
-  return {
-    id,
-    label,
-    icon,
-    adminOnly,
-    create() {
-      const { element, body } = card(label);
-      body.append(
-        el('p', { class: 'placeholder-text', text: description }),
-        el('p', {
-          class: 'placeholder-text',
-          text: 'Dit tabblad wordt in een volgende versie toegevoegd.',
-        }),
-      );
-      return {
-        element: el('div', { class: 'tab-content' }, [element]),
-        update() {},
-      };
-    },
-  };
-}
-
 /** Format a number the way the panel shows measurements. */
 export function formatNumber(value, { decimals = 0 } = {}) {
   if (value === null || value === undefined || Number.isNaN(value)) {

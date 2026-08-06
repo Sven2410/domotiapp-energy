@@ -2,16 +2,187 @@
 
 A manually configured energy coach for Home Assistant.
 
-**Status: Work in progress — 0.1.0 in development.**
-
-DomotiApp Energy turns the energy sources and appliances you connect by hand into an
+DomotiApp Energy turns the energy sources and appliances you connect **by hand** into an
 energy summary, a data completeness score, an energy score, advice, and grid peak
 warnings. Everything is calculated locally: no cloud service, no external API, no
 account, and no AI provider.
 
-DomotiApp Energy does not automatically discover, select, or control devices in version 0.1.0.
+> DomotiApp Energy does not automatically discover, select, or control devices in version 0.1.0.
 
-The DomotiApp Energy Score is a local advisory indicator and not a certified energy-efficiency rating.
+> The DomotiApp Energy Score is a local advisory indicator and not a certified energy-efficiency rating.
+
+The user interface is in Dutch; the code, entity IDs and this README are in English.
+
+## What it does in 0.1.0
+
+- **Reads what you link.** A grid meter, solar production, a price source, a home
+  battery, general consumption — each one an entity you pick, with a unit you state.
+- **Normalises it.** Grid power to "positive means import", battery power to "positive
+  means charging", a bare market price to an all-in price. One convention per quantity,
+  applied once, on reading.
+- **Scores two things.** A data completeness score (how much of the picture is
+  configured) and an energy score (how well this moment lends itself to using energy
+  smartly). Both are transparent weighted sums, documented in `SPEC.md` §16.
+- **Advises.** Missing data, grid peak load in either direction, solar surplus, and a
+  high or low dynamic price — each with a stable reason code, the measurements behind
+  it, an estimated saving where one can be calculated, and a confidence level.
+- **Warns about peaks.** Import *and* export: the main fuse limits both directions.
+- **Keeps a logbook.** The last 200 events, with identical consecutive events collapsed
+  into a counter rather than repeated.
+
+## The strict manual configuration principle
+
+Nothing is guessed. The integration never searches the entity or device registry, never
+matches on a name, never scores a candidate and never offers a suggestion. Every link
+between this integration and your system is a choice you made in the panel.
+
+Where a value is missing, the answer is "not available" rather than a default. A grid
+meter without a stated meter mode is unusable; a price source that does not say whether
+it reports the bare market price or the all-in price is unusable. That is deliberate: a
+plausible-looking wrong number is worse than an honest gap.
+
+## Privacy and local processing
+
+- No network access of any kind. No external API, cloud service, telemetry, analytics or
+  AI provider, and no API key.
+- No browser storage. The panel uses no `localStorage`, `sessionStorage`, `IndexedDB` or
+  cookies; the backend storage is the only source of truth.
+- The logbook stores an event type, a title, a short message, a severity and a subject
+  id. It never stores a Home Assistant state object, a location or personal data.
+- Home Assistant log lines carry no entity states, home name or location.
+
+## Requirements
+
+- Home Assistant 2025.6 or newer
+- Python 3.13 or newer (whatever your Home Assistant runs on)
+- No runtime dependencies — `manifest.json` lists `"requirements": []`
+
+## Installation
+
+### Via HACS as a custom repository
+
+1. Open **HACS** in Home Assistant.
+2. Open the three-dot menu, top right, and choose **Custom repositories**.
+3. Paste `https://github.com/Sven2410/domotiapp-energy` as the repository, choose
+   **Integration** as the type, and confirm.
+4. Search HACS for **DomotiApp Energy** and download it.
+5. Restart Home Assistant.
+6. Go to **Settings → Devices & services → Add integration** and search for
+   **DomotiApp Energy**.
+
+### Manually
+
+1. Copy the folder `custom_components/domotiapp_energy` into the `custom_components`
+   directory of your Home Assistant configuration. Create that directory if it does not
+   exist.
+2. Restart Home Assistant.
+3. Go to **Settings → Devices & services → Add integration** and search for
+   **DomotiApp Energy**.
+
+The configuration flow asks for a home name and one confirmation: that you understand
+the integration configures nothing by itself. Only one instance can be added.
+
+## Setting up your first home
+
+The panel appears in the sidebar as **DomotiApp Energy**. Work through it in this order:
+
+1. **Woning** — the number of phases, the main fuse per phase, the maximum grid power
+   the integration should warn about, and the contract. On a dynamic contract you also
+   fill in the energy tax, the supplier markup and the VAT rate, because a price source
+   that reports a bare market price is completed with those three.
+2. **Energiebronnen** — add your grid meter. Say explicitly how it measures: one signed
+   value (and what a positive value means) or separate import and export entities. Add
+   solar, a price source, a battery or general consumption as you have them. A price
+   source must state whether it reports the all-in price or the bare market price.
+3. **Apparaten** — add the appliances you want advice about. The fields marked with an
+   asterisk are what the data completeness score asks for: a nominal power and an energy
+   per cycle, plus both ends of a time window for anything you marked as flexible.
+   A half-filled appliance can be saved; it simply does not count as complete yet.
+4. **Voorkeuren** — quiet hours, what may weigh in the advice, the savings threshold and
+   how much detail you want to see.
+5. **Energiecoach** — the advice, and five fixed questions you can ask about it.
+6. **Logboek** — what the integration has signalled.
+
+## The tabs
+
+| Tab | What it is for |
+|---|---|
+| Overzicht | Status, data quality, energy score, current grid power, solar production and surplus, percentage of the configured maximum, the current all-in price, the primary advice and any warnings. |
+| Woning | The home: phases, fuse, maximum grid power, contract and prices, net metering, the minimum solar surplus and the default strategy. |
+| Energiebronnen | Add, edit and remove energy sources. Only the questions a source type can answer are asked. |
+| Apparaten | Add, edit and remove appliances, with their power, energy per cycle, time window, behaviour flags and optional entity links. |
+| Voorkeuren | Quiet hours, what weighs in the advice, the savings threshold and what is displayed. |
+| Energiecoach | The primary advice, further advice with their reasons and measurements, what data is still missing, and the five fixed questions. |
+| Logboek | The last 200 events. Read-only for everyone; only an administrator can empty it. |
+
+## Supported source types
+
+| Type | Notes |
+|---|---|
+| `grid_meter` | At most one enabled. Requires an explicit meter mode: `single_signed` (plus what a positive value means) or `separate_import_export`. |
+| `solar` | Current production. Several may be configured; they add up. |
+| `current_price` | At most one enabled. Must state `price_basis`: `all_in` or `market`. |
+| `price_forecast` | Registered in 0.1.0; not yet used by the engine. |
+| `solar_forecast` | Registered in 0.1.0; not yet used by the engine. |
+| `home_battery` | Positive means charging. Several may be configured; they add up. |
+| `general_consumption` | Household consumption. Several may be configured; they add up. |
+
+Each source states its own unit — `W`, `kW`, `A`, `Wh`, `kWh`, `EUR/kWh`, `ct/kWh`, `%`
+or none — and its own scale factor. Conversion follows that choice and nothing else:
+never the entity's `unit_of_measurement`, its device class or its name.
+
+## Supported appliance types
+
+`ev_charger`, `home_battery`, `heat_pump`, `electric_boiler`, `dishwasher`,
+`washing_machine`, `dryer`, `air_conditioning`, `pool_pump`, `generic_schedulable`,
+`generic_monitor`.
+
+Two flags follow from the type unless you say otherwise: `is_noisy` (true for a
+dishwasher, washing machine, dryer and pool pump) and `is_flexible` (false for a heat
+pump and a generic monitor).
+
+## Generated entity IDs
+
+These six are fixed. They do **not** change with the language your Home Assistant runs
+in, so dashboards, automations and long-term statistics built on them keep working:
+
+```text
+sensor.domotiapp_energy_score
+sensor.domotiapp_energy_data_quality
+sensor.domotiapp_energy_grid_power
+sensor.domotiapp_energy_solar_surplus
+sensor.domotiapp_energy_current_advice
+binary_sensor.domotiapp_energy_peak_risk
+```
+
+The displayed names *do* follow the interface language. `sensor.domotiapp_energy_current_advice`
+carries the advice message, reason code, confidence, severity, measurements, the full
+advice list and the time of the last calculation as attributes; its state is the advice
+title, truncated to what Home Assistant allows.
+
+## Services
+
+| Service | What it does |
+|---|---|
+| `domotiapp_energy.recalculate` | Recalculates the advice immediately. Controls nothing. |
+| `domotiapp_energy.clear_log` | Empties the internal logbook. Changes no configuration. |
+
+Both are available to administrators. A call without a user — from an automation or a
+script — is allowed.
+
+## Limitations
+
+- **Nothing is controlled.** The integration measures, calculates, advises and warns.
+  The `capabilities`, `control_mode` and `control_forbidden` fields are recorded for a
+  later release; in 0.1.0 everything except `monitor_only` behaves as `advice_only`.
+- **No forecasts are used yet.** `price_forecast` and `solar_forecast` can be
+  configured, but the engine does not read them.
+- **No history.** Every calculation looks at the present moment only. There are no
+  trends, no daily totals and no "what did yesterday cost".
+- **One instance.** A second configuration entry is refused.
+- **A price source is refused when it cannot be normalised.** No basis, or a market
+  price without the energy tax and supplier markup, means no price rather than a guess.
+- **Advice is not a schedule.** It says what is favourable now; it does not plan.
 
 ## Troubleshooting
 
@@ -37,12 +208,76 @@ To start over with an empty configuration:
 Stopping first matters: Home Assistant caches `.storage` files in memory and can write
 the old contents back over your deletion.
 
-## Documentation
+### The panel shows an old version after an update
 
-The full README — installation, configuration, the exact list of generated entity IDs,
-services, limitations, troubleshooting and development instructions — is written in the
-final phase of the initial implementation. Until then, `SPEC.md` in this repository is
-the authoritative description of the intended behaviour.
+The panel is served from a versioned path, so an update changes the URL of every module.
+If you still see the previous version, your browser's service worker is serving its own
+copy: open the developer tools (F12), right-click the reload button and choose **Empty
+cache and hard reload**. A plain Ctrl+F5 is not always enough.
+
+### A source shows "Nog niet compleet"
+
+The row names the field that is missing. A source is stored either way, so you can
+finish it later; it is simply not used in any calculation until it is complete.
+
+### There is no price on the Overzicht
+
+Either the contract is fixed — then there is no hourly price and the row says so — or
+the price source cannot be used. A price source needs an entity, a unit, and an explicit
+statement of whether it reports the all-in price or the bare market price. A market
+price additionally needs the energy tax and the supplier markup on the Woning tab.
+
+## Development
+
+```bash
+# Linting, in a local virtualenv
+py -3.13 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install ruff
+.\.venv\Scripts\ruff.exe check .
+.\.venv\Scripts\ruff.exe format .
+
+# Python tests, in the test container
+.\scripts\test.ps1
+.\scripts\test.ps1 tests/test_storage.py -k revision
+.\scripts\test.ps1 --cov=custom_components/domotiapp_energy --cov-report=term-missing
+
+# Frontend tests (jsdom + node --test)
+npm install
+npm test
+```
+
+`scripts/ha_check.py` verifies a running Home Assistant over its REST and WebSocket
+APIs: it reads the six entities and can send `domotiapp_energy/*` commands. It uses the
+standard library only and adds nothing to the integration.
+
+The panel has no build step and ships no JavaScript dependencies. `package.json` exists
+solely for the frontend test layer.
+
+## Security notes
+
+- Every write command requires an administrator (`@websocket_api.require_admin`). The
+  panel hides the configuration tabs from other users, but the backend is what enforces
+  it — a hidden tab is not a permission check.
+- Recalculating is open to every logged-in user: it produces a result, never a
+  configuration change.
+- Every write carries the revision it was based on. A write based on stale data is
+  refused with `revision_conflict` and the current configuration travels back with the
+  refusal, so nothing is overwritten blind.
+- Values from the panel are validated with Voluptuous and then coerced defensively by
+  the model layer. Unknown keys are ignored, never stored.
+- The integration calls no service in any other domain.
+
+## Roadmap
+
+Phase 2 candidates, in no fixed order:
+
+- Actual control, with the capability and agreement fields that 0.1.0 already records.
+- Price and solar forecasts, and advice that plans ahead rather than describing now.
+- History: what the advice was worth, and daily or monthly totals.
+- Repairs and persistent notifications for a source that has been unavailable for a
+  while.
+- Hysteresis on the peak warning and a staleness check on entity readings.
+- A feed-in price source, instead of the fixed all-in amount 0.1.0 asks for.
 
 ## License
 
