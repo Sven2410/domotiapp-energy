@@ -1,18 +1,354 @@
 /**
- * The Voorkeuren tab (SPEC.md §8).
+ * The Voorkeuren tab (SPEC.md §8, §9 and §22).
  *
- * Placeholder until phase 8.
- * The id is English and fixed like every other identifier in this project; only
- * the label the customer reads is Dutch.
+ * The simplest of the configuration tabs: one profile, one form, no rows and no
+ * dialog. It follows the Woning tab exactly — a draft that never touches the
+ * saved configuration, fields locked while a save is in flight, and nothing
+ * claiming success before the backend confirms it (SPEC.md §22).
+ *
+ * The three cards are the three questions these settings answer: when may we
+ * speak, what do we weigh, and how much do we show.
  */
 
-import { placeholderTab } from '../core/dom.js';
+import {
+  createApi,
+  describeError,
+  fieldErrors,
+  isRevisionConflict,
+} from '../core/api.js';
+import { button, card, el, notice, setVisible } from '../core/dom.js';
+import { createForm } from '../core/forms.js';
+import { onTap } from '../core/tap.js';
 
-export const preferencesTab = placeholderTab({
+/** The key this tab stores its unsaved edits under. */
+const DRAFT = 'preferences';
+
+const QUIET_SCHEMA = [
+  {
+    name: 'quiet_hours_start',
+    label: 'Stille uren van',
+    helper:
+      'Tussen deze tijden krijgen lawaaiige apparaten geen advies. Een venster ' +
+      'over middernacht is het normale geval: 22:00 tot 07:00.',
+    selector: { time: {} },
+  },
+  { name: 'quiet_hours_end', label: 'Stille uren tot', selector: { time: {} } },
+  {
+    name: 'allow_advice_during_quiet_hours',
+    label: 'Toch adviseren tijdens de stille uren',
+    helper: 'Zet aan wanneer de bewoner er geen last van heeft.',
+    selector: { boolean: {} },
+  },
+];
+
+const WEIGHING_SCHEMA = [
+  {
+    name: 'prefer_solar',
+    label: 'Zonneoverschot benutten',
+    helper: 'Adviseer een apparaat wanneer er genoeg eigen opwek is.',
+    selector: { boolean: {} },
+  },
+  {
+    name: 'prefer_low_price',
+    label: 'Op prijs adviseren',
+    helper:
+      'Alleen van toepassing bij een dynamisch contract; bij een vast tarief ' +
+      'wordt er nooit op prijs geadviseerd.',
+    selector: { boolean: {} },
+  },
+  {
+    name: 'respect_max_grid_load',
+    label: 'Rekening houden met de maximale netbelasting',
+    selector: { boolean: {} },
+  },
+  {
+    name: 'min_savings_eur',
+    label: 'Minimale besparing',
+    // The threshold filters exactly one situation, and saying which one is the
+    // difference between a useful setting and a silent one (SPEC.md §8).
+    helper:
+      'Advies met een berekende besparing bóven nul maar onder dit bedrag ' +
+      'wordt niet getoond. Advies zonder berekenbare besparing — veiligheid, ' +
+      'piek, ontbrekende gegevens — blijft altijd staan, net als advies dat op ' +
+      'nul uitkomt zolang de saldering loopt.',
+    selector: { number: { min: 0, step: 0.01, unit_of_measurement: '€' } },
+  },
+];
+
+const DISPLAY_SCHEMA = [
+  {
+    name: 'max_advice_count',
+    label: 'Aantal adviezen',
+    helper: 'Hoeveel adviezen er hoogstens tegelijk getoond worden.',
+    selector: { number: { min: 1, max: 5, step: 1, mode: 'box' } },
+  },
+  {
+    name: 'show_technical_explanation',
+    label: 'Technische onderbouwing tonen',
+    selector: { boolean: {} },
+  },
+  {
+    name: 'show_estimated_savings',
+    label: 'Geschatte besparing tonen',
+    selector: { boolean: {} },
+  },
+  {
+    name: 'show_confidence',
+    label: 'Betrouwbaarheid tonen',
+    selector: { boolean: {} },
+  },
+];
+
+/** Every field this tab owns, so anything else is left alone. */
+const EDITED_FIELDS = [
+  ...QUIET_SCHEMA.map((field) => field.name),
+  ...WEIGHING_SCHEMA.map((field) => field.name),
+  ...DISPLAY_SCHEMA.map((field) => field.name),
+];
+
+/** Read the editable fields out of the stored preferences. */
+function formDataFrom(preferences) {
+  const data = {};
+  for (const name of EDITED_FIELDS) {
+    const value = preferences?.[name];
+    if (value !== null && value !== undefined) {
+      data[name] = value;
+    }
+  }
+  return data;
+}
+
+/**
+ * Return only the given field names, dropping the rest.
+ *
+ * A name that is present but `undefined` is kept, not skipped: that is what a
+ * field the installer just cleared looks like, and skipping it would silently
+ * restore the previous value.
+ */
+function only(data, names) {
+  const picked = {};
+  for (const name of names) {
+    picked[name] = data[name];
+  }
+  return picked;
+}
+
+export const preferencesTab = {
   id: 'preferences',
   label: 'Voorkeuren',
   icon: 'mdi:tune',
   adminOnly: true,
-  description:
-    'Hier stel je de stille uren, de adviesvoorkeuren en het maximale aantal adviezen in.',
-});
+
+  create({ getHass, state }) {
+    const element = el('div', { class: 'tab-content' });
+
+    const quiet = card('Stille uren');
+    const weighing = card('Wat weegt mee');
+    const display = card('Wat je te zien krijgt');
+
+    let draft = {};
+    let saved = {};
+    let revision = null;
+    let loadedRevision = null;
+    let leaveRequested = null;
+
+    /**
+     * Merge one card's fields back into the draft.
+     *
+     * Only that card's own fields, never the whole payload it emits — the
+     * mistake that made one card undo another in phase 7b.
+     */
+    function changeHandler(names) {
+      return (part) => {
+        draft = { ...draft, ...only(part, names) };
+        state.setDraft(DRAFT, draft);
+        refreshDirty();
+      };
+    }
+
+    const forms = [QUIET_SCHEMA, WEIGHING_SCHEMA, DISPLAY_SCHEMA].map(
+      (schema, index) => {
+        const names = schema.map((field) => field.name);
+        return {
+          names,
+          form: createForm(getHass(), schema, changeHandler(names)),
+          host: [quiet, weighing, display][index],
+        };
+      },
+    );
+    for (const { form, host } of forms) {
+      host.body.appendChild(form.element);
+    }
+
+    const saveButton = button('Opslaan', { primary: true });
+    const resetButton = button('Wijzigingen verwerpen');
+    const saveNotice = notice('mdi:content-save-outline');
+    const leaveNotice = notice('mdi:alert-outline');
+    const leaveDiscard = button('Verwerpen en verdergaan');
+    const leaveStay = button('Hier blijven');
+    const leaveActions = el('div', { class: 'actions' }, [leaveDiscard, leaveStay]);
+    setVisible(leaveActions, false);
+
+    display.body.append(
+      el('div', { class: 'actions' }, [saveButton, resetButton]),
+      saveNotice.element,
+      leaveNotice.element,
+      leaveActions,
+    );
+
+    element.append(quiet.element, weighing.element, display.element);
+
+    function isDirty() {
+      return EDITED_FIELDS.some(
+        (name) => (draft[name] ?? null) !== (saved[name] ?? null),
+      );
+    }
+
+    function refreshDirty() {
+      const dirty = isDirty();
+      saveButton.disabled = !dirty;
+      resetButton.disabled = !dirty;
+      if (!dirty) {
+        setVisible(leaveNotice.element, false);
+        setVisible(leaveActions, false);
+      }
+    }
+
+    /** Put each backend validation message next to the field it is about. */
+    function showIssues(config) {
+      const errors = fieldErrors(config?.issues, 'preferences') || {};
+      for (const { form, names } of forms) {
+        const mine = {};
+        for (const name of names) {
+          if (name in errors) {
+            mine[name] = errors[name];
+          }
+        }
+        form.setErrors(Object.keys(mine).length ? mine : null);
+      }
+    }
+
+    function loadFrom(config) {
+      saved = formDataFrom(config?.preferences);
+      draft = { ...saved };
+      revision = config?.revision ?? null;
+      loadedRevision = revision;
+      for (const { form, names } of forms) {
+        form.setData(only(draft, names));
+      }
+      showIssues(config);
+      state.clearDraft(DRAFT);
+      refreshDirty();
+    }
+
+    /** Every editable field, with a cleared one as null rather than absent. */
+    function payload() {
+      const preferences = {};
+      for (const name of EDITED_FIELDS) {
+        preferences[name] = draft[name] ?? null;
+      }
+      return preferences;
+    }
+
+    function setBusy(busy) {
+      for (const { form } of forms) {
+        form.setDisabled(busy);
+      }
+      saveButton.disabled = busy || !isDirty();
+      resetButton.disabled = busy || !isDirty();
+    }
+
+    async function save() {
+      // Nothing may claim success before the backend confirms it (SPEC.md §22).
+      state.setSaving(true);
+      setBusy(true);
+      saveNotice.set('Bezig met opslaan…', { tone: 'info' });
+
+      try {
+        const result = await createApi(getHass()).updatePreferences(
+          revision,
+          payload(),
+        );
+        const updated = {
+          ...state.get().config,
+          preferences: result.item,
+          revision: result.revision,
+          issues: result.issues ?? state.get().config?.issues,
+        };
+        state.setConfig(updated);
+        loadFrom(updated);
+        saveNotice.set('De voorkeuren zijn opgeslagen.', { tone: 'success' });
+      } catch (error) {
+        if (isRevisionConflict(error)) {
+          state.setConfig(error.config);
+          loadFrom(error.config);
+          saveNotice.set(
+            'De configuratie is intussen ergens anders gewijzigd. Je wijzigingen ' +
+              'zijn niet opgeslagen; het formulier is opnieuw geladen met de ' +
+              'actuele gegevens.',
+            { tone: 'warning' },
+          );
+        } else {
+          saveNotice.set(describeError(error), { tone: 'warning' });
+        }
+      } finally {
+        state.setSaving(false);
+        setBusy(false);
+      }
+    }
+
+    onTap(saveButton, () => {
+      if (!saveButton.disabled) {
+        save();
+      }
+    });
+    onTap(resetButton, () => {
+      loadFrom(state.get().config);
+      saveNotice.set('');
+    });
+    onTap(leaveDiscard, () => {
+      const proceed = leaveRequested;
+      leaveRequested = null;
+      loadFrom(state.get().config);
+      saveNotice.set('');
+      proceed?.();
+    });
+    onTap(leaveStay, () => {
+      leaveRequested = null;
+      setVisible(leaveNotice.element, false);
+      setVisible(leaveActions, false);
+    });
+
+    function update(panelState) {
+      const config = panelState.config;
+      if (!config) {
+        return;
+      }
+      // Reload only when the backend truth actually moved, and never over an
+      // edit in progress.
+      if (config.revision !== loadedRevision && !isDirty()) {
+        loadFrom(config);
+      }
+      for (const { form } of forms) {
+        form.setHass(getHass());
+      }
+    }
+
+    /** Refuse to leave with unsaved changes, and ask inside the tab itself. */
+    function canLeave(proceed) {
+      if (!isDirty()) {
+        return true;
+      }
+      leaveRequested = proceed;
+      leaveNotice.set(
+        'Je hebt wijzigingen die nog niet zijn opgeslagen. Sla ze op, of verwerp ' +
+          'ze om verder te gaan.',
+        { tone: 'warning' },
+      );
+      setVisible(leaveActions, true);
+      return false;
+    }
+
+    return { element, update, canLeave };
+  },
+};
