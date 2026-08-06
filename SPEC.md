@@ -1400,6 +1400,33 @@ DomotiApp Energy does not automatically discover, select, or control devices in 
 The DomotiApp Energy Score is a local advisory indicator and not a certified energy-efficiency rating.
 ```
 
+### Waar de paneelteksten staan (besloten in fase 9)
+
+`translations/{nl,en}.json` bevat **uitsluitend wat Home Assistant zelf rendert en nodig
+heeft**: de config flow, de zes entiteitsnamen en de twee servicebeschrijvingen. HA zoekt
+die op sleutel op en kiest zelf de taal.
+
+**De teksten in het paneel blijven hardgecodeerd Nederlands in de frontendbestanden.** Dat
+is een keuze, geen omissie:
+
+- HA's vertaallader bedient een custom paneel niet. Het goed doen betekent zelf JSON
+  ophalen en een lookup bouwen: nieuwe machinerie, een extra faalpunt bij het laden, en
+  een tweede plek waar een tekst kan ontbreken.
+- **De doorslaggevende reden:** dit zijn geen labels maar zinnen die de redenering dragen
+  ("géén vast maandbedrag", "telt niet mee voor de datakwaliteit", "positief betekent hier
+  laden"). Hun waarde zit erin dat ze naast het veld staan dat ze uitleggen, waar degene
+  die dat veld schrijft ze ook leest. In een apart JSON-bestand lopen ze uit de pas met
+  het veld waar ze over gaan — en dan is de tekst erger dan geen tekst.
+- §8 vraagt Nederlandse UI-teksten; vertaalbaarheid is hier geen doel op zich.
+
+Dit staat los van de entity-ID's: die zijn Engels en vast, juist zodat de UI-taal ze niet
+kan verplaatsen (§19).
+
+**De voorwaarde waaronder dit antwoord verandert:** een klant buiten het Nederlandse
+taalgebied. Dan wordt het een echte feature met een eigen ronde — een lader, een
+sleutelconventie en een tweede taalbestand — en geen refactor die in een fase wordt
+meegenomen. Behandel het tot die tijd niet als achterstallig werk.
+
 ---
 
 ## 27. CHANGELOG

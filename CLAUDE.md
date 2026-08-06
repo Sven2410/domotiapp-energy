@@ -42,7 +42,14 @@ overleg met de ontwikkelaar in het Nederlands.
    invult en wordt een geldige opslagpoging onterecht geweigerd.
    Afgeleide toestand (zoals de quarantaine van een rij met een onbekend type)
    wordt in het geheugen berekend, nooit teruggeschreven naar de storage.
-10. **De zes entity-ID's zijn Engels en vast, ongeacht de UI-taal van de klant.**
+10. **Paneelteksten staan in de frontendbestanden, niet in `translations/`.**
+    Dat is besloten in fase 9 en vastgelegd in SPEC.md §26 met de reden: het zijn
+    zinnen die de redenering dragen, en die horen naast het veld dat ze uitleggen.
+    `translations/` bevat alleen wat HA zelf rendert (config flow, entiteitsnamen,
+    services). Verplaats dit niet als "opruimwerk" — het verandert pas bij een klant
+    buiten het Nederlandse taalgebied, en dan als eigen ronde.
+
+11. **De zes entity-ID's zijn Engels en vast, ongeacht de UI-taal van de klant.**
     Ze staan in de README; klanten bouwen er dashboards, automatiseringen en
     langetermijnstatistieken op (`statistic_id` is de entity-ID zelf).
 
