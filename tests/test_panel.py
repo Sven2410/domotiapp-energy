@@ -20,6 +20,8 @@ from custom_components.domotiapp_energy.const import (
     DEFAULT_HOME_NAME,
     DOMAIN,
     FRONTEND_DIR_NAME,
+    FRONTEND_URL_BASE,
+    FRONTEND_URL_ROOT,
     PANEL_COMPONENT_NAME,
     PANEL_ICON,
     PANEL_MODULE_URL,
@@ -75,6 +77,25 @@ async def test_the_module_url_carries_the_version(hass: HomeAssistant) -> None:
     assert config["module_url"] == PANEL_MODULE_URL
     assert config["module_url"].endswith(f"?v={VERSION}")
     assert config["embed_iframe"] is False
+
+
+async def test_every_frontend_url_carries_the_version(hass: HomeAssistant) -> None:
+    """The version is in the path, so an upgrade busts *every* module.
+
+    ``?v=`` only busts the entry point: a relative import inside it does not
+    inherit the query string. Home Assistant's service worker caches by exact
+    URL and was observed serving the previous release's tab modules to a browser
+    that had just loaded the new entry point — half old, half new, and not
+    reproducible for whoever reported it.
+    """
+    await _setup(hass)
+
+    assert f"{FRONTEND_URL_ROOT}/{VERSION}" == FRONTEND_URL_BASE
+    # Every module resolves under this base, because a relative import keeps the
+    # directory it was loaded from. So one versioned base moves all of them,
+    # without naming the version in fifteen import statements.
+    assert PANEL_MODULE_URL.startswith(f"{FRONTEND_URL_BASE}/")
+    assert VERSION in FRONTEND_URL_BASE
 
 
 async def test_unloading_removes_the_panel(hass: HomeAssistant) -> None:

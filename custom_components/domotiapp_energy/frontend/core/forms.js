@@ -47,6 +47,19 @@ export function createForm(hass, schema, onChange) {
       element.data = data;
     },
 
+    /**
+     * Replace the schema, for a form whose fields depend on what was chosen.
+     *
+     * A source shows its meter mode only when it is a grid meter, and its
+     * attribute name only when it reads an attribute (SPEC.md §8). Assigning a
+     * new schema is **not** the same as re-creating the form: the element, its
+     * listener and its focus survive, and `ha-form` rebuilds only the fields
+     * that actually changed.
+     */
+    setSchema(schema) {
+      element.schema = schema;
+    },
+
     /** Keep the form's Home Assistant reference current for entity pickers. */
     setHass(nextHass) {
       element.hass = nextHass;

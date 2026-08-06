@@ -16,7 +16,12 @@
  * the installer is told in plain Dutch that their changes were not saved.
  */
 
-import { createApi, describeError, isRevisionConflict } from '../core/api.js';
+import {
+  createApi,
+  describeError,
+  fieldErrors,
+  isRevisionConflict,
+} from '../core/api.js';
 import { button, card, el, notice, setVisible } from '../core/dom.js';
 import { createForm } from '../core/forms.js';
 import { onTap } from '../core/tap.js';
@@ -398,8 +403,33 @@ export const homeTab = {
       for (const { form, names } of forms) {
         form.setData(only(draft, names));
       }
+      showIssues(config);
       state.clearDraft(DRAFT);
       refreshDirty();
+    }
+
+    /**
+     * Put each backend validation message next to the field it is about.
+     *
+     * The issues arrive with every answer, keyed by subject (SPEC.md §14). Each
+     * card gets only the errors for the fields it owns; handing all of them to
+     * every form would light up three cards for one mistake. Some of these are
+     * about a field on this tab but caused by something elsewhere — a price
+     * source that reports the bare market price is what makes the energy tax
+     * required — which is exactly why the message travels rather than being
+     * re-derived here.
+     */
+    function showIssues(config) {
+      const errors = fieldErrors(config?.issues, 'home') || {};
+      for (const { form, names } of forms) {
+        const mine = {};
+        for (const name of names) {
+          if (name in errors) {
+            mine[name] = errors[name];
+          }
+        }
+        form.setErrors(Object.keys(mine).length ? mine : null);
+      }
     }
 
     /**
@@ -439,6 +469,7 @@ export const homeTab = {
           ...state.get().config,
           home: result.item,
           revision: result.revision,
+          issues: result.issues ?? state.get().config?.issues,
         };
         state.setConfig(updated);
         loadFrom(updated);

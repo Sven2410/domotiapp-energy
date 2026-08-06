@@ -339,6 +339,160 @@ const STYLES = `
     outline-offset: 2px;
   }
 
+  /* --- Lists of configured rows ------------------------------------------- */
+
+  .row-list {
+    display: flex;
+    flex-direction: column;
+  }
+  .row-item {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px 16px;
+    padding: var(--domotiapp-space-row) 0;
+    border-top: 1px solid var(--divider-color);
+  }
+  .row-main {
+    flex: 1 1 220px;
+    min-width: 0;
+  }
+  .row-name {
+    margin: 0 0 4px;
+    font-size: 1.05rem;
+    overflow-wrap: anywhere;
+  }
+  .row-meta {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--secondary-text-color);
+  }
+  /*
+   * A status marker is text, never a coloured dot: colour alone may not carry
+   * meaning (SPEC.md §23). The colour is an extra for those who can see it.
+   */
+  .row-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 6px;
+    font-size: 0.8rem;
+    color: var(--secondary-text-color);
+  }
+  .row-status[data-tone='warning'] {
+    color: var(--warning-color);
+  }
+  .row-status[data-tone='error'] {
+    color: var(--error-color);
+  }
+  .row-status ha-icon {
+    --mdc-icon-size: 16px;
+  }
+  .row-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .empty-text {
+    margin: var(--domotiapp-space-row) 0 0;
+    max-width: 58ch;
+    line-height: 1.6;
+    color: var(--secondary-text-color);
+  }
+
+  /* --- Dialogs ------------------------------------------------------------ */
+
+  .dialog {
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* On a phone the sheet fills the screen; the padding only bites on desktop. */
+    padding: 16px;
+    padding-bottom: calc(16px + env(safe-area-inset-bottom));
+    box-sizing: border-box;
+  }
+  .dialog-scrim {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+  }
+  .dialog-surface {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    /* The desktop maximum SPEC.md §11 asks for. */
+    max-width: 640px;
+    max-height: 100%;
+    border-radius: 8px;
+    background: var(--card-background-color);
+    color: var(--primary-text-color);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+    overflow: hidden;
+  }
+  .dialog-surface:focus {
+    outline: none;
+  }
+  .dialog-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 24px 24px 0;
+  }
+  .dialog-title {
+    margin: 0;
+    font-family: var(--domotiapp-font-heading);
+    font-size: 1.35rem;
+    font-weight: 400;
+  }
+  .dialog-close {
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    margin: -10px -10px 0 0;
+    border: none;
+    background: none;
+    color: var(--secondary-text-color);
+    cursor: pointer;
+  }
+  .dialog-close:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 2px;
+  }
+  .dialog-body {
+    padding: 16px 24px 0;
+    /* The form scrolls, the dialog itself never does, so the actions stay put. */
+    overflow-y: auto;
+  }
+  .dialog-message {
+    margin: 0 0 8px;
+    max-width: 58ch;
+    line-height: 1.6;
+  }
+  .dialog-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 12px;
+    padding: 24px;
+  }
+  /*
+   * The destructive button is outlined in the error colour and says what it
+   * does; the safe choice keeps the primary fill, so the dangerous one is never
+   * the default target of a hurried hand.
+   */
+  .button-danger {
+    border-color: var(--error-color);
+    color: var(--error-color);
+  }
+
   /* --- Status banner ------------------------------------------------------ */
 
   .banner {
@@ -466,13 +620,33 @@ class DomotiAppEnergyPanel extends HTMLElement {
 
     this._tabHost = el('div', { class: 'tab-host' });
 
-    const layout = el('div', { class: 'layout' }, [
+    this._layout = el('div', { class: 'layout' }, [
       this._banner,
       this._tabBar,
       this._tabHost,
     ]);
 
-    this.shadowRoot.append(style, layout);
+    // Dialogs live here, outside the layout, for one reason: a dialog makes
+    // everything behind it `inert`, and an element cannot make its own ancestor
+    // inert without disabling itself.
+    this._overlayHost = el('div', { class: 'overlay-host' });
+
+    this.shadowRoot.append(style, this._layout, this._overlayHost);
+  }
+
+  /**
+   * What a tab is given to put a dialog on screen.
+   *
+   * Narrow on purpose, like the rest of the tab context: a tab may add an
+   * overlay and say whether the page behind it is reachable, and nothing else.
+   */
+  _overlay() {
+    return {
+      mount: (node) => this._overlayHost.appendChild(node),
+      setBackgroundInert: (inert) => {
+        this._layout.inert = inert;
+      },
+    };
   }
 
   /** Build one tab the first time it is opened, then reuse it. */
@@ -486,6 +660,7 @@ class DomotiAppEnergyPanel extends HTMLElement {
     const instance = definition.create({
       getHass: () => this._hass,
       state: this._state,
+      overlay: this._overlay(),
     });
     instance.element.id = `panel-${id}`;
     instance.element.setAttribute('role', 'tabpanel');

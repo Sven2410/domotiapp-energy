@@ -71,9 +71,12 @@ export function sampleConfig(overrides = {}) {
       min_solar_surplus_w: 500,
       default_strategy: 'balanced',
     },
-    sources: [{ id: 'grid', name: 'Netmeter', type: 'grid_meter' }],
+    sources: [{ id: 'grid', name: 'Netmeter', type: 'grid_meter', enabled: true }],
     devices: [],
     preferences: { max_advice_count: 3 },
+    // Validation issues ride along with every read and write answer, keyed by
+    // subject, so a form can place each message per field (SPEC.md §14).
+    issues: {},
     ...overrides,
   };
 }
@@ -120,15 +123,26 @@ export function sampleCoach(overrides = {}) {
   };
 }
 
-/** A stand-in for the Home Assistant object the panel is handed. */
-export function fakeHass({ isAdmin = true, config, coach } = {}) {
+/**
+ * A stand-in for the Home Assistant object the panel is handed.
+ *
+ * `sent` records every command, so a test can assert what actually went over
+ * the wire — which is the only place the panel's promises about saving can be
+ * checked. The write commands answer in the real shape: `revision`, `item` and
+ * `issues` (SPEC.md §14).
+ */
+export function fakeHass({ isAdmin = true, config, coach, issues = {} } = {}) {
+  const stored = config ?? sampleConfig();
   const answers = {
-    'domotiapp_energy/config/get': config ?? sampleConfig(),
+    'domotiapp_energy/config/get': stored,
     'domotiapp_energy/coach/get': coach ?? sampleCoach(),
   };
+  const sent = [];
+  let revision = stored.revision;
 
-  return {
+  const hass = {
     user: { is_admin: isAdmin },
+    sent,
     states: {
       [ADVICE_ENTITY]: {
         entity_id: ADVICE_ENTITY,
@@ -137,11 +151,44 @@ export function fakeHass({ isAdmin = true, config, coach } = {}) {
       },
     },
     callWS: async (message) => {
-      if (!(message.type in answers)) {
-        throw { code: 'unknown_command', message: message.type };
+      sent.push(message);
+      if (message.type in answers) {
+        return answers[message.type];
       }
-      return answers[message.type];
+      const write = writeAnswer(message, () => (revision += 1), issues);
+      if (write) {
+        return write;
+      }
+      throw { code: 'unknown_command', message: message.type };
     },
+  };
+  return hass;
+}
+
+/** Answer a write command the way the backend does, or return null. */
+function writeAnswer(message, nextRevision, issues) {
+  const shapes = {
+    'domotiapp_energy/sources/create': () => message.source,
+    'domotiapp_energy/sources/update': () => message.source,
+    'domotiapp_energy/sources/delete': () => null,
+    'domotiapp_energy/devices/create': () => message.device,
+    'domotiapp_energy/devices/update': () => message.device,
+    'domotiapp_energy/devices/delete': () => null,
+    'domotiapp_energy/home/update': () => message.home,
+    'domotiapp_energy/preferences/update': () => message.preferences,
+    'domotiapp_energy/logs/clear': () => null,
+  };
+  const shape = shapes[message.type];
+  if (!shape) {
+    return null;
+  }
+  const item = shape();
+  return {
+    revision: nextRevision(),
+    // A created row gets its id from the backend when the panel did not send
+    // one, exactly as uuid4 does there.
+    item: item ? { id: item.id ?? 'nieuw-id', ...item } : null,
+    issues,
   };
 }
 

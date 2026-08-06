@@ -661,6 +661,28 @@ op kunnen handelen.
 staan er nu omdat ze in de formulieren van fase 8 horen en later toevoegen betekent bij
 elke klant elk apparaat opnieuw langslopen.
 
+**Wat een schrijfactie weigert, en wat niet (vastgelegd in fase 8a).** De WebSocket-API
+weigert een rij **uitsluitend** bij `control_forbidden = true` in combinatie met een
+aansturende `control_mode`. Al het andere dat de validatie vindt reist mee als `issue`
+(§14) en wordt gewoon opgeslagen.
+
+Dat onderscheid is bewust en mag later niet als inconsistentie worden "opgelost":
+
+- **Half ingevuld is normaal werk.** Een installateur vult in een meterkast gaandeweg in.
+  Een netmeter zonder metermodus levert een issue met ernst `error` op — de rekenmotor
+  gebruikt hem niet — maar moet als tussenstand op te slaan zijn. Zou elke `error` de
+  opslag blokkeren, dan is een halve rij niet te bewaren en gaat het werk verloren zodra
+  iemand het formulier sluit.
+- **Een afspraak mag niet sneuvelen.** `control_forbidden` legt vast wat met déze klant is
+  afgesproken. Een `control_mode` die aanstuurt is een intentie die iemand later uit een
+  dropdown kiest. De afspraak gaat daar boven, dus dit is het enige geval waarin de
+  backend nee zegt, met foutcode `invalid_format`.
+
+Op een `EnergySource` kan die blokkade vandaag niet afgaan: §8 geeft een bron wél
+`control_forbidden` en `capabilities`, maar géén `control_mode`, dus er is geen intentie
+die de afspraak kan tegenspreken. De controle is voor beide modellen geschreven en gaat
+vanzelf gelden zodra een bron een eigen intentie krijgt.
+
 Validatie kent hier één harde blokkade en twee waarschuwingen:
 
 - `control_forbidden = true` met een `control_mode` die aanstuurt (`approval_required`
@@ -774,6 +796,24 @@ van de opgeslagen revision, dan wordt het verzoek geweigerd met foutcode
 herladen. Zonder dit veld is de conflicttest uit §24 niet implementeerbaar.
 
 Antwoordvorm van elk schrijfcommando: `{ "revision": <nieuw>, "item": <object|null> }`.
+
+**Validatie-issues reizen mee (superset, vastgelegd in fase 8a).** Elk lees- én
+schrijfantwoord krijgt er één sleutel bij:
+
+```text
+"issues": { "<subject>": [ {"field": "...", "code": "...",
+                           "message": "...", "severity": "error"|"warning"} ] }
+```
+
+`<subject>` is `"home"`, `"preferences"` of het id van een bron of apparaat — precies de
+sleutels die `validate_configuration` teruggeeft. De frontend zet elke melding daarmee bij
+het veld waar hij over gaat (`ha-form.error`) in plaats van als één algemene zin.
+
+De twee gedocumenteerde sleutels blijven ongewijzigd, dus een aanroeper die `issues`
+negeert blijft werken. Het alternatief — een zeventiende commando `validate` — is
+afgewezen: dat kost na élke opslag een tweede round trip, en precies die traagheid maakt
+een formulier onprettig. De controle zelf is een handvol pure vergelijkingen over data die
+al in het geheugen staat.
 
 Foutcodes (consistent, in `const.py`):
 

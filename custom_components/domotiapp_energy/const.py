@@ -40,10 +40,24 @@ PANEL_TITLE: Final = "DomotiApp Energy"
 PANEL_ICON: Final = "mdi:home-lightning-bolt"
 PANEL_COMPONENT_NAME: Final = "domotiapp-energy-panel"
 
-FRONTEND_URL_BASE: Final = "/domotiapp_energy_frontend"
+# The version is part of the *path*, not only of a query string, and that is the
+# only thing that actually busts the cache for the whole panel.
+#
+# SPEC.md §7 requires ``?v=`` on the module URL, and it does bust the entry
+# point. It cannot bust anything else: a relative ``import './core/dom.js'``
+# does not inherit the query of the module it sits in, so every other file keeps
+# its plain URL. Home Assistant's service worker caches those by exact URL, and
+# in the test instance it served the previous release's tab modules to a browser
+# that had just loaded the new entry point — a half-old, half-new panel, and a
+# bug report nobody could reproduce.
+#
+# Putting the version in the base makes every URL under it change per release,
+# without repeating the version in fifteen import statements that would have to
+# be bumped by hand.
+FRONTEND_URL_ROOT: Final = "/domotiapp_energy_frontend"
+FRONTEND_URL_BASE: Final = f"{FRONTEND_URL_ROOT}/{VERSION}"
 FRONTEND_DIR_NAME: Final = "frontend"
-# The ?v= query string is mandatory against aggressive frontend caching and is
-# tied to VERSION so that every release busts the browser cache.
+# The ?v= query string SPEC.md §7 mandates, kept alongside the versioned path.
 PANEL_MODULE_URL: Final = f"{FRONTEND_URL_BASE}/{PANEL_COMPONENT_NAME}.js?v={VERSION}"
 
 # --- Storage (SPEC.md §13) --------------------------------------------------
@@ -83,6 +97,12 @@ WS_LOGS_CLEAR: Final = f"{DOMAIN}/logs/clear"
 ATTR_EXPECTED_REVISION: Final = "expected_revision"
 ATTR_REVISION: Final = "revision"
 ATTR_ITEM: Final = "item"
+# Validation issues per subject, sent with every read and write answer. A
+# superset of the answer shape SPEC.md §14 fixes: the documented keys are
+# untouched, so a caller that ignores this one keeps working. It travels along
+# rather than through a command of its own, because a second round trip after
+# every save is what makes a form feel slow (SPEC.md §14).
+ATTR_ISSUES: Final = "issues"
 
 # Marks a stored source or device that the engine must never use. A row whose
 # type is unrecognised keeps that type verbatim: substituting a known type

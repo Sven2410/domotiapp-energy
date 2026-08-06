@@ -43,7 +43,77 @@ export function createApi(hass) {
      */
     updateHome: (expectedRevision, home) =>
       call('home/update', { expected_revision: expectedRevision, home }),
+
+    /**
+     * Add, replace or remove one energy source.
+     *
+     * Each answer carries `revision`, `item` and `issues` — the last one a map
+     * of subject id to validation issues, so a form can put every message next
+     * to the field it is about without a second round trip (SPEC.md §14).
+     */
+    createSource: (expectedRevision, source) =>
+      call('sources/create', { expected_revision: expectedRevision, source }),
+    updateSource: (expectedRevision, source) =>
+      call('sources/update', { expected_revision: expectedRevision, source }),
+    deleteSource: (expectedRevision, sourceId) =>
+      call('sources/delete', {
+        expected_revision: expectedRevision,
+        source_id: sourceId,
+      }),
+
+    /** The same three for an appliance. */
+    createDevice: (expectedRevision, device) =>
+      call('devices/create', { expected_revision: expectedRevision, device }),
+    updateDevice: (expectedRevision, device) =>
+      call('devices/update', { expected_revision: expectedRevision, device }),
+    deleteDevice: (expectedRevision, deviceId) =>
+      call('devices/delete', {
+        expected_revision: expectedRevision,
+        device_id: deviceId,
+      }),
+
+    /** Replace the advice preferences. */
+    updatePreferences: (expectedRevision, preferences) =>
+      call('preferences/update', {
+        expected_revision: expectedRevision,
+        preferences,
+      }),
+
+    /** The logbook, and emptying it. */
+    getLogs: () => call('logs/list'),
+    clearLogs: (expectedRevision) =>
+      call('logs/clear', { expected_revision: expectedRevision }),
+
+    /** Recalculate now. Open to every user: it changes no configuration. */
+    recalculate: () => call('coach/recalculate'),
   };
+}
+
+/**
+ * Turn the backend's issue map into what `form.setErrors()` expects.
+ *
+ * The map is keyed by subject — a row id, `"home"` or `"preferences"` — and
+ * `ha-form` wants `{ fieldName: message }`. Only errors are handed over;
+ * warnings are shown as a notice instead, because `ha-form` renders everything
+ * it is given as an error and a warning that looks like an error is a warning
+ * nobody believes twice.
+ */
+export function fieldErrors(issues, subject) {
+  const forSubject = issues?.[subject] || [];
+  const errors = {};
+  for (const issue of forSubject) {
+    if (issue.severity === 'error' && !(issue.field in errors)) {
+      errors[issue.field] = issue.message;
+    }
+  }
+  return Object.keys(errors).length ? errors : null;
+}
+
+/** The warnings for one subject, which are shown as text rather than per field. */
+export function warningMessages(issues, subject) {
+  return (issues?.[subject] || [])
+    .filter((issue) => issue.severity !== 'error')
+    .map((issue) => issue.message);
 }
 
 /** Whether a rejected call was refused because the form held stale data. */

@@ -16,6 +16,13 @@ Two rules shape every write:
   :mod:`.models` coerces every remaining field defensively. A payload can add
   keys we do not know and they are ignored, not stored.
 
+Every read and write answer carries an ``issues`` map alongside its documented
+keys, so the panel can put each validation message next to the field it is
+about. Almost nothing is refused for what is in that map: an installer fills a
+row in gradually, and a half-finished source has to be savable as a work in
+progress. The single exception is control that was ruled out for this
+installation — see :func:`_forbidden_control_error`.
+
 All commands are registered once in ``async_setup``. Registering per entry
 would leave them dangling after the first reload (SPEC.md §14).
 """
@@ -35,12 +42,14 @@ from homeassistant.exceptions import HomeAssistantError
 
 from .const import (
     ATTR_EXPECTED_REVISION,
+    ATTR_ISSUES,
     ATTR_ITEM,
     ATTR_REVISION,
     CONF_HOME_NAME,
     DEVICE_TYPES,
     DOMAIN,
     ERR_DUPLICATE_ID,
+    ERR_INVALID_FORMAT,
     ERR_NOT_FOUND,
     ERR_REVISION_CONFLICT,
     ERR_STORAGE_ERROR,
@@ -48,6 +57,7 @@ from .const import (
     LOG_EVENT_DEVICE_ADDED,
     LOG_EVENT_DEVICE_REMOVED,
     SOURCE_TYPES,
+    VALIDATION_CONTROL_FORBIDDEN,
     WS_COACH_GET,
     WS_COACH_RECALCULATE,
     WS_CONFIG_GET,
@@ -74,6 +84,12 @@ from .models import (
     UserPreferences,
 )
 from .storage import RevisionConflictError, StorageError
+from .validators import (
+    ValidationIssue,
+    validate_configuration,
+    validate_device_profile,
+    validate_energy_source,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -234,7 +250,54 @@ def _config_payload(config: StoredConfiguration) -> dict[str, Any]:
     """
     payload = config.to_dict()
     payload.pop("logs", None)
+    payload[ATTR_ISSUES] = _issues_payload(config)
     return payload
+
+
+def _issues_payload(config: StoredConfiguration) -> dict[str, list[dict[str, str]]]:
+    """Return every validation issue, keyed by subject (SPEC.md §14).
+
+    The keys are ``"home"``, ``"preferences"`` and the id of each source and
+    device that has something wrong, so the panel can put each message next to
+    the field it is about instead of showing one generic sentence.
+
+    This travels with **every** read and write answer rather than through a
+    command of its own. A second round trip after each save would make every
+    form feel slow, and the check itself is a handful of pure comparisons over
+    data that is already in memory.
+    """
+    return {
+        subject: [issue.to_dict() for issue in issues]
+        for subject, issues in validate_configuration(
+            config.home, config.sources, config.devices, config.preferences
+        ).items()
+    }
+
+
+def _forbidden_control_error(row: DeviceProfile | EnergySource) -> str | None:
+    """Return why this row may not be stored, or None when it may.
+
+    The **only** thing a write is refused for. Everything else validation finds
+    travels back as an issue and is stored anyway, because an installer in a
+    meter cupboard fills a row in gradually: a grid meter without a meter mode
+    is an error too, and refusing it would make a half-finished row impossible
+    to save as a work in progress (SPEC.md §12).
+
+    Control that was ruled out for this installation is different in kind. It is
+    an agreement about a customer's home, not an unfinished field, and it must
+    not be lost because someone later picked a controlling mode from a dropdown.
+    """
+    for issue in _validate_row(row):
+        if issue.code == VALIDATION_CONTROL_FORBIDDEN:
+            return issue.message
+    return None
+
+
+def _validate_row(row: DeviceProfile | EnergySource) -> list[ValidationIssue]:
+    """Validate one incoming row with the checks that fit its kind."""
+    if isinstance(row, DeviceProfile):
+        return validate_device_profile(row)
+    return validate_energy_source(row)
 
 
 def _send_write_result(
@@ -242,9 +305,21 @@ def _send_write_result(
     msg: dict[str, Any],
     revision: int,
     item: dict[str, Any] | None,
+    config: StoredConfiguration,
 ) -> None:
-    """Send the answer shape every write command shares (SPEC.md §14)."""
-    connection.send_result(msg["id"], {ATTR_REVISION: revision, ATTR_ITEM: item})
+    """Send the answer shape every write command shares (SPEC.md §14).
+
+    ``issues`` is a superset of the shape SPEC.md §14 fixes: the two documented
+    keys are unchanged, so nothing that ignores the third one breaks.
+    """
+    connection.send_result(
+        msg["id"],
+        {
+            ATTR_REVISION: revision,
+            ATTR_ITEM: item,
+            ATTR_ISSUES: _issues_payload(config),
+        },
+    )
 
 
 def _find(rows: list[Any], row_id: str, what: str) -> int:
@@ -283,6 +358,7 @@ async def handle_sources_list(
         {
             ATTR_REVISION: config.revision,
             "sources": [source.to_dict() for source in config.sources],
+            ATTR_ISSUES: _issues_payload(config),
         },
     )
 
@@ -301,6 +377,7 @@ async def handle_devices_list(
         {
             ATTR_REVISION: config.revision,
             "devices": [device.to_dict() for device in config.devices],
+            ATTR_ISSUES: _issues_payload(config),
         },
     )
 
@@ -319,6 +396,7 @@ async def handle_preferences_get(
         {
             ATTR_REVISION: config.revision,
             "preferences": config.preferences.to_dict(),
+            ATTR_ISSUES: _issues_payload(config),
         },
     )
 
@@ -408,7 +486,7 @@ async def handle_home_update(
         "De woninggegevens zijn bijgewerkt.",
         subject=_SUBJECT_HOME,
     )
-    _send_write_result(connection, msg, revision, home.to_dict())
+    _send_write_result(connection, msg, revision, home.to_dict(), data.store.config)
 
 
 @callback
@@ -455,7 +533,9 @@ async def handle_preferences_update(
         "De adviesvoorkeuren zijn bijgewerkt.",
         subject=_SUBJECT_PREFERENCES,
     )
-    _send_write_result(connection, msg, revision, preferences.to_dict())
+    _send_write_result(
+        connection, msg, revision, preferences.to_dict(), data.store.config
+    )
 
 
 @websocket_api.require_admin
@@ -476,6 +556,10 @@ async def handle_sources_create(
 
     source = EnergySource.from_dict(msg["source"])
 
+    if (refusal := _forbidden_control_error(source)) is not None:
+        connection.send_error(msg["id"], ERR_INVALID_FORMAT, refusal)
+        return
+
     def _apply(config: StoredConfiguration) -> None:
         if any(existing.id == source.id for existing in config.sources):
             raise _CommandError(
@@ -493,7 +577,7 @@ async def handle_sources_create(
         f"De energiebron '{source.name}' is toegevoegd.",
         subject=source.id,
     )
-    _send_write_result(connection, msg, revision, source.to_dict())
+    _send_write_result(connection, msg, revision, source.to_dict(), data.store.config)
 
 
 @websocket_api.require_admin
@@ -514,6 +598,10 @@ async def handle_sources_update(
 
     source = EnergySource.from_dict(msg["source"])
 
+    if (refusal := _forbidden_control_error(source)) is not None:
+        connection.send_error(msg["id"], ERR_INVALID_FORMAT, refusal)
+        return
+
     def _apply(config: StoredConfiguration) -> None:
         config.sources[_find(config.sources, source.id, "Deze energiebron")] = source
 
@@ -527,7 +615,7 @@ async def handle_sources_update(
         f"De energiebron '{source.name}' is bijgewerkt.",
         subject=source.id,
     )
-    _send_write_result(connection, msg, revision, source.to_dict())
+    _send_write_result(connection, msg, revision, source.to_dict(), data.store.config)
 
 
 @websocket_api.require_admin
@@ -563,7 +651,7 @@ async def handle_sources_delete(
         f"De energiebron '{removed[0].name}' is verwijderd.",
         subject=source_id,
     )
-    _send_write_result(connection, msg, revision, None)
+    _send_write_result(connection, msg, revision, None, data.store.config)
 
 
 @websocket_api.require_admin
@@ -584,6 +672,10 @@ async def handle_devices_create(
 
     device = DeviceProfile.from_dict(msg["device"])
 
+    if (refusal := _forbidden_control_error(device)) is not None:
+        connection.send_error(msg["id"], ERR_INVALID_FORMAT, refusal)
+        return
+
     def _apply(config: StoredConfiguration) -> None:
         if any(existing.id == device.id for existing in config.devices):
             raise _CommandError(
@@ -601,7 +693,7 @@ async def handle_devices_create(
         f"Het apparaat '{device.name}' is toegevoegd.",
         subject=device.id,
     )
-    _send_write_result(connection, msg, revision, device.to_dict())
+    _send_write_result(connection, msg, revision, device.to_dict(), data.store.config)
 
 
 @websocket_api.require_admin
@@ -622,6 +714,10 @@ async def handle_devices_update(
 
     device = DeviceProfile.from_dict(msg["device"])
 
+    if (refusal := _forbidden_control_error(device)) is not None:
+        connection.send_error(msg["id"], ERR_INVALID_FORMAT, refusal)
+        return
+
     def _apply(config: StoredConfiguration) -> None:
         config.devices[_find(config.devices, device.id, "Dit apparaat")] = device
 
@@ -635,7 +731,7 @@ async def handle_devices_update(
         f"Het apparaat '{device.name}' is bijgewerkt.",
         subject=device.id,
     )
-    _send_write_result(connection, msg, revision, device.to_dict())
+    _send_write_result(connection, msg, revision, device.to_dict(), data.store.config)
 
 
 @websocket_api.require_admin
@@ -671,7 +767,7 @@ async def handle_devices_delete(
         f"Het apparaat '{removed[0].name}' is verwijderd.",
         subject=device_id,
     )
-    _send_write_result(connection, msg, revision, None)
+    _send_write_result(connection, msg, revision, None, data.store.config)
 
 
 @websocket_api.require_admin
@@ -700,4 +796,4 @@ async def handle_logs_clear(
         return
 
     await store.async_clear_logs()
-    _send_write_result(connection, msg, store.revision, None)
+    _send_write_result(connection, msg, store.revision, None, store.config)

@@ -18,10 +18,12 @@ from pytest_homeassistant_custom_component.typing import WebSocketGenerator
 
 from custom_components.domotiapp_energy.const import (
     ATTR_EXPECTED_REVISION,
+    ATTR_ISSUES,
     ATTR_ITEM,
     ATTR_REVISION,
     CONF_HOME_NAME,
     CONF_MANUAL_SETUP_ACKNOWLEDGED,
+    CONTROL_AUTOMATIC,
     DEFAULT_HOME_NAME,
     DEVICE_TYPE_DISHWASHER,
     DOMAIN,
@@ -35,6 +37,7 @@ from custom_components.domotiapp_energy.const import (
     LOG_EVENT_DEVICE_REMOVED,
     METER_MODE_SINGLE_SIGNED,
     POSITIVE_MEANS_IMPORT,
+    SOURCE_TYPE_CURRENT_PRICE,
     SOURCE_TYPE_GRID_METER,
     UNIT_W,
     WS_COACH_GET,
@@ -712,3 +715,177 @@ async def test_a_configuration_change_reaches_the_coordinator(
     await hass.async_block_till_done()
 
     assert tracked_entity_ids(entry.runtime_data.store.config) == {"sensor.netmeter"}
+
+
+# --- Validation issues and the one hard block (SPEC.md §12 and §14) ----------
+
+
+async def test_reads_carry_the_validation_issues(
+    hass: HomeAssistant, entry: MockConfigEntry, hass_ws_client: WebSocketGenerator
+) -> None:
+    """Issues travel with the answer, keyed by subject, so a form can place them.
+
+    A second round trip after every save is what makes a form feel slow, so the
+    map rides along with what the panel was going to fetch anyway.
+    """
+    client = await hass_ws_client(hass)
+    await _send(
+        client,
+        {
+            "type": WS_SOURCES_CREATE,
+            ATTR_EXPECTED_REVISION: _revision(entry),
+            # A price source without a basis: savable, but not usable yet.
+            "source": {"id": "prijs", "type": SOURCE_TYPE_CURRENT_PRICE},
+        },
+    )
+
+    issues = (await _send(client, {"type": WS_CONFIG_GET}))["result"][ATTR_ISSUES]
+
+    assert "prijs" in issues
+    fields = {issue["field"] for issue in issues["prijs"]}
+    assert {"entity_id", "price_basis"} <= fields
+    assert all(
+        {"field", "code", "message", "severity"} == set(issue)
+        for issue in issues["prijs"]
+    )
+
+
+async def test_every_list_command_carries_the_issues(
+    hass: HomeAssistant, entry: MockConfigEntry, hass_ws_client: WebSocketGenerator
+) -> None:
+    """sources/list, devices/list and preferences/get answer the same way."""
+    client = await hass_ws_client(hass)
+
+    for command in (WS_SOURCES_LIST, WS_DEVICES_LIST, WS_PREFERENCES_GET):
+        assert ATTR_ISSUES in (await _send(client, {"type": command}))["result"]
+
+
+async def test_a_write_answers_with_the_issues_of_what_was_written(
+    hass: HomeAssistant, entry: MockConfigEntry, hass_ws_client: WebSocketGenerator
+) -> None:
+    """The answer shape of SPEC.md §14 with one key added, not changed."""
+    client = await hass_ws_client(hass)
+
+    response = await _send(
+        client,
+        {
+            "type": WS_SOURCES_CREATE,
+            ATTR_EXPECTED_REVISION: _revision(entry),
+            "source": {"id": "prijs", "type": SOURCE_TYPE_CURRENT_PRICE},
+        },
+    )
+
+    assert set(response["result"]) == {ATTR_REVISION, ATTR_ITEM, ATTR_ISSUES}
+    assert "price_basis" in {
+        issue["field"] for issue in response["result"][ATTR_ISSUES]["prijs"]
+    }
+
+
+async def test_a_half_finished_row_is_still_saved(
+    hass: HomeAssistant, entry: MockConfigEntry, hass_ws_client: WebSocketGenerator
+) -> None:
+    """An installer in a meter cupboard fills a row in gradually (SPEC.md §12).
+
+    A grid meter without a meter mode is an error-severity issue, and refusing
+    it would make a work in progress impossible to save. It is stored, reported,
+    and the engine leaves it alone until it is finished.
+    """
+    client = await hass_ws_client(hass)
+
+    response = await _send(
+        client,
+        {
+            "type": WS_SOURCES_CREATE,
+            ATTR_EXPECTED_REVISION: _revision(entry),
+            "source": {"id": "grid", "type": SOURCE_TYPE_GRID_METER},
+        },
+    )
+
+    assert response["success"] is True
+    assert [source.id for source in entry.runtime_data.store.config.sources] == ["grid"]
+    assert "meter_mode" in {
+        issue["field"] for issue in response["result"][ATTR_ISSUES]["grid"]
+    }
+
+
+async def test_forbidden_control_blocks_a_controlling_device(
+    hass: HomeAssistant, entry: MockConfigEntry, hass_ws_client: WebSocketGenerator
+) -> None:
+    """The one refusal: an agreement outranks a mode picked from a dropdown."""
+    client = await hass_ws_client(hass)
+
+    response = await _send(
+        client,
+        {
+            "type": WS_DEVICES_CREATE,
+            ATTR_EXPECTED_REVISION: _revision(entry),
+            "device": DEVICE_PAYLOAD
+            | {
+                "control_mode": CONTROL_AUTOMATIC,
+                "control_forbidden": True,
+                "control_forbidden_reason": "Afgesproken met de klant",
+            },
+        },
+    )
+
+    assert response["success"] is False
+    assert response["error"]["code"] == ERR_INVALID_FORMAT
+    assert entry.runtime_data.store.config.devices == []
+
+
+async def test_a_source_records_the_agreement_and_cannot_contradict_it(
+    hass: HomeAssistant, entry: MockConfigEntry, hass_ws_client: WebSocketGenerator
+) -> None:
+    """On a source the block has nothing to fire on, and that is correct today.
+
+    SPEC.md §12 puts all three kinds of truth on ``EnergySource`` as well, but
+    §8 gives a source no ``control_mode``: it has the agreement and the
+    capabilities, and no intent field that could contradict them. So the
+    agreement is stored and nothing is refused. The check in
+    ``_forbidden_control_error`` is written for both models, so it starts
+    working the day a source gains an intent of its own.
+    """
+    client = await hass_ws_client(hass)
+
+    response = await _send(
+        client,
+        {
+            "type": WS_SOURCES_CREATE,
+            ATTR_EXPECTED_REVISION: _revision(entry),
+            "source": SOURCE_PAYLOAD
+            | {
+                "control_mode": CONTROL_AUTOMATIC,
+                "control_forbidden": True,
+                "control_forbidden_reason": "Omvormer van de installateur",
+            },
+        },
+    )
+
+    assert response["success"] is True
+    stored = entry.runtime_data.store.config.sources[0]
+    assert stored.control_forbidden is True
+    assert stored.control_forbidden_reason == "Omvormer van de installateur"
+    assert not hasattr(stored, "control_mode")
+
+
+async def test_forbidden_control_without_a_controlling_mode_is_fine(
+    hass: HomeAssistant, entry: MockConfigEntry, hass_ws_client: WebSocketGenerator
+) -> None:
+    """Recording the agreement is exactly what the field is for."""
+    client = await hass_ws_client(hass)
+
+    response = await _send(
+        client,
+        {
+            "type": WS_DEVICES_CREATE,
+            ATTR_EXPECTED_REVISION: _revision(entry),
+            "device": DEVICE_PAYLOAD
+            | {
+                "control_forbidden": True,
+                "control_forbidden_reason": "Afgesproken met de klant",
+            },
+        },
+    )
+
+    assert response["success"] is True
+    assert entry.runtime_data.store.config.devices[0].control_forbidden is True

@@ -9,12 +9,15 @@ differently:
 * the **panel** is removed again on unload, so a reload of the integration does
   not leave a dead sidebar item behind.
 
-``cache_headers=False`` is deliberate. The module URL carries ``?v=`` against
-aggressive caching (SPEC.md §7), but that only busts the entry point: the
-``import`` statements inside it request ``core/state.js`` and friends without
-any query string, and those would otherwise be served with a year-long
-cache header. Letting the browser revalidate is the only thing that makes a
-frontend change visible without renaming files.
+Caching is handled twice over, because one of the two turned out not to be
+enough. ``cache_headers=False`` keeps Home Assistant from putting a year-long
+``Cache-Control`` on these files, so the browser revalidates. That is not the
+whole story: Home Assistant's **service worker** caches by exact URL and answers
+from ``cache-storage`` without asking us at all. It was observed serving the
+previous release's tab modules to a browser that had just loaded the new entry
+point. The version therefore also sits in the URL path (see
+``const.FRONTEND_URL_BASE``), so an upgrade changes the URL of every file rather
+than only of the entry point.
 """
 
 from __future__ import annotations

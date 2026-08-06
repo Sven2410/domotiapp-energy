@@ -213,6 +213,19 @@ class ValidationIssue:
         """Return whether this issue makes the row unusable."""
         return self.severity == SEVERITY_ERROR
 
+    def to_dict(self) -> dict[str, str]:
+        """Return the issue as the WebSocket API sends it (SPEC.md §14).
+
+        The panel puts ``message`` next to the input named by ``field``; ``code``
+        is there so it can render its own text per code instead if it wants to.
+        """
+        return {
+            "field": self.field,
+            "code": self.code,
+            "message": self.message,
+            "severity": self.severity,
+        }
+
 
 def has_errors(issues: list[ValidationIssue]) -> bool:
     """Return whether any issue is severe enough to block use of the row."""

@@ -184,6 +184,34 @@ describe('the form itself', () => {
     assert.ok('vat_percent' in update.home);
   });
 
+  it('puts a backend validation message on the field it belongs to', async () => {
+    // Caused elsewhere — a price source reporting the bare market price is what
+    // makes the energy tax required — which is why the message travels with the
+    // answer instead of being worked out again in the panel (SPEC.md §14).
+    const hass = fakeHass({
+      config: sampleConfig({
+        issues: {
+          home: [
+            {
+              field: 'energy_tax_eur_kwh',
+              code: 'required',
+              message: 'De prijsbron levert de kale marktprijs.',
+              severity: 'error',
+            },
+          ],
+        },
+      }),
+    });
+    const { tab } = await openHomeTab(hass);
+
+    assert.deepEqual(forms(tab)[1].error, {
+      energy_tax_eur_kwh: 'De prijsbron levert de kale marktprijs.',
+    });
+    // One mistake may not light up all three cards.
+    assert.equal(forms(tab)[0].error, undefined);
+    assert.equal(forms(tab)[2].error, undefined);
+  });
+
   it('is filled from the stored configuration', async () => {
     const { tab } = await openHomeTab();
 
