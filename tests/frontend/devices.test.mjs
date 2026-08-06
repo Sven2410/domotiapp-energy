@@ -148,15 +148,62 @@ describe('the list of devices', () => {
     assert.match(rows(tab)[0].textContent, /Medische apparatuur in de woning/);
   });
 
-  it('names a device without energy per cycle as unable to show a saving', async () => {
+  it('marks a half-filled device as not complete, naming what is missing', async () => {
     const hass = fakeHass({
       config: sampleConfig({
-        devices: [dishwasher({ energy_per_cycle_kwh: null })],
+        // A window, so exactly one field is missing and the sentence about it
+        // has to read as one.
+        devices: [
+          dishwasher({
+            energy_per_cycle_kwh: null,
+            earliest_start: '22:00',
+            latest_finish: '06:00',
+          }),
+        ],
       }),
     });
     const { tab } = await openDevicesTab(hass);
 
-    assert.match(rows(tab)[0].textContent, /geen besparing te berekenen/);
+    // Savable, but never silently counted as finished: the row says which
+    // field is missing and that this device does not count towards the score.
+    assert.match(rows(tab)[0].textContent, /Nog niet compleet/);
+    assert.match(rows(tab)[0].textContent, /energie per cyclus/);
+    assert.match(rows(tab)[0].textContent, /Telt niet mee voor de datakwaliteit/);
+    assert.equal(rows(tab)[0].querySelector('.row-status').dataset.tone, 'warning');
+    // One missing field reads as one, not as a list of one.
+    assert.match(rows(tab)[0].textContent, /energie per cyclus ontbreekt/);
+  });
+
+  it('names a missing time window on a flexible device too', async () => {
+    const hass = fakeHass({
+      config: sampleConfig({
+        devices: [dishwasher({ earliest_start: null, latest_finish: null })],
+      }),
+    });
+    const { tab } = await openDevicesTab(hass);
+
+    assert.match(rows(tab)[0].textContent, /vroegste start/);
+    assert.match(rows(tab)[0].textContent, /laatste eindtijd/);
+    assert.match(rows(tab)[0].textContent, /ontbreken/);
+  });
+
+  it('keeps the agreement about control readable on an incomplete device', async () => {
+    const hass = fakeHass({
+      config: sampleConfig({
+        devices: [
+          dishwasher({
+            energy_per_cycle_kwh: null,
+            control_forbidden: true,
+            control_forbidden_reason: 'Medische apparatuur in de woning',
+          }),
+        ],
+      }),
+    });
+    const { tab } = await openDevicesTab(hass);
+
+    // Both truths at once: what is unfinished and what was agreed.
+    assert.match(rows(tab)[0].textContent, /Nog niet compleet/);
+    assert.match(rows(tab)[0].textContent, /Medische apparatuur in de woning/);
   });
 });
 
@@ -669,23 +716,28 @@ describe('only the questions this type can answer', () => {
 });
 
 describe('what the data quality checklist needs', () => {
-  it('marks the fields the checklist asks for', async () => {
+  it("marks the fields the checklist asks for, the way Home Assistant does", async () => {
     const { panel, tab } = await openDevicesTab();
     buttonIn(tab, 'Apparaat toevoegen').click();
     await settle();
 
     const marked = form(panel)
-      .schema.filter((field) => field.label.includes('nodig'))
+      .schema.filter((field) => field.required)
       .map((field) => field.name);
 
-    // Exactly what engine/completeness.py asks of a device: power and energy
-    // per cycle, plus both ends of a window for a flexible one.
+    // `required` is what ha-form hands to the selector, which renders the
+    // marker from --ha-input-required-marker. Our own text suffix imitated
+    // that styling instead of inheriting it.
     assert.deepEqual(marked.sort(), [
       'earliest_start',
       'energy_per_cycle_kwh',
       'latest_finish',
       'nominal_power_w',
     ]);
+    // And it stays a marking, not a gate: a half-filled device is savable.
+    assert.equal(buttonIn(formDialog(panel), 'Opslaan').disabled, true);
+    change(panel, { name: 'Vaatwasser' });
+    assert.equal(buttonIn(formDialog(panel), 'Opslaan').disabled, false);
   });
 
   it('stops asking for a window once the device is not flexible', async () => {
@@ -696,18 +748,46 @@ describe('what the data quality checklist needs', () => {
     change(panel, { is_flexible: false });
 
     const marked = form(panel)
-      .schema.filter((field) => field.label.includes('nodig'))
+      .schema.filter((field) => field.required)
       .map((field) => field.name);
 
     assert.deepEqual(marked.sort(), ['energy_per_cycle_kwh', 'nominal_power_w']);
   });
 
-  it('explains what the marking means', async () => {
+  it('lists what is still missing, and shortens the list as it is filled', async () => {
+    // One character in a form this long is easy to miss — which is exactly how
+    // it was reported. The summary is what can be read at a glance.
     const { panel, tab } = await openDevicesTab();
     buttonIn(tab, 'Apparaat toevoegen').click();
     await settle();
 
-    assert.ok(noticeTexts(formDialog(panel)).some((t) => t.includes('datakwaliteit')));
+    const first = noticeTexts(formDialog(panel)).find((t) => t.includes('Nog nodig'));
+    assert.match(first, /nominaal vermogen/);
+    assert.match(first, /energie per cyclus/);
+    assert.match(first, /Opslaan mag ook zonder/);
+
+    change(panel, { nominal_power_w: 2000 });
+
+    const second = noticeTexts(formDialog(panel)).find((t) => t.includes('Nog nodig'));
+    assert.ok(!second.includes('nominaal vermogen'));
+    assert.match(second, /energie per cyclus/);
+  });
+
+  it('says so when nothing is missing any more', async () => {
+    const { panel, tab } = await openDevicesTab();
+    buttonIn(tab, 'Apparaat toevoegen').click();
+    await settle();
+
+    change(panel, {
+      nominal_power_w: 2000,
+      energy_per_cycle_kwh: 1.2,
+      earliest_start: '22:00',
+      latest_finish: '06:00',
+    });
+
+    assert.ok(
+      noticeTexts(formDialog(panel)).some((t) => t.includes('Dit apparaat is compleet')),
+    );
   });
 });
 

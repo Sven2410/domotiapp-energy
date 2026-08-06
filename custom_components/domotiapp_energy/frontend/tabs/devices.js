@@ -212,12 +212,42 @@ function requiredFields(draft) {
   return required;
 }
 
-/** Mark a label as one of the fields the checklist needs. */
+/**
+ * Mark a field the way Home Assistant marks its own required fields.
+ *
+ * `ha-form` passes `required` straight through to the selector
+ * (`.required=${e.required || false}`), and the inputs render the marker from
+ * `--ha-input-required-marker`, which is `*` by default. So this looks like
+ * every other required field an installer meets in Home Assistant, and it
+ * inherits that styling's contrast and screen-reader treatment instead of
+ * imitating them with a suffix of our own.
+ *
+ * It does **not** block saving, here or anywhere: a half-filled device has to
+ * be storable as a work in progress (SPEC.md §12). The asterisk says "this is
+ * what the device needs to be complete", and the summary above the form says it
+ * in words, because one character in a form this long is easy to miss.
+ */
 function markRequired(field, required) {
   if (!required.includes(field.name)) {
     return field;
   }
-  return { ...field, label: `${field.label} · nodig` };
+  return { ...field, required: true };
+}
+
+/** The Dutch name of a field, for the sentence about what is still missing. */
+const REQUIRED_LABELS = {
+  nominal_power_w: 'nominaal vermogen',
+  energy_per_cycle_kwh: 'energie per cyclus',
+  earliest_start: 'vroegste start',
+  latest_finish: 'laatste eindtijd',
+};
+
+/** Which of the checklist's fields this draft has not filled in yet. */
+function missingRequired(draft) {
+  return requiredFields(draft).filter((name) => {
+    const value = draft[name];
+    return value === undefined || value === null || value === '';
+  });
 }
 
 /**
@@ -725,20 +755,33 @@ export const devicesTab = {
           text: `Nog niet compleet: ${Object.values(errors)[0]}`,
         };
       }
+      // Incompleteness first, because it is the one thing to act on. The
+      // agreement about control is appended rather than replaced: it has to
+      // stay readable whatever else is true of this row (SPEC.md §12).
+      const missing = missingRequired(draftFrom(device));
+      const agreement = device.control_forbidden
+        ? ` · Aansturing uitgesloten — ${
+            device.control_forbidden_reason || 'geen reden genoteerd'
+          }`
+        : '';
+
+      if (missing.length) {
+        return {
+          icon: 'mdi:progress-wrench',
+          tone: 'warning',
+          text:
+            `Nog niet compleet: ${missing
+              .map((name) => REQUIRED_LABELS[name])
+              .join(', ')} ${missing.length > 1 ? 'ontbreken' : 'ontbreekt'}. ` +
+            'Telt niet mee voor de datakwaliteit.' +
+            agreement,
+        };
+      }
       if (device.control_forbidden) {
         return {
           icon: 'mdi:lock-outline',
           tone: 'info',
-          text: `Aansturing uitgesloten — ${
-            device.control_forbidden_reason || 'geen reden genoteerd'
-          }`,
-        };
-      }
-      if (!device.energy_per_cycle_kwh || !device.nominal_power_w) {
-        return {
-          icon: 'mdi:information-outline',
-          tone: 'info',
-          text: 'Zonder vermogen en energie per cyclus is er geen besparing te berekenen.',
+          text: agreement.replace(' · ', ''),
         };
       }
       return { icon: 'mdi:check-circle-outline', tone: 'info', text: 'Compleet.' };
@@ -778,11 +821,18 @@ export const devicesTab = {
       }
       form.setData(draft);
 
-      const required = requiredFields(draft);
+      // The marker on a field only helps someone already looking at it. In a
+      // form of twenty questions the useful answer to "what is missing" is a
+      // list at the top that names it, and shrinks as the fields are filled.
+      const missing = missingRequired(draft);
       requiredNotice.set(
-        `Met "· nodig" gemarkeerde velden zijn wat de datakwaliteit van dit ` +
-          `apparaat vraagt: ${required.map(labelForRequired).join(', ')}.`,
-        { tone: 'info' },
+        missing.length
+          ? 'Nog nodig voor een compleet apparaat: ' +
+              `${missing.map((name) => REQUIRED_LABELS[name]).join(', ')}. ` +
+              'Opslaan mag ook zonder — het apparaat telt dan alleen nog niet ' +
+              'mee voor de datakwaliteit.'
+          : 'Dit apparaat is compleet: alles wat de datakwaliteit vraagt is ingevuld.',
+        { tone: missing.length ? 'warning' : 'success', icon: missing.length ? 'mdi:asterisk' : 'mdi:check-circle-outline' },
       );
 
       const orphans = orphanedFields(draft, schema);
@@ -798,16 +848,6 @@ export const devicesTab = {
       const warnings = editing ? warningMessages(currentIssues(), editing.id) : [];
       warningNotice.set(warnings.join(' '), { tone: 'warning' });
       saveButton.disabled = !isDirty();
-    }
-
-    function labelForRequired(name) {
-      const known = {
-        nominal_power_w: 'nominaal vermogen',
-        energy_per_cycle_kwh: 'energie per cyclus',
-        earliest_start: 'vroegste start',
-        latest_finish: 'laatste eindtijd',
-      };
-      return known[name] || name;
     }
 
     function isDirty() {
