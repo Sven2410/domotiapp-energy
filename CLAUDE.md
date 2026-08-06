@@ -129,13 +129,22 @@ De frontend wordt geserveerd onder een **versiepad** (`/domotiapp_energy_fronten
 omdat `?v=` alleen de entrypoint bust: een relatieve `import` erft die querystring niet.
 Dat lost het op voor de klant — een release verandert het pad, dus alle modules zijn nieuw.
 
-**Tijdens ontwikkeling helpt dat niet**, want dan blijft de versie gelijk. Home Assistant
-heeft een **service worker** die op exacte URL cachet en zichzelf bij elke load opnieuw
-registreert, en Chrome bewaart de bestanden daarnaast nog in de schijfcache. Een
-containerherstart is dus níet genoeg: je ziet je eigen wijziging niet, en niets wijst erop
-dat je naar oude code kijkt.
+**Tijdens ontwikkeling helpt dat niet**, want tussen twee iteraties verandert het
+versienummer niet. Home Assistant heeft een **service worker** die op exacte URL cachet en
+zichzelf bij elke load opnieuw registreert; Chrome bewaart de bestanden daarnaast nog in
+de schijfcache. Een containerherstart is dus níet genoeg: je ziet je eigen wijziging niet,
+en niets wijst erop dat je naar oude code kijkt.
 
-Voer dit in de console van het paneel uit, en herlaad daarna:
+**De betrouwbare route (Sven, 2026-08-06):** open DevTools met **F12**, rechtsklik dan op
+de herlaadknop en kies **"Cache wissen en geforceerd opnieuw laden"**. Dat omzeilt óók de
+service worker.
+
+**Een gewone Ctrl+F5 volstaat hiervoor niet** — die haalt de schijfcache over, maar laat
+de service worker zijn eigen kopie serveren. Dat is precies het verschil dat je uren kan
+kosten, want het paneel laadt "vers" en draait toch oude modules.
+
+Wil je het scripten (bijvoorbeeld vanuit browserautomatisering), dan doet dit hetzelfde,
+gevolgd door een herlaadbeurt:
 
 ```javascript
 const regs = await navigator.serviceWorker.getRegistrations();
