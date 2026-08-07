@@ -37,6 +37,7 @@ from custom_components.domotiapp_energy.const import (
     SEVERITY_ERROR,
     SEVERITY_WARNING,
     SOURCE_TYPE_CURRENT_PRICE,
+    SOURCE_TYPE_FEED_IN_PRICE,
     SOURCE_TYPE_GRID_METER,
     SOURCE_TYPE_HOME_BATTERY,
     SOURCE_TYPE_SOLAR,
@@ -1180,6 +1181,57 @@ def test_a_market_source_with_the_components_produces_no_issues() -> None:
             type=SOURCE_TYPE_CURRENT_PRICE,
             binding=EntityBinding(entity_id="sensor.price", unit=UNIT_EUR_KWH),
             price_basis=PRICE_BASIS_MARKET,
+        )
+    ]
+
+    assert validate_configuration(home, sources, [], UserPreferences()) == {}
+
+
+def test_a_market_feed_in_source_without_a_markup_is_reported() -> None:
+    """The installer has to see why the feed-in tariff is being ignored.
+
+    Reported against the home, because that is where the missing field lives,
+    even though it took a source to make it necessary.
+    """
+    home = HomeProfile(feed_in_markup_eur_kwh=None)
+    sources = [
+        EnergySource(
+            id="f1",
+            type=SOURCE_TYPE_FEED_IN_PRICE,
+            binding=EntityBinding(entity_id="sensor.terug", unit=UNIT_EUR_KWH),
+            price_basis=PRICE_BASIS_MARKET,
+        )
+    ]
+
+    issues = validate_configuration(home, sources, [], UserPreferences())
+
+    assert [issue.field for issue in issues["home"]] == ["feed_in_markup_eur_kwh"]
+
+
+def test_a_feed_in_markup_of_zero_satisfies_the_check() -> None:
+    """An explicit zero is an answer; only "not entered" blocks."""
+    home = HomeProfile(feed_in_markup_eur_kwh=0.0)
+    sources = [
+        EnergySource(
+            id="f1",
+            type=SOURCE_TYPE_FEED_IN_PRICE,
+            binding=EntityBinding(entity_id="sensor.terug", unit=UNIT_EUR_KWH),
+            price_basis=PRICE_BASIS_MARKET,
+        )
+    ]
+
+    assert validate_configuration(home, sources, [], UserPreferences()) == {}
+
+
+def test_an_all_in_feed_in_source_needs_no_markup() -> None:
+    """Nothing is being converted, so there is nothing to ask for."""
+    home = HomeProfile(feed_in_markup_eur_kwh=None)
+    sources = [
+        EnergySource(
+            id="f1",
+            type=SOURCE_TYPE_FEED_IN_PRICE,
+            binding=EntityBinding(entity_id="sensor.terug", unit=UNIT_EUR_KWH),
+            price_basis=PRICE_BASIS_ALL_IN,
         )
     ]
 

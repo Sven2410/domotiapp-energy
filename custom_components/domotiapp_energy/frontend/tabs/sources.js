@@ -42,11 +42,21 @@ const TYPE_LABELS = {
   grid_meter: 'Netmeter',
   solar: 'Zonnepanelen',
   current_price: 'Actuele energieprijs',
+  feed_in_price: 'Actuele terugleververgoeding',
   price_forecast: 'Prijsverwachting',
   solar_forecast: 'Zonverwachting',
   home_battery: 'Thuisbatterij',
   general_consumption: 'Algemeen verbruik',
 };
+
+/**
+ * The types that report a price per kWh and therefore need a basis.
+ *
+ * Two types rather than one flag on `current_price`, because a home can have a
+ * dynamic import price and a fixed feed-in tariff, or the reverse — and the two
+ * are converted by different formulas (SPEC.md §16).
+ */
+const PRICED_TYPES = ['current_price', 'feed_in_price'];
 
 const TYPE_OPTIONS = Object.entries(TYPE_LABELS).map(([value, label]) => ({
   value,
@@ -119,23 +129,38 @@ function schemaFor(draft) {
     });
   }
 
-  if (draft.type === 'current_price') {
+  if (PRICED_TYPES.includes(draft.type)) {
+    const feedIn = draft.type === 'feed_in_price';
     schema.push({
       name: 'price_basis',
       label: 'Wat levert deze bron?',
       // No default anywhere in the chain: unstated means unusable, because the
       // two answers are a factor of about three apart (SPEC.md §16).
-      helper:
-        'Kies expliciet. Zonder deze keuze wordt de prijs niet gebruikt, omdat ' +
-        'een kale marktprijs en een all-in prijs sterk verschillen.',
+      //
+      // The same field on both price types, and deliberately so: the question
+      // is identical, only the conversion behind it differs. Import adds tax
+      // and VAT; feed-in subtracts what the supplier keeps.
+      helper: feedIn
+        ? 'Kies expliciet. Zonder deze keuze wordt de vergoeding niet ' +
+          'gebruikt. Een kale marktprijs wordt omgerekend met de inhouding ' +
+          'die je bij Woning invult; er komt geen energiebelasting of btw bij.'
+        : 'Kies expliciet. Zonder deze keuze wordt de prijs niet gebruikt, omdat ' +
+          'een kale marktprijs en een all-in prijs sterk verschillen.',
       selector: {
         select: {
           mode: 'dropdown',
           options: [
-            { value: 'all_in', label: 'De all-in prijs die de klant betaalt' },
+            {
+              value: 'all_in',
+              label: feedIn
+                ? 'De vergoeding die de klant werkelijk krijgt'
+                : 'De all-in prijs die de klant betaalt',
+            },
             {
               value: 'market',
-              label: 'De kale marktprijs, exclusief belasting en opslag',
+              label: feedIn
+                ? 'De kale marktprijs, vóór inhouding van de leverancier'
+                : 'De kale marktprijs, exclusief belasting en opslag',
             },
           ],
         },
@@ -277,6 +302,10 @@ function entityHelper(sourceType) {
     current_price:
       'De entiteit met de prijs van dit moment. Hieronder geef je aan of dat ' +
       'de kale marktprijs of de all-in prijs is.',
+    feed_in_price:
+      'De entiteit met de terugleververgoeding van dit moment. Gebruik dit ' +
+      'alleen bij een dynamisch teruglevercontract; bij een vast bedrag vul ' +
+      'je dat in bij Woning.',
     price_forecast: 'De entiteit met de prijzen van de komende uren.',
     solar_forecast: 'De entiteit met de verwachte opbrengst.',
     home_battery:

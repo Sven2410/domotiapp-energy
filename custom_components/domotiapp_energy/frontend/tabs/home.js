@@ -115,14 +115,30 @@ function contractSchema(draft, config) {
     vat_percent: 'dynamic',
   };
   const allIn = allInPriceSource(config);
+  const feedInSource = feedInPriceSource(config);
   return CONTRACT_SCHEMA.filter((field) => {
     const needs = onlyFor[field.name];
     return !needs || needs === (dynamic ? 'dynamic' : 'fixed');
-  }).map((field) =>
-    allIn && COMPOSITION_FIELDS.includes(field.name)
-      ? { ...field, disabled: true }
-      : field,
-  );
+  }).map((field) => {
+    if (allIn && COMPOSITION_FIELDS.includes(field.name)) {
+      return { ...field, disabled: true };
+    }
+    // The fixed feed-in tariff is what a linked feed-in source replaces, so it
+    // goes inactive the moment one exists — the same rule as the composition
+    // fields above, and the value is kept so removing the source restores it.
+    if (feedInSource && field.name === 'feed_in_price_eur_kwh') {
+      return { ...field, disabled: true };
+    }
+    // The markup only converts a *market* feed-in reading. With no source, or
+    // one that already reports the net rate, it has nothing to convert.
+    if (
+      field.name === 'feed_in_markup_eur_kwh' &&
+      feedInSource?.price_basis !== 'market'
+    ) {
+      return { ...field, disabled: true };
+    }
+    return field;
+  });
 }
 
 /**
@@ -160,6 +176,20 @@ function allInPriceSource(config) {
       source.type === 'current_price' &&
       source.enabled !== false &&
       source.price_basis === 'all_in',
+  );
+}
+
+/**
+ * The linked feed-in price source, if any.
+ *
+ * Its existence is the statement that this home's feed-in tariff varies, so it
+ * takes over from the fixed amount — the same reading a source row gets
+ * everywhere else. Whether it reports a market or a net rate then decides
+ * whether the markup is needed.
+ */
+function feedInPriceSource(config) {
+  return (config?.sources || []).find(
+    (source) => source.type === 'feed_in_price' && source.enabled !== false,
   );
 }
 
@@ -234,6 +264,18 @@ const CONTRACT_SCHEMA = [
       'vergoed krijgt. Geen marktprijs en geen percentage: dit veld wordt ' +
       'niet omgerekend.',
     selector: PRICE_SELECTOR,
+  },
+  {
+    name: 'feed_in_markup_eur_kwh',
+    label: 'Inhouding leverancier op teruglevering',
+    // The feed-in mirror of the supplier markup, and the only term its formula
+    // needs: no energy tax and no VAT enter it (SPEC.md §16).
+    helper:
+      'Wat de leverancier per teruggeleverde kWh inhoudt op de marktprijs. ' +
+      'Alleen nodig als je terugleverprijsbron de kale marktprijs levert. ' +
+      'Vul 0 in als er niets wordt ingehouden.',
+    // No minimum: a supplier could in principle pay above the market price.
+    selector: { number: { step: 0.000001, unit_of_measurement: '€/kWh' } },
   },
   {
     name: 'feed_in_cost_eur_kwh',
@@ -444,9 +486,13 @@ export const homeTab = {
     // Why three fields are greyed out. Without it the installer sees inputs
     // that refuse to be filled in and no reason given (SPEC.md §16).
     const compositionNotice = notice('mdi:database-arrow-right-outline');
+    // The feed-in side has its own conversion and therefore its own
+    // explanation: saying "all-in" here would be exactly wrong.
+    const feedInNotice = notice('mdi:transmission-tower-export');
     contract.body.append(
       priceNotice.element,
       compositionNotice.element,
+      feedInNotice.element,
       inactiveNotice.element,
     );
 
@@ -573,6 +619,22 @@ export const homeTab = {
               `alleen een kale marktprijs om. Zet de prijsbron op "kale ` +
               `marktprijs" als je ze wél wilt gebruiken, of verwijder de bron ` +
               `om alles zelf in te vullen.`
+          : '',
+        { tone: 'info' },
+      );
+
+      const feedIn = feedInPriceSource(config);
+      feedInNotice.set(
+        feedIn
+          ? `De terugleverprijsbron "${feedIn.name || 'zonder naam'}" bepaalt de ` +
+              `vergoeding, dus het vaste bedrag hierboven is uitgeschakeld en ` +
+              `blijft bewaard. ` +
+              (feedIn.price_basis === 'market'
+                ? `De bron levert de kale marktprijs; de inhouding hieronder ` +
+                  `wordt daarvan afgetrokken. Er komt geen energiebelasting of ` +
+                  `btw bij — dat geldt alleen voor stroom die je afneemt.`
+                : `De bron levert de vergoeding zelf, dus de inhouding wordt ` +
+                  `niet gebruikt.`)
           : '',
         { tone: 'info' },
       );

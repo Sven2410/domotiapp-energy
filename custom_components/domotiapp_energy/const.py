@@ -16,7 +16,7 @@ from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 
 DOMAIN: Final = "domotiapp_energy"
 INTEGRATION_NAME: Final = "DomotiApp Energy"
-VERSION: Final = "0.1.3"
+VERSION: Final = "0.1.4"
 
 MANUFACTURER: Final = "DomotiApp"
 DEVICE_MODEL: Final = "Energy Coach"
@@ -189,6 +189,29 @@ MAX_VAT_PERCENT: Final = 100.0
 # panel verbatim; six decimals is far finer than any tariff is ever quoted.
 ALL_IN_PRICE_DECIMALS: Final = 6
 
+# --- Feed-in price composition (SPEC.md §16) --------------------------------
+#
+# **The import formula does not apply to feed-in, and that is the whole reason
+# this is a separate source type.** An imported kWh is billed as
+# (market + markup + energy tax) x (1 + VAT). A fed-in kWh earns the market
+# price *minus* what the supplier keeps: no energy tax is levied on power you
+# did not take, and the amount that reaches the invoice is what the customer
+# gets. Reusing `all_in_price_eur_kwh` here would have overstated the feed-in
+# tariff by the energy tax and the VAT on top of it — roughly threefold.
+#
+# The markup is subtracted, unlike the import markup which is added, because on
+# this side of the meter the supplier's cut lowers what you receive.
+#
+# **`feed_in_markup_eur_kwh` has no default**, for the same reason the energy
+# tax has none: there is no figure that is right for everyone, and a silent zero
+# would overstate what the customer actually receives. A market feed-in source
+# without it is refused rather than completed, and the panel says so. An
+# explicit 0 is a valid answer — "this supplier keeps nothing".
+#
+# **Net metering ends 2027-01-01.** Until then a fed-in kWh is worth the retail
+# price and this whole composition barely matters; after it, the feed-in tariff
+# is the entire difference in the savings formula (SPEC.md §16).
+
 STRATEGY_COMFORT: Final = "comfort"
 STRATEGY_BALANCED: Final = "balanced"
 STRATEGY_SAVE: Final = "save"
@@ -278,6 +301,11 @@ CONTROL_CAPABILITIES: Final[tuple[str, ...]] = (
 SOURCE_TYPE_GRID_METER: Final = "grid_meter"
 SOURCE_TYPE_SOLAR: Final = "solar"
 SOURCE_TYPE_CURRENT_PRICE: Final = "current_price"
+# The feed-in tariff as a live entity, for a dynamic feed-in contract. Its own
+# type rather than a flag on current_price: a home can have a dynamic import
+# price and a fixed feed-in tariff, or the reverse, and the two are converted by
+# different formulas (SPEC.md §16).
+SOURCE_TYPE_FEED_IN_PRICE: Final = "feed_in_price"
 SOURCE_TYPE_PRICE_FORECAST: Final = "price_forecast"
 SOURCE_TYPE_SOLAR_FORECAST: Final = "solar_forecast"
 SOURCE_TYPE_HOME_BATTERY: Final = "home_battery"
@@ -286,10 +314,18 @@ SOURCE_TYPES: Final[tuple[str, ...]] = (
     SOURCE_TYPE_GRID_METER,
     SOURCE_TYPE_SOLAR,
     SOURCE_TYPE_CURRENT_PRICE,
+    SOURCE_TYPE_FEED_IN_PRICE,
     SOURCE_TYPE_PRICE_FORECAST,
     SOURCE_TYPE_SOLAR_FORECAST,
     SOURCE_TYPE_HOME_BATTERY,
     SOURCE_TYPE_GENERAL_CONSUMPTION,
+)
+
+# The source types that report a price per kWh and therefore need a
+# `price_basis`. Both are normalised on reading, each by its own formula.
+PRICED_SOURCE_TYPES: Final[tuple[str, ...]] = (
+    SOURCE_TYPE_CURRENT_PRICE,
+    SOURCE_TYPE_FEED_IN_PRICE,
 )
 
 # The source types whose reading is an instantaneous power in watts. Their
@@ -315,6 +351,7 @@ ADDITIVE_SOURCE_TYPES: Final[tuple[str, ...]] = (
 EXCLUSIVE_SOURCE_TYPES: Final[tuple[str, ...]] = (
     SOURCE_TYPE_GRID_METER,
     SOURCE_TYPE_CURRENT_PRICE,
+    SOURCE_TYPE_FEED_IN_PRICE,
 )
 
 VALUE_SOURCE_STATE: Final = "state"

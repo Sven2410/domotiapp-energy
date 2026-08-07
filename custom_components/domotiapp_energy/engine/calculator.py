@@ -53,6 +53,7 @@ from custom_components.domotiapp_energy.const import (
     SCORE_COMPONENT_WEIGHTS,
     SOLAR_COMPONENT_MIN_PRODUCTION_W,
     SOURCE_TYPE_CURRENT_PRICE,
+    SOURCE_TYPE_FEED_IN_PRICE,
     SOURCE_TYPE_GENERAL_CONSUMPTION,
     SOURCE_TYPE_GRID_METER,
     SOURCE_TYPE_HOME_BATTERY,
@@ -86,6 +87,8 @@ class _Readings:
     reason_codes: list[str]
     # The bare reading behind a normalised market price, when there was one.
     market_price: float | None = None
+    # The same for the feed-in source, which has its own conversion.
+    market_feed_in_price: float | None = None
 
 
 class Calculator:
@@ -113,6 +116,8 @@ class Calculator:
             battery_power_w=readings.values.get(SOURCE_TYPE_HOME_BATTERY),
             current_price_eur_kwh=readings.values.get(SOURCE_TYPE_CURRENT_PRICE),
             market_price_eur_kwh=readings.market_price,
+            feed_in_price_eur_kwh=readings.values.get(SOURCE_TYPE_FEED_IN_PRICE),
+            market_feed_in_price_eur_kwh=readings.market_feed_in_price,
             invalid_source_ids=readings.invalid_source_ids,
             source_failures=readings.failures,
             reason_codes=readings.reason_codes,
@@ -153,6 +158,8 @@ class Calculator:
             peak_risk=_peak_risk(config, load_percent),
             current_price_eur_kwh=snapshot.current_price_eur_kwh,
             market_price_eur_kwh=snapshot.market_price_eur_kwh,
+            feed_in_price_eur_kwh=snapshot.feed_in_price_eur_kwh,
+            market_feed_in_price_eur_kwh=snapshot.market_feed_in_price_eur_kwh,
             data_quality=data_quality,
             energy_score=_energy_score(components),
             score_components=components,
@@ -215,6 +222,8 @@ class Calculator:
             value, result = self._read_grid_meter(source)
         elif source.type == SOURCE_TYPE_CURRENT_PRICE:
             value, result = self._read_price(source, home, readings)
+        elif source.type == SOURCE_TYPE_FEED_IN_PRICE:
+            value, result = self._read_feed_in_price(source, home, readings)
         else:
             result = read_entity_value(self._hass, source.binding)
             value = result.value if result.ok else None
@@ -273,6 +282,36 @@ class Calculator:
             # all-in figure with no way to check it against the sensor is a
             # number the installer has to take on faith (SPEC.md §8).
             readings.market_price = result.value
+        return normalised, result
+
+    def _read_feed_in_price(
+        self, source: EnergySource, home: HomeProfile, readings: _Readings
+    ) -> tuple[float | None, ReadResult | None]:
+        """Read the feed-in source and normalise it to the rate received.
+
+        The same shape as :meth:`_read_price` and deliberately **not** the same
+        formula: a fed-in kWh earns the market price minus the supplier's cut,
+        with no energy tax and no VAT on top. Running it through the import
+        conversion would overstate the tariff roughly threefold, which is the
+        whole reason this is its own source type (SPEC.md §16).
+
+        A basis that was never chosen, or a market price without the markup that
+        completes it, yields ``None``: the reading is not usable, and that is a
+        gap in the configuration rather than an entity that failed.
+        """
+        if source.price_basis not in PRICE_BASES:
+            return None, None
+
+        result = read_entity_value(self._hass, source.binding)
+        if not result.ok or result.value is None:
+            return None, result
+
+        normalised = home.net_feed_in_price_eur_kwh(result.value, source.price_basis)
+        if normalised is None:
+            return None, None
+
+        if source.price_basis == PRICE_BASIS_MARKET:
+            readings.market_feed_in_price = result.value
         return normalised, result
 
     def _read_grid_meter(

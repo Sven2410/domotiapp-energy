@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.1.4
+
+The feed-in tariff can now come from an entity, for homes on a dynamic feed-in
+contract. **This matters from 1 January 2027**, when net metering ends and the
+feed-in tariff becomes the entire difference between using your own solar and
+selling it.
+
+### Added
+
+- A new source type, **Actuele terugleververgoeding** (`feed_in_price`). It reuses
+  `price_basis` — the question is the same — but is converted by its own formula:
+  the market price *minus* what the supplier keeps. No energy tax and no VAT, because
+  neither is levied on power the home did not take. Running feed-in through the import
+  formula would have overstated the tariff roughly threefold, which is why this is a
+  separate source type rather than a flag on the price source.
+- **Inhouding leverancier op teruglevering** (`feed_in_markup_eur_kwh`) on the Woning
+  tab, for a source that reports the bare market price. No default: a silent zero
+  would overstate what the customer receives. An explicit 0 is a valid answer, and
+  the panel says so. A market feed-in source without it is refused and reported,
+  the same way the import components are.
+- A linked feed-in source takes over from the fixed **Terugleververgoeding**. That
+  field is disabled rather than cleared, so removing the source restores it.
+
+### Notes
+
+- A negative feed-in rate is kept as such. Negative market prices are real, and then
+  feeding in costs money — which makes using your own solar worth *more*, and the
+  savings figure reflects that.
+- At most one feed-in source, like the grid meter and the price source.
+- Nothing changes for a home on a fixed feed-in tariff, which is every installation
+  until it links a source.
+
 ## 0.1.3
 
 Two advice defects a customer would recognise as nonsense on sight, and the energy

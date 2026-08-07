@@ -31,7 +31,7 @@ import { overviewTab } from './tabs/overview.js';
 import { preferencesTab } from './tabs/preferences.js';
 import { sourcesTab } from './tabs/sources.js';
 
-const VERSION = '0.1.3';
+const VERSION = '0.1.4';
 
 /** Tab order as SPEC.md §8 lists it. */
 const TABS = [

@@ -428,7 +428,14 @@ class HomeProfile:
     # negative, and refusing that would push a real contract into "not entered".
     supplier_markup_eur_kwh: float | None = None
     vat_percent: float = DEFAULT_VAT_PERCENT
+    # The fixed feed-in tariff, used when no feed_in_price source is linked. An
+    # all-in amount: whatever reaches the invoice per fed-in kWh.
     feed_in_price_eur_kwh: float | None = None
+    # What the supplier keeps per fed-in kWh on a *dynamic* feed-in contract,
+    # subtracted from the market price. No lower bound and no default: some
+    # suppliers keep nothing (an explicit 0), and a silent zero would overstate
+    # what the customer receives (SPEC.md §16).
+    feed_in_markup_eur_kwh: float | None = None
     # Both thresholds are compared against the normalised all-in price, so they
     # are all-in amounts as well (SPEC.md §16).
     low_price_threshold_eur_kwh: float | None = None
@@ -460,6 +467,7 @@ class HomeProfile:
             "supplier_markup_eur_kwh": self.supplier_markup_eur_kwh,
             "vat_percent": self.vat_percent,
             "feed_in_price_eur_kwh": self.feed_in_price_eur_kwh,
+            "feed_in_markup_eur_kwh": self.feed_in_markup_eur_kwh,
             "low_price_threshold_eur_kwh": self.low_price_threshold_eur_kwh,
             "high_price_threshold_eur_kwh": self.high_price_threshold_eur_kwh,
             "feed_in_cost_eur_kwh": self.feed_in_cost_eur_kwh,
@@ -508,6 +516,9 @@ class HomeProfile:
                 data.get("vat_percent"), DEFAULT_VAT_PERCENT, minimum=MIN_VAT_PERCENT
             ),
             feed_in_price_eur_kwh=_as_optional_float(data.get("feed_in_price_eur_kwh")),
+            feed_in_markup_eur_kwh=_as_optional_float(
+                data.get("feed_in_markup_eur_kwh")
+            ),
             low_price_threshold_eur_kwh=_as_optional_float(
                 data.get("low_price_threshold_eur_kwh")
             ),
@@ -585,6 +596,54 @@ class HomeProfile:
 
         all_in = (price + markup + tax) * (1 + self.vat_percent / PERCENT_MAX)
         return round(all_in, ALL_IN_PRICE_DECIMALS)
+
+    @property
+    def has_feed_in_components(self) -> bool:
+        """Return whether a bare market price can be turned into a feed-in rate.
+
+        Only the markup, because that is the only term in the feed-in formula
+        that has no answer of its own. It has no default for the same reason the
+        energy tax has none: a silent zero would overstate what the customer
+        receives, and 0 is a real answer some suppliers give.
+        """
+        return self.feed_in_markup_eur_kwh is not None
+
+    def net_feed_in_price_eur_kwh(
+        self, price: float, basis: str | None
+    ) -> float | None:
+        """Return one feed-in source reading as the rate actually received.
+
+        **The import formula deliberately does not apply here**, and that is why
+        this method exists beside :meth:`all_in_price_eur_kwh` rather than
+        reusing it::
+
+            teruglevering = marktprijs - feed_in_markup_eur_kwh
+
+        No energy tax, because none is levied on power the home did not take,
+        and no VAT on top: what the customer receives is what reaches the
+        invoice. Running feed-in through the import formula would have
+        overstated it roughly threefold — the same factor that made
+        ``price_basis`` mandatory in the first place.
+
+        The markup is **subtracted** where the import markup is added: on this
+        side of the meter the supplier's cut lowers what you are paid.
+
+        The result may be **negative**, and is returned as such. A negative
+        market price is a real event, and then feeding in genuinely costs money;
+        clamping it would hide exactly the situation worth knowing about, which
+        is the mistake the savings formula made until 0.1.2.
+
+        ``None`` means the reading cannot be made comparable — no basis, or a
+        market price without the markup that completes it (SPEC.md §16).
+        """
+        if basis == PRICE_BASIS_ALL_IN:
+            return price
+
+        markup = self.feed_in_markup_eur_kwh
+        if basis != PRICE_BASIS_MARKET or markup is None:
+            return None
+
+        return round(price - markup, ALL_IN_PRICE_DECIMALS)
 
     @property
     def theoretical_max_grid_power_w(self) -> float | None:
@@ -1130,6 +1189,13 @@ class EnergySnapshot:
     # nothing to show when the source was already all-in, because then the two
     # numbers are the same one.
     market_price_eur_kwh: float | None = None
+    # The live feed-in tariff, normalised by the feed-in formula on reading —
+    # market price minus the supplier's cut, never the import formula. None when
+    # no feed_in_price source is linked, and then the fixed
+    # `feed_in_price_eur_kwh` from the home profile applies instead.
+    feed_in_price_eur_kwh: float | None = None
+    # The bare reading behind it, on the same terms as market_price_eur_kwh.
+    market_feed_in_price_eur_kwh: float | None = None
     # Every source the engine could not use, including the rows of a source
     # type that occurs more than once. Feeds the data quality score.
     invalid_source_ids: list[str] = field(default_factory=list)
@@ -1149,6 +1215,8 @@ class EnergySnapshot:
             "battery_power_w": self.battery_power_w,
             "current_price_eur_kwh": self.current_price_eur_kwh,
             "market_price_eur_kwh": self.market_price_eur_kwh,
+            "feed_in_price_eur_kwh": self.feed_in_price_eur_kwh,
+            "market_feed_in_price_eur_kwh": self.market_feed_in_price_eur_kwh,
             "invalid_source_ids": list(self.invalid_source_ids),
             "source_failures": [failure.to_dict() for failure in self.source_failures],
             "reason_codes": list(self.reason_codes),
@@ -1168,6 +1236,10 @@ class EnergySnapshot:
             battery_power_w=_as_optional_float(data.get("battery_power_w")),
             current_price_eur_kwh=_as_optional_float(data.get("current_price_eur_kwh")),
             market_price_eur_kwh=_as_optional_float(data.get("market_price_eur_kwh")),
+            feed_in_price_eur_kwh=_as_optional_float(data.get("feed_in_price_eur_kwh")),
+            market_feed_in_price_eur_kwh=_as_optional_float(
+                data.get("market_feed_in_price_eur_kwh")
+            ),
             invalid_source_ids=_as_str_list(data.get("invalid_source_ids")),
             source_failures=[
                 SourceFailure.from_dict(item)
@@ -1238,6 +1310,11 @@ class EnergyMetrics:
     # Carried through from the snapshot so the Overzicht can show where the
     # all-in price came from (SPEC.md §8). Only set for a market source.
     market_price_eur_kwh: float | None = None
+    # The live feed-in tariff, when a feed_in_price source is linked. The
+    # advisor prefers it over the fixed amount on the home profile; the panel
+    # shows it beside the import price.
+    feed_in_price_eur_kwh: float | None = None
+    market_feed_in_price_eur_kwh: float | None = None
     data_quality: DataQualityResult = field(default_factory=DataQualityResult)
     energy_score: int | None = None
     # The individual weighted components, so the coach can explain the score.
@@ -1262,6 +1339,8 @@ class EnergyMetrics:
             "solar_surplus_sufficient": self.solar_surplus_sufficient,
             "current_price_eur_kwh": self.current_price_eur_kwh,
             "market_price_eur_kwh": self.market_price_eur_kwh,
+            "feed_in_price_eur_kwh": self.feed_in_price_eur_kwh,
+            "market_feed_in_price_eur_kwh": self.market_feed_in_price_eur_kwh,
             "data_quality": self.data_quality.to_dict(),
             "energy_score": self.energy_score,
             "score_components": dict(self.score_components),
@@ -1290,6 +1369,10 @@ class EnergyMetrics:
             ),
             current_price_eur_kwh=_as_optional_float(data.get("current_price_eur_kwh")),
             market_price_eur_kwh=_as_optional_float(data.get("market_price_eur_kwh")),
+            feed_in_price_eur_kwh=_as_optional_float(data.get("feed_in_price_eur_kwh")),
+            market_feed_in_price_eur_kwh=_as_optional_float(
+                data.get("market_feed_in_price_eur_kwh")
+            ),
             data_quality=DataQualityResult.from_dict(
                 _as_mapping(data.get("data_quality"))
             ),

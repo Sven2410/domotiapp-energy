@@ -257,6 +257,32 @@ CSS-commentaar sloot de template literal van het stylesheet en brak het hele pan
 terwijl de suite dat gewoon zou hebben gemeld. **Geen uitvoer is geen bewijs.** Draai
 `npm test` via PowerShell en lees de regels `tests` / `pass` / `fail` expliciet.
 
+### Een fixture kan de bug vastleggen in plaats van hem te vangen
+
+Bij een nieuwe of gewijzigde fixture is de vraag **niet alleen** "is dit een realistisch
+geval", maar ook: **codificeert deze waarde het gedrag dat ik wil, of het gedrag dat er
+toevallig is?** Een default die een normaal geval heet en in werkelijkheid het foute
+gedrag beschrijft, maakt de hele suite blind voor precies dat defect — en dan is groen
+geen bewijs maar een bevestiging van de fout.
+
+Dit is een **andere faalmodus** dan de gevallen hierboven. Daar toetsten tests de vorm
+in plaats van de uitkomst (de `ha-form`-stub, de jsdom-cascade). Hier wérd de uitkomst
+getoetst, alleen tegen een verkeerd voorbeeld.
+
+Twee keer voorgekomen, beide in augustus 2026 en beide pas gevonden in de echte HA:
+
+- **`feed_in_cost_eur_kwh` stond nergens in `_config()`**, dus stond hij op `None`, en
+  elke besparingstest rekende stilzwijgend met "onbekend = 0". Precies de aanname die
+  ronde B moest opheffen. De fixture beschreef de bug.
+- **`_device()` had `nominal_power_w = 2000.0`** terwijl vrijwel elke zonnetest
+  `solar_surplus_w = 1500.0` gebruikte. Elke test beschreef dus een vaatwasser die het
+  overschot niet kon draaien — het defect dat later "benut je zonneoverschot" op een
+  net-import van 1400 W bleek te zetten. Jarenlang groen.
+
+Praktisch: zet bij een fixturewaarde die een aanname draagt **de reden in de docstring**,
+niet alleen de waarde. Zodra je hem moet uitleggen, valt op of hij het gedrag beschrijft
+dat je wilt. Beide fixtures dragen die uitleg nu.
+
 ### Versieverschil tussen tests en de draaiende HA (bewuste keuze, niet oplossen)
 
 | | Python | Home Assistant |

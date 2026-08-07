@@ -780,6 +780,7 @@ describe('what a price field will accept', () => {
     assert.deepEqual([...seen].sort(), [
       'energy_tax_eur_kwh',
       'feed_in_cost_eur_kwh',
+      'feed_in_markup_eur_kwh',
       'feed_in_price_eur_kwh',
       'fixed_import_price_eur_kwh',
       'high_price_threshold_eur_kwh',
@@ -800,5 +801,79 @@ describe('what a price field will accept', () => {
       Math.abs(remainder - Math.round(remainder)) < 1e-6,
       '0,241710 has to sit exactly on the step',
     );
+  });
+});
+
+describe('the feed-in tariff against a linked feed-in source', () => {
+  function withFeedInSource(price_basis, extra = {}) {
+    return sampleConfig({
+      sources: [
+        ...sampleConfig().sources,
+        {
+          id: 'terug',
+          name: 'Teruglevering',
+          type: 'feed_in_price',
+          enabled: true,
+          price_basis,
+          ...extra,
+        },
+      ],
+    });
+  }
+
+  function contractFields(tab) {
+    return Object.fromEntries(
+      forms(tab)[1].schema.map((field) => [field.name, field]),
+    );
+  }
+
+  it('disables the fixed amount once a feed-in source exists', async () => {
+    // The row is the statement that this home's tariff varies. The value is
+    // kept, so removing the source restores it.
+    const { tab } = await openHomeTab(
+      fakeHass({ config: withFeedInSource('market') }),
+    );
+    const fields = contractFields(tab);
+
+    assert.equal(fields.feed_in_price_eur_kwh.disabled, true);
+    assert.ok('feed_in_price_eur_kwh' in fields);
+    assert.ok(
+      noticeTexts(tab).some((t) => t.includes('bepaalt de vergoeding')),
+      'the reason has to be on screen',
+    );
+  });
+
+  it('activates the markup only for a market feed-in source', async () => {
+    const market = await openHomeTab(
+      fakeHass({ config: withFeedInSource('market') }),
+    );
+    assert.ok(!contractFields(market.tab).feed_in_markup_eur_kwh.disabled);
+
+    // A source that already reports the net rate converts nothing.
+    const allIn = await openHomeTab(
+      fakeHass({ config: withFeedInSource('all_in') }),
+    );
+    assert.equal(contractFields(allIn.tab).feed_in_markup_eur_kwh.disabled, true);
+  });
+
+  it('leaves the fixed amount active when there is no feed-in source', async () => {
+    // Every install starts here, and most stay here until 2027.
+    const { tab } = await openHomeTab();
+    const fields = contractFields(tab);
+
+    assert.ok(!fields.feed_in_price_eur_kwh.disabled);
+    // Nothing to convert, so the markup is inactive rather than inviting.
+    assert.equal(fields.feed_in_markup_eur_kwh.disabled, true);
+  });
+
+  it('says that no tax or VAT is added on the feed-in side', async () => {
+    // The one sentence that keeps someone from applying the import formula to
+    // a feed-in rate, which would overstate it roughly threefold.
+    const { tab } = await openHomeTab(
+      fakeHass({ config: withFeedInSource('market') }),
+    );
+
+    const notice = noticeTexts(tab).find((t) => t.includes('bepaalt de vergoeding'));
+    assert.match(notice, /geen energiebelasting of btw/);
   });
 });
