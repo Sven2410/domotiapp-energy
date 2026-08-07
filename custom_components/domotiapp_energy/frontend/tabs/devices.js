@@ -38,7 +38,11 @@ import {
 } from '../core/api.js';
 import { createConfirmDialog, createDialog } from '../core/dialog.js';
 import { button, card, el, notice, section, setVisible } from '../core/dom.js';
-import { createForm } from '../core/forms.js';
+import {
+  createForm,
+  describeOrphanedErrors,
+  splitFieldErrors,
+} from '../core/forms.js';
 import { createRowList } from '../core/rows.js';
 import { onTap } from '../core/tap.js';
 
@@ -726,6 +730,11 @@ export const devicesTab = {
     const dialog = createDialog({ title: 'Apparaat', overlay });
     const requiredNotice = notice('mdi:asterisk');
     const orphanNotice = notice('mdi:eye-off-outline');
+    // Distinct from orphanNotice above, which is about *values* that will be
+    // dropped. This one is about *messages* whose field is not on screen, and
+    // both can be true at once — sharing one notice would let each overwrite
+    // the other depending on which refresh ran last.
+    const hiddenErrorNotice = notice('mdi:alert-circle-outline');
     const warningNotice = notice('mdi:alert-outline');
     const dialogNotice = notice('mdi:content-save-outline');
 
@@ -769,6 +778,7 @@ export const devicesTab = {
       requiredNotice.element,
       ...forms.map(({ host }) => host.element),
       orphanNotice.element,
+      hiddenErrorNotice.element,
       warningNotice.element,
       dialogNotice.element,
     );
@@ -979,18 +989,35 @@ export const devicesTab = {
       saveButton.disabled = !isDirty();
     }
 
-    /** Put every section's own errors on its own form. */
+    /**
+     * Put every section's own errors on its own form.
+     *
+     * The window fields are the live case here: `_validate_time_window` reports
+     * an invalid window whether or not the device is flexible, while the form
+     * only asks for those fields when it is. Untick "verplaatsbaar in de tijd"
+     * on a device with a broken window and the message had nowhere to go
+     * (core/forms.js).
+     */
     function showErrors() {
       const errors = editing ? fieldErrors(currentIssues(), editing.id) : null;
+      const rendered = forms.flatMap(({ form }) =>
+        (form.element.schema || []).map((field) => field.name),
+      );
+      const { shown, orphaned } = splitFieldErrors(errors, rendered);
+
       for (const { definition, form } of forms) {
         const mine = {};
         for (const name of definition.fields) {
-          if (errors && name in errors) {
-            mine[name] = errors[name];
+          if (name in shown) {
+            mine[name] = shown[name];
           }
         }
         form.setErrors(Object.keys(mine).length ? mine : null);
       }
+
+      hiddenErrorNotice.set(describeOrphanedErrors(orphaned, labelOf), {
+        tone: 'warning',
+      });
     }
 
     function isDirty() {

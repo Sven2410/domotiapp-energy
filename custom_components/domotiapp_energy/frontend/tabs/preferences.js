@@ -17,7 +17,11 @@ import {
   isRevisionConflict,
 } from '../core/api.js';
 import { button, card, el, notice, setVisible } from '../core/dom.js';
-import { createForm } from '../core/forms.js';
+import {
+  createForm,
+  describeOrphanedErrors,
+  splitFieldErrors,
+} from '../core/forms.js';
 import { onTap } from '../core/tap.js';
 
 /** The key this tab stores its unsaved edits under. */
@@ -125,6 +129,17 @@ const EDITED_FIELDS = [
   ...DISPLAY_SCHEMA.map((field) => field.name),
 ];
 
+/** The Dutch label of any field this tab knows, rendered or not. */
+function labelForField(name) {
+  const field = [
+    ...QUIET_SCHEMA,
+    ...WEIGHING_SCHEMA,
+    ...THRESHOLD_SCHEMA,
+    ...DISPLAY_SCHEMA,
+  ].find((entry) => entry.name === name);
+  return field?.label ?? null;
+}
+
 /** Read the editable fields out of the stored preferences. */
 function formDataFrom(preferences) {
   const data = {};
@@ -206,6 +221,7 @@ export const preferencesTab = {
     const saveButton = button('Opslaan', { primary: true });
     const resetButton = button('Wijzigingen verwerpen');
     const saveNotice = notice('mdi:content-save-outline');
+    const orphanNotice = notice('mdi:alert-circle-outline');
     const leaveNotice = notice('mdi:alert-outline');
     const leaveDiscard = button('Verwerpen en verdergaan');
     const leaveStay = button('Hier blijven');
@@ -214,6 +230,7 @@ export const preferencesTab = {
 
     const actions = el('div', { class: 'tab-actions' }, [
       el('div', { class: 'actions' }, [saveButton, resetButton]),
+      orphanNotice.element,
       saveNotice.element,
       leaveNotice.element,
       leaveActions,
@@ -243,18 +260,34 @@ export const preferencesTab = {
       }
     }
 
-    /** Put each backend validation message next to the field it is about. */
+    /**
+     * Put each backend validation message next to the field it is about.
+     *
+     * This tab renders every field it has, so today nothing can be orphaned.
+     * It goes through the same split anyway: the moment a preference becomes
+     * conditional, the message keeps landing instead of quietly disappearing
+     * (core/forms.js).
+     */
     function showIssues(config) {
       const errors = fieldErrors(config?.issues, 'preferences') || {};
+      const rendered = forms.flatMap(({ form }) =>
+        (form.element.schema || []).map((field) => field.name),
+      );
+      const { shown, orphaned } = splitFieldErrors(errors, rendered);
+
       for (const { form, names } of forms) {
         const mine = {};
         for (const name of names) {
-          if (name in errors) {
-            mine[name] = errors[name];
+          if (name in shown) {
+            mine[name] = shown[name];
           }
         }
         form.setErrors(Object.keys(mine).length ? mine : null);
       }
+
+      orphanNotice.set(describeOrphanedErrors(orphaned, labelForField), {
+        tone: 'warning',
+      });
     }
 
     function loadFrom(config) {

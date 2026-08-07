@@ -1261,6 +1261,18 @@ terugleververgoeding.
 | Lawaaiig apparaat tijdens stille uren | `quiet_hours_active` | (advies onderdrukt of gemarkeerd) |
 | Geen actie nodig | `neutral_energy_situation` | De actuele energiesituatie vraagt momenteel niet om een aanpassing. |
 
+**Een validatiemelding landt altijd zichtbaar.** `ha-form` hangt elke melding aan
+zijn veld, dus een melding voor een veld dat het huidige schema niet rendert wordt
+aangenomen en weggegooid. Elk formulier in dit paneel filtert zijn schema ergens
+op — contracttype, brontype, of een apparaat verplaatsbaar is — dus dit is een
+eigenschap van voorwaardelijke formulieren en niet een eigenaardigheid van één kaart.
+De frontend splitst de fouten daarom in *zichtbaar* en *verweesd*, en toont de
+verweesde als notice met het veldlabel erbij (`core/forms.js`).
+
+Gevonden doordat een vast contract om de energiebelasting werd gevraagd terwijl het
+paneel dat veld op een vast contract juist verbergt: de installateur zag een prijsbron
+die niet werkte en nergens een reden (bevinding productie-installatie, 2026-08-07).
+
 Aanvullende regels die expliciet vastliggen:
 
 - **Het overschot moet het apparaat kunnen dragen.** Een apparaat waarvan

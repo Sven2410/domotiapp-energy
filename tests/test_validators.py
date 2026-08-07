@@ -20,6 +20,7 @@ from custom_components.domotiapp_energy.const import (
     CAPABILITY_SET_CURRENT,
     CAPABILITY_SET_POWER_LIMIT,
     CONTRACT_TYPE_DYNAMIC,
+    CONTRACT_TYPE_FIXED,
     CONTROL_ADVICE_ONLY,
     CONTROL_AUTOMATIC,
     DEVICE_TYPE_DISHWASHER,
@@ -1185,6 +1186,74 @@ def test_a_market_source_with_the_components_produces_no_issues() -> None:
     ]
 
     assert validate_configuration(home, sources, [], UserPreferences()) == {}
+
+
+def test_a_fixed_contract_is_not_asked_for_the_price_components() -> None:
+    """A fixed contract never consults the live price, so it needs no formula.
+
+    Asking anyway sent the installer after two fields that go nowhere — and the
+    panel hides both on a fixed contract, so the message landed against a field
+    that was not on screen and they saw nothing at all
+    (production finding, 2026-08-07).
+    """
+    home = HomeProfile(
+        contract_type=CONTRACT_TYPE_FIXED,
+        energy_tax_eur_kwh=None,
+        supplier_markup_eur_kwh=None,
+    )
+    sources = [
+        EnergySource(
+            id="s1",
+            type=SOURCE_TYPE_CURRENT_PRICE,
+            binding=EntityBinding(entity_id="sensor.price", unit=UNIT_EUR_KWH),
+            price_basis=PRICE_BASIS_MARKET,
+        )
+    ]
+
+    assert validate_configuration(home, sources, [], UserPreferences()) == {}
+
+
+def test_a_dynamic_contract_is_still_asked() -> None:
+    """The pair of the test above: there the components really are needed."""
+    home = HomeProfile(
+        contract_type=CONTRACT_TYPE_DYNAMIC,
+        energy_tax_eur_kwh=None,
+        supplier_markup_eur_kwh=None,
+    )
+    sources = [
+        EnergySource(
+            id="s1",
+            type=SOURCE_TYPE_CURRENT_PRICE,
+            binding=EntityBinding(entity_id="sensor.price", unit=UNIT_EUR_KWH),
+            price_basis=PRICE_BASIS_MARKET,
+        )
+    ]
+
+    issues = validate_configuration(home, sources, [], UserPreferences())
+
+    assert [issue.field for issue in issues["home"]] == ["energy_tax_eur_kwh"]
+
+
+def test_a_feed_in_source_without_a_basis_is_reported() -> None:
+    """Shipped in 0.1.4 without this: refused by the engine, reported nowhere.
+
+    `_validate_price_source` ran for the import type only, so a feed-in row with
+    no basis simply did nothing and said nothing.
+    """
+    sources = [
+        EnergySource(
+            id="f1",
+            type=SOURCE_TYPE_FEED_IN_PRICE,
+            binding=EntityBinding(entity_id="sensor.terug", unit=UNIT_EUR_KWH),
+            price_basis=None,
+        )
+    ]
+
+    issues = validate_configuration(HomeProfile(), sources, [], UserPreferences())
+
+    assert [issue.field for issue in issues["f1"]] == ["price_basis"]
+    # Worded for this side of the meter, not the import side.
+    assert "vergoeding" in issues["f1"][0].message
 
 
 def test_a_market_feed_in_source_without_a_markup_is_reported() -> None:

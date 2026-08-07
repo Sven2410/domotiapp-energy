@@ -197,8 +197,16 @@ describe('the form itself', () => {
     // Caused elsewhere — a price source reporting the bare market price is what
     // makes the energy tax required — which is why the message travels with the
     // answer instead of being worked out again in the panel (SPEC.md §14).
+    //
+    // **The contract type has to be dynamic for this test to mean anything.**
+    // It used to run on the sample's default, which is `fixed`, where the
+    // energy tax is not rendered at all — so it asserted that a message lands
+    // on a field that is not on screen, and passed, because `setErrors` accepts
+    // any name. The fixture described the defect instead of catching it; the
+    // orphaned case now has its own tests further down.
     const hass = fakeHass({
       config: sampleConfig({
+        home: { ...sampleConfig().home, contract_type: 'dynamic' },
         issues: {
           home: [
             {
@@ -875,5 +883,93 @@ describe('the feed-in tariff against a linked feed-in source', () => {
 
     const notice = noticeTexts(tab).find((t) => t.includes('bepaalt de vergoeding'));
     assert.match(notice, /geen energiebelasting of btw/);
+  });
+});
+
+describe('a validation message whose field is not on screen', () => {
+  it('shows it as a notice instead of dropping it', async () => {
+    // The case that was reported: on a fixed contract the backend asks for the
+    // energy tax, and the contract card hides that field for exactly the same
+    // reason the value is unused. ha-form hangs each message on its field, so
+    // the message was handed over and silently dropped — a price source that
+    // did not work, and nothing on screen saying why.
+    const hass = fakeHass({
+      config: sampleConfig({
+        home: { ...sampleConfig().home, contract_type: 'fixed' },
+        issues: {
+          home: [
+            {
+              field: 'energy_tax_eur_kwh',
+              code: 'required',
+              message: 'De prijsbron levert de kale marktprijs.',
+              severity: 'error',
+            },
+          ],
+        },
+      }),
+    });
+    const { tab } = await openHomeTab(hass);
+
+    // Precondition: the field really is absent, so this is the orphaned case.
+    const names = forms(tab)[1].schema.map((field) => field.name);
+    assert.ok(!names.includes('energy_tax_eur_kwh'));
+
+    const texts = noticeTexts(tab);
+    assert.ok(
+      texts.some((t) => t.includes('De prijsbron levert de kale marktprijs.')),
+      'the message has to reach the screen',
+    );
+    // Named, because the question it is about is not visible.
+    assert.ok(texts.some((t) => t.includes('Energiebelasting')));
+  });
+
+  it('leaves a message alone when its field is rendered', async () => {
+    // The normal path must not be diverted into the notice: ha-form shows it
+    // on the field, which is better placed.
+    const hass = fakeHass({
+      config: sampleConfig({
+        home: { ...sampleConfig().home, contract_type: 'dynamic' },
+        issues: {
+          home: [
+            {
+              field: 'energy_tax_eur_kwh',
+              code: 'required',
+              message: 'De prijsbron levert de kale marktprijs.',
+              severity: 'error',
+            },
+          ],
+        },
+      }),
+    });
+    const { tab } = await openHomeTab(hass);
+
+    assert.deepEqual(Object.keys(forms(tab)[1].error || {}), [
+      'energy_tax_eur_kwh',
+    ]);
+    assert.ok(
+      !noticeTexts(tab).some((t) => t.includes('De prijsbron levert')),
+      'a field that is on screen keeps its message on the field',
+    );
+  });
+});
+
+describe('why the feed-in amounts do nothing yet', () => {
+  it('explains that net metering makes the tariff inert', async () => {
+    // Reported by an installer whose feed-in tariff was filled in, correct, and
+    // had no effect anywhere.
+    const { tab } = await openHomeTab();
+
+    const notice = noticeTexts(tab).find((t) => t.includes('salderingsregeling'));
+    assert.ok(notice, 'the reason has to be on screen');
+    assert.match(notice, /telt de terugleververgoeding niet mee/);
+    // The one that does count today, so the two are not confused.
+    assert.match(notice, /terugleverkosten tellen wél mee/);
+  });
+
+  it('drops the explanation once net metering is over', async () => {
+    const { tab } = await openHomeTab();
+    change(tab, { net_metering_until: '2020-01-01' }, 1);
+
+    assert.ok(!noticeTexts(tab).some((t) => t.includes('salderingsregeling')));
   });
 });
