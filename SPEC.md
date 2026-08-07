@@ -998,23 +998,77 @@ installatie geen 100 kan scoren omdat zij nog niets heeft.
 Resultaat: `score`, `completed_items[]`, `missing_items[]`, `not_applicable_items[]`,
 `invalid_items[]`.
 
-De flexibiliteitscomponent van de **energiescore** blijft ongemoeid en mag wel 0 zijn:
-die meet of de woning iets te verplaatsen heeft, en dat is een echte eigenschap van
-de woning en niet een gat in de invoer.
-
 ### Energiescore (0–100)
-Expliciete formule zodat de uitkomst deterministisch en testbaar is:
+
+**De score is een meting van dít moment, geen rapportcijfer over de woning.** Het
+paneel zegt dat ook: "op dit moment", niet "van 100". 's Nachts vallen componenten
+weg omdat er niets te meten valt, niet omdat er iets mis is.
+
+Gewichten per component:
+
+| Component | Gewicht | Geldt wanneer |
+|---|---|---|
+| `data_quality_component` | 0,30 | altijd |
+| `peak_component` | 0,25 | altijd (100 bij <50% netbelasting, lineair naar 0 bij 100%) |
+| `solar_component` | 0,20 | er is opwek op dit moment |
+| `price_component` | 0,15 | dynamisch contract |
+| `flexibility_component` | 0,10 | er is ≥1 bruikbaar apparaat |
+
+**De score is het aandeel van wat van toepassing is**, dezelfde regel als de
+datakwaliteit:
 
 ```text
-score = 0.30 × data_quality_score
-      + 0.25 × peak_component        (100 bij <50% netbelasting, lineair naar 0 bij 100%)
-      + 0.20 × solar_component       (100 bij surplus ≥ min_solar_surplus_w, anders lineair;
-                                      0 bij onbekend)
-      + 0.15 × price_component       (dynamisch: 100 bij prijs ≤ laag, 0 bij ≥ hoog,
-                                      lineair ertussen; vast contract: 50)
-      + 0.10 × flexibility_component (100 bij ≥1 bruikbaar, flexibel én compleet
-                                      apparaat, anders 0)
+score = round(100 × Σ(gewicht × component) / Σ(gewicht))   over de geldende componenten
 ```
+
+Een component die niet geldt komt in `not_applicable_components[]` en valt uit
+teller én noemer. Bij een woning waar alle vijf gelden sommeren de gewichten tot
+1,0 en verandert er niets.
+
+**Waarom voorwaardelijk** (bevinding productie-installatie, 2026-08-07). Een vast
+contract scoorde 50 op prijs, bedoeld als neutraal — maar op een as waar de rest 100
+kan halen is 50 een permanente aftrek van 7,5 punten voor het kiezen van een vast
+contract. Een woning zonder apparaten scoorde 0 op flexibiliteit, nog eens 10 punten.
+Samen een plafond van 82,5 voor een woning die niets fout deed. **Een component die
+permanent 0 of 50 is en niet door gedrag te beïnvloeden valt, is een korting en geen
+meting** — dezelfde redenering waarmee de aansturingsterm uit deze score is geweerd.
+
+"Niet van toepassing" heeft geen getal op een 0–100-as; het enige neutrale is niet
+meewegen. Onbekend blijft wél 0: het signaal bestaat en is niet geconfigureerd.
+
+#### De zonnecomponent — de oude definitie was fout
+
+**`solar_component` mat tot 0.1.2 het tegenovergestelde van zijn eigen naam.** Hij
+scoorde het *overschot*, en overschot is `max(-netvermogen, 0)`: vermogen dat de
+woning **uit** gaat. Daarmee kreeg een woning die alles terugleverde een 100 en een
+woning die al haar opwek zelf verbruikte een 0 — terwijl het veld "zonnebenutting"
+heette en er een coach naast stond die adviseert het overschot juist zelf te
+gebruiken. **De score beloonde precies het gedrag dat het advies afraadt.**
+
+Dit staat hier expliciet omdat het een fout in de specificatie was, niet alleen in de
+code: de oude regel ("100 bij surplus ≥ min_solar_surplus_w") beschreef beschikbaarheid
+en noemde het benutting.
+
+Vanaf 0.1.3:
+
+```text
+solar_component = (opwek − teruglevering) / opwek × 100      als opwek > 0
+                = niet van toepassing                         als opwek = 0 of onbekend
+```
+
+Geen opwek betekent dat er niets verspild wordt, dus valt er niets te scoren. Een
+nachtelijke 0 kostte een woning twintig punten voor iets wat geen tekortkoming is.
+
+De component blijft **door gedrag beïnvloedbaar**, en dat is wat hem een meting houdt
+in plaats van een korting: wie de vaatwasser aanzet terwijl de zon schijnt verhoogt
+hem, met of zonder slim apparaat. Dat is precies het advies dat de coach geeft.
+
+#### De flexibiliteitscomponent
+
+Geen enkel bruikbaar apparaat → **niet van toepassing**: er valt niets te verplaatsen
+en geen enkele instelling verandert dat. Wél apparaten maar geen enkele flexibel én
+compleet → een echte **0**, want dat is een gat dat de installateur kan dichten. Dat
+is dezelfde grens als tussen "niet gevraagd" en "ontbrekend" in de checklist.
 
 **Wat "compleet" hier betekent (aangescherpt in fase 8b).** Oorspronkelijk telde elk
 bruikbaar flexibel apparaat mee. Een rij met alleen een naam en een type voldeed daaraan,
@@ -1166,6 +1220,22 @@ terugleververgoeding.
 
 Aanvullende regels die expliciet vastliggen:
 
+- **Het overschot moet het apparaat kunnen dragen.** Een apparaat waarvan
+  `nominal_power_w` groter is dan het actuele overschot wordt niet geadviseerd.
+  Tot 0.1.2 werd alleen `surplus >= min_solar_surplus_w` getoetst, waardoor 600 W
+  overschot "benut je zonneoverschot" opleverde voor een vaatwasser van 2000 W —
+  1400 W kwam van het net, en de besparing werd berekend alsof de hele cyclus van
+  het dak kwam. Een apparaat met **onbekend** vermogen wordt niet uitgesloten: dat
+  zou een gok de andere kant op zijn (§12).
+- **Bij meerdere kandidaten wint de grootste die past**, na prioriteit. Die sortering
+  bestond al, maar zonder de bovenstaande filter koos zij juist het apparaat dat het
+  slechtst paste.
+- **`days_of_week` wordt gehandhaafd.** Een apparaat krijgt geen advies op een dag die
+  de bewoner heeft uitgevinkt. Tot 0.1.2 werd het veld opgeslagen en getoond maar door
+  niets gelezen: het paneel vroeg, de bewoner antwoordde, en de motor overrulede dat
+  stilzwijgend. Een genegeerde instructie is erger dan een afwezig veld. Een lege lijst
+  kan niet voorkomen — die normaliseert naar alle dagen, want "geen enkele dag" is wat
+  uitschakelen voor is.
 - **Prijsadviezen gelden alleen bij `contract_type = dynamic`** én een geldige prijsbron.
   Bij een vast contract worden `low_energy_price` en `high_energy_price` nooit gegenereerd.
 - Stille uren: apparaten met `is_noisy = true` worden niet geadviseerd tussen

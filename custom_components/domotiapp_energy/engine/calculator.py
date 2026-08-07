@@ -45,17 +45,13 @@ from custom_components.domotiapp_energy.const import (
     POSITIVE_MEANS_IMPORT,
     PRICE_BASES,
     PRICE_BASIS_MARKET,
-    PRICE_COMPONENT_FIXED_CONTRACT,
     SCORE_COMPONENT_DATA_QUALITY,
     SCORE_COMPONENT_FLEXIBILITY,
     SCORE_COMPONENT_PEAK,
     SCORE_COMPONENT_PRICE,
     SCORE_COMPONENT_SOLAR,
-    SCORE_WEIGHT_DATA_QUALITY,
-    SCORE_WEIGHT_FLEXIBILITY,
-    SCORE_WEIGHT_PEAK,
-    SCORE_WEIGHT_PRICE,
-    SCORE_WEIGHT_SOLAR,
+    SCORE_COMPONENT_WEIGHTS,
+    SOLAR_COMPONENT_MIN_PRODUCTION_W,
     SOURCE_TYPE_CURRENT_PRICE,
     SOURCE_TYPE_GENERAL_CONSUMPTION,
     SOURCE_TYPE_GRID_METER,
@@ -160,6 +156,7 @@ class Calculator:
             data_quality=data_quality,
             energy_score=_energy_score(components),
             score_components=components,
+            not_applicable_components=not_applicable_components(components),
             reason_codes=reason_codes,
         )
 
@@ -405,23 +402,40 @@ def _score_components(
     data_quality: DataQualityResult,
     load_percent: float | None,
 ) -> dict[str, float]:
-    """Return the five weighted components behind the energy score.
+    """Return the weighted components that apply to this home, right now.
+
+    A component that cannot apply is **absent** rather than zero or half, and
+    the score divides by the weight of what is left — the same rule the data
+    quality checklist follows (SPEC.md §16). Scoring a fixed contract 50 on
+    price cost that home 7.5 points forever while the constant's own comment
+    claimed the score was "not dragged down by it"; scoring a home without
+    appliances 0 on flexibility cost it 10 more. Neither is a measurement: both
+    are deductions the resident cannot answer, and a component nobody can move
+    is a discount, not a meter.
 
     Each component is rounded to two decimals. The linear interpolations
     otherwise leave binary floating point noise (74.99999999999999 for a clean
     75), which would show up in the panel and make the score jitter between
     two whole numbers on identical input.
     """
-    return {
-        key: round(value, 2)
-        for key, value in (
-            (SCORE_COMPONENT_DATA_QUALITY, float(data_quality.score)),
-            (SCORE_COMPONENT_PEAK, _peak_component(load_percent)),
-            (SCORE_COMPONENT_SOLAR, _solar_component(config, snapshot)),
-            (SCORE_COMPONENT_PRICE, _price_component(config, snapshot)),
-            (SCORE_COMPONENT_FLEXIBILITY, _flexibility_component(config)),
-        )
-    }
+    candidates = (
+        (SCORE_COMPONENT_DATA_QUALITY, float(data_quality.score)),
+        (SCORE_COMPONENT_PEAK, _peak_component(load_percent)),
+        (SCORE_COMPONENT_SOLAR, _solar_component(config, snapshot)),
+        (SCORE_COMPONENT_PRICE, _price_component(config, snapshot)),
+        (SCORE_COMPONENT_FLEXIBILITY, _flexibility_component(config)),
+    )
+    return {key: round(value, 2) for key, value in candidates if value is not None}
+
+
+def not_applicable_components(components: dict[str, float]) -> list[str]:
+    """Return the component keys this home is not being judged on.
+
+    Public because the panel and the coach both name them, for the reason the
+    checklist names its own: a score built from three components instead of five
+    looks like it skipped something unless it says which two and why.
+    """
+    return [key for key in SCORE_COMPONENT_WEIGHTS if key not in components]
 
 
 def _peak_component(load_percent: float | None) -> float:
@@ -442,29 +456,58 @@ def _peak_component(load_percent: float | None) -> float:
     return remaining / span * COMPONENT_MAX
 
 
-def _solar_component(config: StoredConfiguration, snapshot: EnergySnapshot) -> float:
-    """Return how well the current surplus meets the configured minimum."""
-    surplus, _, _ = _solar_surplus(config, snapshot)
-    if surplus is None:
-        # SPEC.md §16 is explicit: unknown surplus scores zero here.
-        return COMPONENT_MIN
+def _solar_component(
+    config: StoredConfiguration, snapshot: EnergySnapshot
+) -> float | None:
+    """Return what share of this moment's production the home uses itself.
 
-    minimum = config.home.min_solar_surplus_w
-    if minimum <= 0:
-        return COMPONENT_MAX if surplus > 0 else COMPONENT_MIN
-    return min(surplus / minimum, 1.0) * COMPONENT_MAX
+    **The previous definition measured the opposite of its own name.** It scored
+    the *surplus*, which is `max(-grid_power, 0)` — power flowing out to the
+    grid. So it awarded 100 to a home exporting everything and 0 to a home
+    consuming all of its own production, while being labelled "zonnebenutting"
+    and sitting next to a coach advising the resident to use their surplus
+    themselves. The score rewarded exactly what the advice discouraged
+    (production finding, 2026-08-07).
+
+    What it measures now::
+
+        zelfverbruik = (opwek - teruglevering) / opwek
+
+    Returns ``None`` — not applicable — when there is no production to speak of.
+    At night nothing is being wasted, so there is nothing to score, and a nightly
+    zero was twenty points off a home that had done nothing wrong.
+
+    This still moves with behaviour, which is what keeps it a measurement rather
+    than a discount: a resident who runs the dishwasher while the sun is out
+    raises it, with or without a smart appliance. That is precisely the advice
+    the coach gives.
+    """
+    production = snapshot.solar_power_w
+    if production is None or production <= SOLAR_COMPONENT_MIN_PRODUCTION_W:
+        return None
+
+    exported = max(-snapshot.grid_power_w, 0.0) if snapshot.grid_power_w else 0.0
+    self_used = (production - exported) / production
+    return min(max(self_used, 0.0), 1.0) * COMPONENT_MAX
 
 
-def _price_component(config: StoredConfiguration, snapshot: EnergySnapshot) -> float:
+def _price_component(
+    config: StoredConfiguration, snapshot: EnergySnapshot
+) -> float | None:
     """Return 100 at or below the low price, 0 at or above the high price.
 
-    A fixed contract has no price to react to, so the component is neutral: it
-    is not applicable rather than unknown. A dynamic contract without a
-    readable price or without thresholds *is* unknown, and scores zero
+    A fixed contract has no price to react to, so the component does not apply
+    and is left out of the score entirely. It used to score 50 — meant as
+    neutral, but on a 0-100 axis where everything else can reach 100 that is a
+    permanent 7.5-point deduction for choosing a fixed contract. "Neutral" does
+    not exist on this axis; the only neutral answer is not to be weighed.
+
+    A dynamic contract without a readable price or without thresholds *is*
+    unknown, and unknown scores zero: the signal exists and was not configured
     (SPEC.md §16).
     """
     if config.home.contract_type != CONTRACT_TYPE_DYNAMIC:
-        return PRICE_COMPONENT_FIXED_CONTRACT
+        return None
 
     price = snapshot.current_price_eur_kwh
     low = config.home.low_price_threshold_eur_kwh
@@ -479,14 +522,23 @@ def _price_component(config: StoredConfiguration, snapshot: EnergySnapshot) -> f
     return (high - price) / (high - low) * COMPONENT_MAX
 
 
-def _flexibility_component(config: StoredConfiguration) -> float:
-    """Return 100 when one device could actually be advised, else 0.
+def _flexibility_component(config: StoredConfiguration) -> float | None:
+    """Return 100 when one device could actually be advised, 0 when none can.
 
-    "Usable and flexible" is not enough: a row with nothing but a name and a
-    type satisfied that, so adding an empty appliance raised the score by ten
-    points. That is a meter rewarding what has been *created* rather than what
-    the home can *do*, and a customer whose figure climbs by adding a blank line
-    is looking at a number that does not measure anything.
+    Returns ``None`` — not applicable — when the home has **no usable appliances
+    at all**. There is then nothing to be flexible with, and no configuring
+    would change that: a permanent zero on a home that owns no smart appliances
+    is a discount, not a measurement (SPEC.md §16).
+
+    A home that *does* have appliances and none of them flexible or complete
+    scores a real 0, because that is a gap the installer can close. The dividing
+    line is the same one the data quality checklist draws between "not asked"
+    and "missing".
+
+    "Usable and flexible" is not enough to score 100: a row with nothing but a
+    name and a type satisfied that, so adding an empty appliance raised the
+    score by ten points. That is a meter rewarding what has been *created*
+    rather than what the home can *do*.
 
     The line sits at the same place as the data quality checklist's idea of a
     complete device — a nominal power and an energy per cycle — because that is
@@ -494,20 +546,33 @@ def _flexibility_component(config: StoredConfiguration) -> float:
     cycle there is no saving to name (SPEC.md §16). It is one shared predicate,
     so the score, the checklist and the form cannot disagree about it.
     """
+    usable = [device for device in config.devices if device.is_usable]
+    if not usable:
+        return None
+
     has_flexible = any(
-        device.is_usable and device.is_flexible and is_complete_device_profile(device)
-        for device in config.devices
+        device.is_flexible and is_complete_device_profile(device) for device in usable
     )
     return COMPONENT_MAX if has_flexible else COMPONENT_MIN
 
 
-def _energy_score(components: dict[str, float]) -> int:
-    """Return the weighted score from SPEC.md §16, rounded to a whole number."""
-    weighted = (
-        SCORE_WEIGHT_DATA_QUALITY * components[SCORE_COMPONENT_DATA_QUALITY]
-        + SCORE_WEIGHT_PEAK * components[SCORE_COMPONENT_PEAK]
-        + SCORE_WEIGHT_SOLAR * components[SCORE_COMPONENT_SOLAR]
-        + SCORE_WEIGHT_PRICE * components[SCORE_COMPONENT_PRICE]
-        + SCORE_WEIGHT_FLEXIBILITY * components[SCORE_COMPONENT_FLEXIBILITY]
+def _energy_score(components: dict[str, float]) -> int | None:
+    """Return the weighted score over the components that apply.
+
+    The share of the applicable weight that was earned, so a home is measured
+    against what it can influence and 100 stays reachable. With all five
+    components applicable the weights sum to 1.0 and this returns exactly what
+    the flat sum used to — a fully configured home sees no change.
+
+    ``None`` when nothing applies at all. Data quality and peak load are both
+    unconditional, so in practice that needs a home with no configuration
+    whatsoever; returning a number there would be scoring an empty page.
+    """
+    total = sum(SCORE_COMPONENT_WEIGHTS[key] for key in components)
+    if not total:
+        return None
+
+    weighted = sum(
+        SCORE_COMPONENT_WEIGHTS[key] * value for key, value in components.items()
     )
-    return round(weighted)
+    return round(weighted / total)

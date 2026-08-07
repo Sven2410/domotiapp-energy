@@ -47,8 +47,11 @@ export const overviewTab = {
 
     // --- Headline figures ---------------------------------------------------
     const scoreCard = card('Energiescore');
+    // "van 100" read as a report card on the household. It is a reading of this
+    // moment: at night two components drop out because there is nothing to
+    // measure, not because anything is wrong (SPEC.md §16).
     const energyScore = displayMetric('Energiescore', {
-      suffix: 'van 100',
+      suffix: 'op dit moment',
     });
     const dataQuality = displayMetric('Datakwaliteit', { suffix: 'procent' });
     const missingNotice = notice('mdi:clipboard-alert-outline');

@@ -1,5 +1,51 @@
 # Changelog
 
+## 0.1.3
+
+Two advice defects a customer would recognise as nonsense on sight, and the energy
+score that punished a home for things it could not change.
+
+**The energy score will move on upgrade, and mostly upwards.** A home on a fixed
+contract without smart appliances could not score above 82.5 no matter what it did;
+that ceiling is gone. The solar component now measures something different — see below.
+
+### Fixed
+
+- A device is no longer advised when the surplus cannot run it. 600 W of surplus used
+  to produce "benut je zonneoverschot" for a 2000 W dishwasher, with 1400 W coming off
+  the grid and the estimated saving calculated as though the whole cycle came from the
+  roof. Worse, when several appliances qualified the engine sorted on raw power and so
+  picked the one that fitted *worst*. It now picks the largest appliance the surplus
+  can actually carry. A device whose power is unknown is not excluded — that would be
+  a guess in the other direction.
+- `days_of_week` is enforced. It was stored, shown in the form, and read by nothing:
+  a resident who unticked Sunday was advised to run the dishwasher on Sunday anyway.
+  The panel asked, they answered, and the engine overruled them silently.
+- A fixed contract is no longer scored 50 out of 100 on price. It was meant as neutral,
+  but on an axis where everything else reaches 100 it was a permanent 7.5-point
+  deduction for choosing a fixed contract — and the constant's own comment claimed the
+  score was not dragged down by it. The component is left out of the score entirely.
+- A home with no usable appliances is no longer scored 0 on flexibility. There is
+  nothing to be flexible with and no setting would change that. A home that *does*
+  have appliances and none of them flexible still scores a real 0, because that is a
+  gap the installer can close.
+
+### Changed
+
+- **The solar component measured the opposite of its name.** It scored the surplus —
+  power flowing *out* to the grid — so a home exporting everything got 100 and a home
+  consuming all its own production got 0, while the field was labelled "zonnebenutting"
+  and sat beside a coach advising the resident to use their surplus themselves. The
+  score rewarded exactly what the advice discourages. It now measures what share of
+  current production is used at home, and does not apply when there is no production:
+  at night nothing is being wasted, and a nightly zero cost a home twenty points for
+  nothing. This was an error in the specification, not only in the code, and SPEC.md
+  §16 now records it as such.
+- The energy score is the share of the applicable weight, like the data quality
+  checklist. A component that cannot apply leaves both the sum and the divisor.
+- The score is presented as a reading of this moment — "op dit moment" instead of
+  "van 100" — and the coach names the components a home is not judged on.
+
 ## 0.1.2
 
 The second round of findings from the production install. Where 0.1.1 was about

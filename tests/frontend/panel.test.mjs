@@ -238,7 +238,13 @@ describe('empty and populated configurations', () => {
 
     assert.equal(score.querySelector('.label').textContent, 'Energiescore');
     assert.equal(score.querySelector('.display-value').textContent, '46');
-    assert.equal(score.querySelector('.display-suffix').textContent, 'van 100');
+    // "van 100" read as a report card on the household. The score is a reading
+    // of this moment: at night components drop out because there is nothing to
+    // measure, not because anything is wrong.
+    assert.equal(
+      score.querySelector('.display-suffix').textContent,
+      'op dit moment',
+    );
   });
 
   it('shows a warning as a block with a marker, not as a bullet', async () => {

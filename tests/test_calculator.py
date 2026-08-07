@@ -1130,17 +1130,21 @@ async def test_a_fixed_input_gives_a_fixed_score(hass: HomeAssistant) -> None:
 
     metrics = Calculator(hass).calculate(config)
 
-    # Data quality 100, load 50% -> peak 100, surplus 2875 >= 500 -> solar 100,
-    # price 0.20 between 0.15 and 0.35 -> 75, one flexible device -> 100.
+    # Data quality 100, load 50% -> peak 100, price 0.20 between 0.15 and 0.35
+    # -> 75, one flexible device -> 100. Solar: producing 3000 W and exporting
+    # 2875 leaves 125 W used at home, so 4.17% self-consumption — the old
+    # definition scored this a perfect 100 for exporting almost everything.
     assert metrics.score_components == {
         SCORE_COMPONENT_DATA_QUALITY: 100.0,
         SCORE_COMPONENT_PEAK: 100.0,
-        SCORE_COMPONENT_SOLAR: 100.0,
+        SCORE_COMPONENT_SOLAR: 4.17,
         SCORE_COMPONENT_PRICE: 75.0,
         SCORE_COMPONENT_FLEXIBILITY: 100.0,
     }
-    # 0.30x100 + 0.25x100 + 0.20x100 + 0.15x75 + 0.10x100 = 96.25 -> 96
-    assert metrics.energy_score == 96
+    # All five apply, so the weights still sum to 1.0 and no rescaling happens:
+    # 0.30x100 + 0.25x100 + 0.20x4.17 + 0.15x75 + 0.10x100 = 77.08 -> 77
+    assert metrics.energy_score == 77
+    assert metrics.not_applicable_components == []
 
 
 async def test_the_peak_component_falls_linearly(hass: HomeAssistant) -> None:
@@ -1166,66 +1170,87 @@ async def test_a_full_load_scores_no_peak_points(hass: HomeAssistant) -> None:
     assert metrics.score_components[SCORE_COMPONENT_PEAK] == 0.0
 
 
-async def test_an_unknown_surplus_scores_no_solar_points(
+async def test_no_production_means_no_solar_component_at_all(
     hass: HomeAssistant,
 ) -> None:
-    """SPEC.md §16 is explicit that unknown surplus scores zero."""
+    """At night there is nothing being wasted, so there is nothing to score.
+
+    This used to be a zero, which cost a home twenty points every night for
+    something that is not a shortcoming (production finding, 2026-08-07).
+    """
     config = _config()
 
     metrics = Calculator(hass).calculate(config)
 
-    assert metrics.solar_surplus_w is None
-    assert metrics.score_components[SCORE_COMPONENT_SOLAR] == 0.0
+    assert SCORE_COMPONENT_SOLAR not in metrics.score_components
+    assert SCORE_COMPONENT_SOLAR in metrics.not_applicable_components
 
 
-async def test_a_partial_surplus_scores_proportionally(
+async def test_the_solar_component_measures_self_consumption(
     hass: HomeAssistant,
 ) -> None:
-    """Half the required surplus is half the solar component."""
-    hass.states.async_set("sensor.grid", "-250")
-    config = _config(min_solar_surplus_w=500.0)
+    """Producing 2000 W and exporting 500 W is 75% used at home.
+
+    The old definition scored the *export* and would have called this a poor
+    25 while the home was doing well — it rewarded exactly what the coach tells
+    the resident to avoid.
+    """
+    hass.states.async_set("sensor.pv", "2000")
+    hass.states.async_set("sensor.grid", "-500")
+    config = _config()
     config.sources.append(_grid_meter())
+    config.sources.append(_source(SOURCE_TYPE_SOLAR, "sensor.pv"))
 
     metrics = Calculator(hass).calculate(config)
 
-    assert metrics.score_components[SCORE_COMPONENT_SOLAR] == 50.0
+    assert metrics.score_components[SCORE_COMPONENT_SOLAR] == 75.0
 
 
-async def test_a_zero_minimum_surplus_scores_on_presence_alone(
-    hass: HomeAssistant,
-) -> None:
-    """With no minimum configured, any surplus at all is full marks."""
-    hass.states.async_set("sensor.grid", "-100")
-    config = _config(min_solar_surplus_w=0.0)
+async def test_consuming_all_production_is_full_marks(hass: HomeAssistant) -> None:
+    """Nothing exported means everything used at home.
+
+    Under the old definition this was the *worst* possible score, because the
+    surplus it measured was zero.
+    """
+    hass.states.async_set("sensor.pv", "2000")
+    hass.states.async_set("sensor.grid", "300")
+    config = _config()
     config.sources.append(_grid_meter())
+    config.sources.append(_source(SOURCE_TYPE_SOLAR, "sensor.pv"))
 
     metrics = Calculator(hass).calculate(config)
 
     assert metrics.score_components[SCORE_COMPONENT_SOLAR] == 100.0
 
 
-async def test_a_zero_minimum_without_surplus_scores_nothing(
-    hass: HomeAssistant,
-) -> None:
-    """No surplus is no surplus, whatever the minimum is set to."""
-    hass.states.async_set("sensor.grid", "1000")
-    config = _config(min_solar_surplus_w=0.0)
+async def test_exporting_everything_scores_nothing(hass: HomeAssistant) -> None:
+    """All production going out to the grid is none of it used at home."""
+    hass.states.async_set("sensor.pv", "2000")
+    hass.states.async_set("sensor.grid", "-2000")
+    config = _config()
     config.sources.append(_grid_meter())
+    config.sources.append(_source(SOURCE_TYPE_SOLAR, "sensor.pv"))
 
     metrics = Calculator(hass).calculate(config)
 
     assert metrics.score_components[SCORE_COMPONENT_SOLAR] == 0.0
 
 
-async def test_a_fixed_contract_scores_a_neutral_price(
+async def test_a_fixed_contract_is_not_judged_on_price(
     hass: HomeAssistant,
 ) -> None:
-    """A fixed contract has no price signal, so the component is 50."""
+    """A fixed contract has no price signal, so it is left out of the score.
+
+    It used to score 50, meant as neutral. On a 0-100 axis that is a permanent
+    7.5-point deduction for choosing a fixed contract, and the constant's own
+    comment claimed the score was not dragged down by it.
+    """
     config = _config(contract_type=CONTRACT_TYPE_FIXED)
 
     metrics = Calculator(hass).calculate(config)
 
-    assert metrics.score_components[SCORE_COMPONENT_PRICE] == 50.0
+    assert SCORE_COMPONENT_PRICE not in metrics.score_components
+    assert SCORE_COMPONENT_PRICE in metrics.not_applicable_components
 
 
 async def test_a_dynamic_contract_without_a_price_scores_zero(
@@ -1272,12 +1297,23 @@ async def test_an_unknown_grid_load_scores_no_peak_points(
 async def test_a_half_configured_installation_scores_poorly(
     hass: HomeAssistant,
 ) -> None:
-    """The whole point of the distinction: no comfortable score for nothing."""
+    """The whole point of the distinction: no comfortable score for nothing.
+
+    An empty configuration is judged on the two unconditional components, and
+    fails both, so it scores a clean zero. It used to score 8, entirely from the
+    50 that a fixed contract was handed for free — a number earned by having
+    configured nothing at all.
+    """
     metrics = Calculator(hass).calculate(StoredConfiguration())
 
-    # Data quality 0, peak unknown 0, solar unknown 0, price not applicable 50
-    # on the default fixed contract, no flexible device 0 -> 0.15 x 50 = 7.5.
-    assert metrics.energy_score == 8
+    # Data quality 0 and peak unknown 0 are all that apply; solar, price and
+    # flexibility have nothing to judge.
+    assert metrics.energy_score == 0
+    assert set(metrics.not_applicable_components) == {
+        SCORE_COMPONENT_SOLAR,
+        SCORE_COMPONENT_PRICE,
+        SCORE_COMPONENT_FLEXIBILITY,
+    }
 
 
 async def test_a_price_below_the_low_threshold_scores_full(
