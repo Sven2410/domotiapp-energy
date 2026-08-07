@@ -967,8 +967,34 @@ class DeviceProfile:
         return CONTROL_ADVICE_ONLY
 
     @property
-    def has_time_window(self) -> bool:
-        """Return whether both ends of the ready window are set."""
+    def has_ready_window(self) -> bool:
+        """Return whether the resident stated *anything* about when it must be done.
+
+        One bound is enough, because one bound is a real answer: "klaar om
+        20:15" is what most residents mean, and `ready_from` alone guards
+        against spoilage. The data quality checklist asks this question — did
+        you tell us when this appliance has to be finished — and a deadline
+        without a lower bound answers it fully.
+
+        **Split from :attr:`has_complete_ready_window` after a production bug.**
+        One predicate served both questions, so a dishwasher with only a
+        deadline counted as having no window at all: the checklist reported
+        "tijdvensters voor flexibele apparaten" as missing and the data quality
+        dropped ten points, for the configuration the ready window exists to
+        make possible (SPEC.md §32).
+        """
+        return self.ready_from is not None or self.ready_before is not None
+
+    @property
+    def has_complete_ready_window(self) -> bool:
+        """Return whether both ends are set, so a window can be tested against.
+
+        The advisor's question, and a different one: to decide whether *now*
+        falls inside the allowed period it needs two edges. A single bound is
+        not expressible as a window on a 24-hour clock — "finished by 07:00"
+        would have to mean the next 07:00, and which one that is depends on
+        when you ask (SPEC.md §32).
+        """
         return self.ready_from is not None and self.ready_before is not None
 
     @property

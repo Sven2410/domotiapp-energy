@@ -1,0 +1,55 @@
+name: Release
+
+# Fires on a tag and on nothing else. The question it answers is the one no
+# other check can: does the tag being released match the version the code
+# claims to be?
+#
+# Why this exists. `test_the_version_is_the_same_everywhere` keeps the four
+# places in the repository consistent with each other, but it cannot know what
+# was tagged. And a check on `main` cannot help either: between bumping the
+# version in a PR and tagging the release, main *always* carries a version that
+# has not been released, so "version equals latest tag" would be permanently
+# red.
+#
+# That gap let 0.2.0 ship under the tag 0.1.6: HACS showed 0.1.6 from the
+# release, Home Assistant showed 0.2.0 from the manifest, and nothing anywhere
+# went red (2026-08-07).
+#
+# This runs before the release is published — HACS reads the release, not the
+# tag — so a mismatch can still be withdrawn by deleting the tag and retagging.
+
+on:
+  push:
+    tags:
+      - "*"
+  workflow_dispatch:
+
+jobs:
+  version-matches-tag:
+    name: Tag matches the version in the code
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Compare the tag with manifest.json and const.py
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          manifest=$(python -c "import json; print(json.load(open('custom_components/domotiapp_energy/manifest.json'))['version'])")
+          const=$(python -c "import re,pathlib; print(re.search(r'VERSION: Final = \"([^\"]+)\"', pathlib.Path('custom_components/domotiapp_energy/const.py').read_text()).group(1))")
+
+          echo "tag:           $tag"
+          echo "manifest.json: $manifest"
+          echo "const.py:      $const"
+
+          if [ "$tag" != "$manifest" ] || [ "$tag" != "$const" ]; then
+            echo
+            echo "::error::De tag '$tag' komt niet overeen met de versie in de code."
+            echo "::error::Klanten zouden dan twee verschillende versienummers zien:"
+            echo "::error::HACS toont de release, Home Assistant toont het manifest."
+            echo "::error::Verwijder de tag, corrigeer, en tag opnieuw — vóór je de release publiceert."
+            exit 1
+          fi
+
+          echo
+          echo "De tag komt overeen met de versie in de code."

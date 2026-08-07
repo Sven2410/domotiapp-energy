@@ -143,6 +143,28 @@ versiepad moest voorkomen. `tests/test_panel.py` bewaakt dit.
 **Tags en releases maakt Sven zelf.** Bump het versienummer en de CHANGELOG,
 meld dat `main` klaar is om te taggen, en maak nooit zelf een tag of release.
 
+**Noem het te taggen versienummer als aparte regel in je eindrapport**, niet
+terloops in een PR-tekst. Zo:
+
+> **Te taggen: `0.2.0`** — niet 0.1.7, want het gereed-venster vervangt velden.
+
+Dat is nodig omdat jij de versie kiest en Sven hem tagt, en die twee liepen een
+keer uiteen: fase 1 bumpte naar 0.2.0 omdat het gereed-venster velden verving,
+Sven tagde 0.1.6 als volgende in de reeks. Beide redeneringen waren op zichzelf
+juist. Het gevolg is dat een klant **twee verschillende versienummers ziet**:
+HACS toont de release, de integratiepagina in Home Assistant toont het manifest.
+
+**De harde vangnet is `.github/workflows/release.yml`**, die op een tag-push
+faalt zodra de tag afwijkt van `manifest.json` en `const.py`. Die controle
+hangt niet van aandacht af, en hij slaat toe vóórdat de release gepubliceerd is
+— HACS leest de release, niet de tag, dus een verkeerde tag is dan nog in te
+trekken.
+
+Een controle op `main` kan dit principieel niet vangen: tussen het bumpen in
+een PR en het taggen draagt `main` per definitie een versie die nog niet
+gereleased is, dus "versie gelijk aan laatste tag" zou daar permanent rood
+staan.
+
 ## Commando's
 
 Linten gebeurt lokaal in `.venv`, **testen gebeurt altijd in de testcontainer.**
@@ -282,6 +304,36 @@ Twee keer voorgekomen, beide in augustus 2026 en beide pas gevonden in de echte 
 Praktisch: zet bij een fixturewaarde die een aanname draagt **de reden in de docstring**,
 niet alleen de waarde. Zodra je hem moet uitleggen, valt op of hij het gedrag beschrijft
 dat je wilt. Beide fixtures dragen die uitleg nu.
+
+#### Vierde variant: de hernoeming die een assertie stil omdraait
+
+Zoek-en-vervang maakt een assertie **syntactisch correct en semantisch fout in één
+beweging, zonder dat er iets rood wordt.** Dat is precies waar het gereedschap goed in
+is: de vorm kloppend houden.
+
+Voorbeeld, augustus 2026. Bij het gereed-venster werd `earliest_start` → `ready_from` en
+`latest_finish` → `ready_before` overal vervangen. Deze assertie ging mee:
+
+```python
+("ready_from", COMPLETENESS_ITEM_TIME_WINDOWS),   # was earliest_start
+("ready_before", COMPLETENESS_ITEM_TIME_WINDOWS), # was latest_finish
+# ...één van de twee weglaten → verwacht dat het venster-item ontbreekt
+```
+
+Onder het oude model klopte dat: een half startvenster wás geen venster. Onder het nieuwe
+model is één grens een volwaardig antwoord — "klaar uiterlijk om 20:15" is wat de meeste
+bewoners bedoelen. De test verifieerde dus actief het defect, en op productie zakte de
+datakwaliteit tien punten voor precies de configuratie waarvoor het gereed-venster is
+gebouwd.
+
+**De vraag bij een hernoeming is niet of iedereen de nieuwe naam leest, maar of het
+nieuwe veld hetzelfde betekent en of elke consument nog klopt met de nieuwe betekenis.**
+
+Concreet: loop na een hernoeming elke *lezer* van het veld langs, niet alleen elke
+schrijver. Betekende het oude veld iets anders, dan is de kans groot dat één predicaat
+nu twee vragen bedient — in dit geval betekende `has_time_window` zowel "is er iets
+ingevuld" (checklist) als "is er een venster om tegen te toetsen" (advisor), en die twee
+liepen uiteen zodra een halve grens geldig werd.
 
 ### Versieverschil tussen tests en de draaiende HA (bewuste keuze, niet oplossen)
 

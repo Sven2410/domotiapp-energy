@@ -595,8 +595,11 @@ def _within_window(device: DeviceProfile, now_minutes: int) -> bool:
     half-answer. A device with one bound is therefore unrestricted in this
     check, exactly as one with no bounds is.
     """
-    if not device.has_time_window:
-        # No window, or half a window: no restriction, and never "never".
+    if not device.has_complete_ready_window:
+        # No window, or half a window: no restriction, and never "never". The
+        # *complete* predicate on purpose — this needs two edges to test
+        # against, unlike the checklist, which only asks whether anything was
+        # stated at all.
         return True
 
     start = minutes_since_midnight(device.earliest_start)

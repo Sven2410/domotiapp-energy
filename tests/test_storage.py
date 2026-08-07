@@ -782,7 +782,7 @@ def test_device_times_are_normalised() -> None:
 
     assert device.ready_from == "07:30"
     assert device.ready_before == "23:00"
-    assert device.has_time_window is True
+    assert device.has_complete_ready_window is True
 
 
 # --- Migrating the old start window (SPEC.md §32.4) --------------------------
