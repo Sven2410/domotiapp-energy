@@ -1742,3 +1742,227 @@ Lever aan het eind:
 
 Meld eerlijk welke onderdelen nog niet volledig werken. Een eerlijke lijst met open punten
 is waardevoller dan een claim dat alles af is.
+
+---
+
+## 32. Het gereed-venster en gereedheid (ontwerp, nog niet gebouwd)
+
+**Status: ontwerp.** Hiervan is nog geen regel code geschreven. Deze sectie legt het
+model vast zodat het gelezen en aangevallen kan worden vóórdat er iets bestaat. De
+aansturing zelf blijft buiten beschouwing; dit gaat uitsluitend over wat er geregistreerd
+wordt en wat de coach ermee zegt.
+
+### 32.1 Waarom het huidige model niet klopt
+
+Een bewoner die zegt *"hij mag draaien wanneer het gunstig is, als hij maar om 7 uur
+klaar is"* kan dat vandaag niet invullen. Hij kan alleen een **startvenster** opgeven, en
+dat is een ander soort uitspraak.
+
+Drie gevolgen:
+
+1. **Bederf is niet uit te drukken.** Een wasmachine die om 03:00 klaar is, laat het
+   wasgoed vier uur nat liggen. Dat is geen geluidsprobleem — `is_noisy` dekt het niet —
+   maar een eis aan de *eindtijd*: klaar kort vóórdat er iemand is om het eruit te halen.
+   Met een startvenster is dat niet te zeggen, want dezelfde starttijd is goed of fout
+   afhankelijk van hoe lang het programma duurt.
+2. **`duration_minutes` doet niets.** Het veld wordt opgeslagen en getoond, en de
+   rekenmotor raadpleegt het nergens; alleen een validator controleert of het in het
+   venster past. Zie de staande regel dat een opgeslagen veld zonder gebruik een belofte
+   is die we niet nakomen (§12).
+3. **Er is geen urgentie.** De motor kent alleen "nu" en zegt nooit dat je nú moet
+   starten om een moment te halen.
+
+### 32.2 Het gereed-venster
+
+Twee velden vervangen `earliest_start` en `latest_finish`. **Even veel invoer, een
+preciezere vraag:**
+
+```text
+ready_from    — niet eerder klaar dan   (tegen bederf; optioneel)
+ready_before  — uiterlijk klaar         (de deadline; optioneel)
+```
+
+Het startvenster is voortaan **afgeleid**, niet ingevoerd:
+
+```text
+laatste start  = ready_before - duration_minutes
+vroegste start = ready_from   - duration_minutes
+```
+
+Daarmee krijgt `duration_minutes` zijn functie: zonder de duur is er geen deadline te
+berekenen.
+
+- Beide velden zijn onafhankelijk optioneel. Alleen `ready_before` is het normale geval
+  ("klaar om 7:00, eerder mag ook"). Alleen `ready_from` betekent "niet eerder klaar
+  dan", zonder bovengrens. Geen van beide betekent: geen tijdsbeperking.
+- Een `ready_before` die vóór `ready_from` valt is een venster over middernacht, met
+  dezelfde regel als overal: lengte is `(einde - begin) mod 1440`, begin inclusief, einde
+  exclusief, gelijke tijden ongeldig (§16).
+- **Zonder `duration_minutes` degradeert `ready_before` naar de oude betekenis**: "mag
+  niet meer draaien na". Dat is de veilige terugval en het dichtst bij wat er nu gebeurt.
+  Er is dan geen urgentie-advies, want dat vereist de duur. Er wordt geen duur geraden.
+
+### 32.3 Het urgentie-advies
+
+Hieruit volgt een advies dat vandaag niet bestaat en dat **geen enkele prognose
+vereist** — je hoeft de toekomst niet te kennen om te weten dat je nú moet starten:
+
+| | |
+|---|---|
+| Reason code | `deadline_approaching` |
+| Rank | **3 — harde tijdsgrenzen** |
+| Severity | `warning` |
+| Tekst | "Start [naam] nu om [tijd] te halen." |
+
+Rank 3 staat al in de sorteervolgorde van §16 en was tot nu toe leeg; dit advies vult die
+plek. Het staat daarmee **boven** zonnebenutting en prijs, en dat is de bedoeling: een
+deadline is hard, wachten op zon is een optimalisatie.
+
+Het advies vuurt wanneer `nu >= laatste start - URGENCY_LEAD_MINUTES` en het apparaat nog
+werk te doen heeft (§32.5), en loopt tot de deadline. Daarna zwijgt het: "je hebt het
+gemist" helpt niemand.
+
+`URGENCY_LEAD_MINUTES` is een **vaste constante, geen instelling** — dezelfde redenering
+als bij de hysterese (§16): dit beschrijft hoe de motor met tijd omgaat, niet iets waar
+een klant een mening over heeft.
+
+### 32.4 Migratiepad: niemand vult iets opnieuw in
+
+De vertaling is getrouw en gebeurt in `_async_migrate_func` van de `Store` bij een
+verhoogde `minor_version`. Dat is een **schemamigratie, geen gebruikersactie**, dus de
+revision blijft ongemoeid (§13):
+
+```text
+ready_from   = earliest_start + duration_minutes   (of earliest_start zonder duur)
+ready_before = latest_finish
+```
+
+`earliest_start` betekende "niet starten vóór"; opgeteld bij de duur is dat exact "niet
+klaar vóór". `latest_finish` betekende "mag niet meer draaien na", wat het dichtst bij
+een deadline ligt.
+
+**Dit is een gedragsverandering en die hoort in de CHANGELOG.** Voor een apparaat met een
+ingevulde duur wordt het venster strenger: waar het oude model een vaatwasser van 180
+minuten om 05:55 liet starten bij een `latest_finish` van 06:00 — en dus tot 08:55 liet
+doorlopen, ruim na de eindtijd die de bewoner opgaf — eist het nieuwe model dat hij om
+03:00 begint. De oude uitkomst was feitelijk fout: de validator controleerde alleen of de
+duur in het venster *paste*, nooit of de start laat genoeg was.
+
+Voor een apparaat zonder duur is de migratie volledig gedragsneutraal.
+
+### 32.5 Gereedheid, en waarom de vlag niet in de configuratie hoort
+
+Een vaatwasser start zodra de klep dichtgaat, maar niets in dit systeem weet of er vaat in
+zit. Zonder dat gegeven adviseert de coach vroeg of laat het draaien van een lege machine
+— een advies dat een bewoner absurd vindt, en dat kost meer vertrouwen dan geen advies.
+
+**Eén configuratieveld:**
+
+```text
+needs_ready_flag — boolean, default per type
+```
+
+Default `true` voor `dishwasher`, `washing_machine`, `dryer` en `ev_charger` (de auto moet
+aan de lader staan); `false` voor de rest.
+
+**De vlag zelf staat buiten de configuratie**, in een eigen store:
+
+```text
+key:  domotiapp_energy.runtime
+{ "ready": { "<device_id>": "<iso timestamp>" } }
+```
+
+**De reden is hard.** De vlag gaat automatisch uit zodra het programma klaar is. Zou hij
+in de configuratie staan, dan is dat een schrijfactie die niet van de gebruiker komt, en
+die verhoogt de revision — waarna de `expected_revision` van een openstaand formulier
+verloopt en een geldige opslagpoging wordt geweigerd met `revision_conflict` (§13). Een
+vaatwasser die twee keer per dag draait zou dat twee keer per dag doen. Dat is precies de
+fout die in ronde A de formulieren brak.
+
+De runtime-store heeft dus **geen revision** en valt buiten `expected_revision`. Hij wordt
+direct geschreven; twee tot vier schrijfacties per apparaat per dag zijn verwaarloosbaar
+en vragen niet om de uitgestelde flush die het logboek nodig had (§13).
+
+**Bediening, geen configuratie.** Het WS-commando `domotiapp_energy/devices/set_ready` is
+**niet** `require_admin`: dit is de bewoner die zegt dat de machine vol is, niet de
+installateur die iets instelt. Zelfde behandeling als `coach/recalculate` (§14).
+
+### 32.6 "Klaar" detecteren
+
+In volgorde van betrouwbaarheid; de eerste die kan, wint:
+
+| # | Bron | Signaal |
+|---|---|---|
+| 1 | `status_entity` | gaat naar `off`, `idle` of `standby` |
+| 2 | `remaining_time_entity` | bereikt 0 |
+| 3 | `power_entity` | zakt onder een drempel en blijft daar N minuten |
+
+Methode 3 is de zwakste: een pauze midden in een programma lijkt erop. Drempel en
+wachttijd zijn vaste constanten, afgeleid van `nominal_power_w`, en de detectie is
+**edge-triggered** — van "draait" naar "klaar" — zodat er niet elke seconde een
+schrijfactie volgt.
+
+De statenlijst bij methode 1 is vast en wordt gedocumenteerd. Meldt de entiteit iets
+anders, dan is er geen detectie; er wordt niet geraden welke toestand "klaar" zou kunnen
+betekenen.
+
+**Is er geen enkele entiteit gekoppeld, dan wordt er niet gegokt.** Het paneel zegt erbij
+dat we niet kunnen zien wanneer het apparaat klaar is, en de bewoner zet de vlag zelf uit.
+
+**Wel vervalt de vlag aan het einde van het gereed-venster** (of om middernacht als er
+geen venster is). Dat is geen aanname over de machine maar een houdbaarheidstermijn van de
+*intentie*: "hij is vol" van vanochtend zegt niets meer over morgen. Zonder die
+vervaltermijn blijft een vergeten vlag het urgentie-advies eeuwig voeden.
+
+### 32.7 De vier beperkingen: wat wel en wat niet
+
+| Beperking | Voorbeeld | Dekking |
+|---|---|---|
+| **Contract** | nachtdraaien loont alleen bij een dynamisch tarief | bestaand; geen nieuw veld |
+| **Overlast** | droger midden in de nacht | bestaand: `is_noisy` + stille uren |
+| **Bederf** | was die om 03:00 klaar is | **nieuw: `ready_from`** |
+| **Aanwezigheid** | geen droger aan als niemand thuis is | **bewust buiten deze ronde** |
+
+**Contract vraagt geen veld.** De motor kiest al op `contract_type` welk advies hij geeft.
+Wat ontbreekt is *planning* — hij kent alleen "nu" en heeft geen prijs- of zonneprognose,
+dus hij kan nooit zeggen "wacht tot morgenmiddag". Het gereed-venster is de goedkoopste
+manier om planning binnen te halen zónder prognose.
+
+**Aanwezigheid blijft eruit**, en dat is een keuze:
+
+- het staat loodrecht op het gereed-venster en de gereedheid, die wél samenhangen;
+- het vereist een entiteitskoppeling die niet elke klant heeft;
+- het is later toe te voegen zonder migratie: één optioneel veld en één filter in de
+  apparaatselectie.
+
+### 32.8 Wat deze ronde niet raakt
+
+- **De aansturing zelf.** Eigen release, eigen spec.
+- **De laadtoestand van een auto en het voertuig als object.** Zolang die er niet is,
+  blijft "energie per laadsessie" een schatting en blijft het advies gecapt op `medium`
+  (§16).
+- **Prijs- en zonneprognose**, en daarmee het activeren van `solar_forecast`. Echte
+  planning is een eigen onderwerp; het urgentie-advies levert het grootste deel van de
+  winst zonder.
+
+### 32.9 Gevolgen elders
+
+- **§8**: `earliest_start` / `latest_finish` vervallen uit het veldoverzicht,
+  `ready_from` / `ready_before` / `needs_ready_flag` komen erbij. `duration_minutes`
+  verdwijnt niet langer uit het formulier — het heeft nu een functie.
+- **§13**: een tweede store, zonder revision, met de motivatie uit §32.5.
+- **§14**: `devices/set_ready`, zonder `require_admin`.
+- **§16**: `deadline_approaching` in de reason codes en op rank 3; de vensterregels
+  verwijzen naar het gereed-venster.
+- **De datakwaliteitschecklist**: het item `flexible_devices_have_time_window` gaat over
+  het gereed-venster in plaats van het startvenster. De weging verandert niet.
+
+### 32.10 Wat ik nog aan Sven wil voorleggen
+
+1. **`needs_ready_flag` voor een laadpaal.** Ik zet hem op `true` omdat de auto aan de
+   lader moet staan, maar dat maakt het handmatig terwijl een `status_entity` van een
+   Easee het waarschijnlijk zelf meldt. Detectie dekt dat, maar de eerste keer moet de
+   bewoner de vlag alsnog zetten.
+2. **De vervaltermijn van de vlag.** Aan het einde van het gereed-venster is verdedigbaar,
+   maar een apparaat zonder venster valt terug op middernacht. Voor een woning die
+   's avonds laat de vaatwasser vult is dat net verkeerd.
