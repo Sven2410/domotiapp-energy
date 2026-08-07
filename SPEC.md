@@ -959,16 +959,48 @@ blijven en zonder klok testbaar zijn.
 ### Datakwaliteit (0–100)
 Gewogen checklist, transparant en testbaar:
 
-| Item | Punten |
-|---|---|
-| Verplichte woninggegevens compleet (fasen, zekering, max vermogen, contracttype) | 20 |
-| Minimaal één ingeschakelde netbron met geldige actuele waarde | 25 |
-| Bruikbare zonnebron met geldige actuele waarde | 15 |
-| Prijsinformatie beschikbaar (dynamisch: geldige prijsbron; vast: tarief ingevuld) | 15 |
-| Minimaal één apparaatprofiel met vermogen én energie/cyclus | 15 |
-| Alle flexibele apparaten hebben een tijdvenster | 10 |
+| Item | Punten | Geldt wanneer |
+|---|---|---|
+| Verplichte woninggegevens compleet (fasen, zekering, max vermogen, contracttype) | 20 | altijd |
+| Minimaal één ingeschakelde netbron met geldige actuele waarde | 25 | altijd |
+| Bruikbare zonnebron met geldige actuele waarde | 15 | er bestaat een zonnebronrij |
+| Prijsinformatie beschikbaar (dynamisch: geldige prijsbron; vast: tarief ingevuld) | 15 | altijd |
+| Minimaal één apparaatprofiel met vermogen én energie/cyclus | 15 | er is ≥1 bruikbaar apparaat |
+| Alle flexibele apparaten hebben een tijdvenster | 10 | er is ≥1 bruikbaar flexibel apparaat |
 
-Resultaat: `score`, `completed_items[]`, `missing_items[]`, `invalid_items[]`.
+**De score is het aandeel van wat van toepassing is**, niet de som van alle punten:
+
+```text
+score = round(100 × behaalde punten van geldende items / punten van geldende items)
+```
+
+Een item dat niet geldt telt niet mee in teller én noemer, en komt terug in
+`not_applicable_items[]` — niet in `missing_items[]`. Bij een woning die alle zes
+dingen heeft sommeren de gewichten tot 100 en verandert er niets.
+
+**Waarom voorwaardelijk** (bevinding productie-installatie, ronde B): een woning met
+zonnepanelen en een slimme meter maar zonder slimme apparaten kreeg permanent "2 van
+de 6 onderdelen is nog niet compleet", en geen enkele handeling van de bewoner kon
+dat sluiten. Datakwaliteit hoort te meten wat je hebt ingevuld, niet wat je niet
+bezit — dezelfde redenering waarmee de aansturingsterm uit de energiescore is
+geweerd (§16, "de score meet mogelijkheid").
+
+**Wat "geldt" bepaalt is nooit een gok.** Een bronrij is een expliciete uitspraak van
+de installateur over wat de woning heeft; geen rij is geen uitspraak, dus het item
+wordt niet gesteld. Er wordt niets afgeleid uit het entity- of deviceregister
+(harde regel 1). Een zonnebron die er wél is maar niets levert kost gewoon punten —
+"geen panelen" is geen tekortkoming, "panelen die we niet kunnen uitlezen" wel.
+
+De drie onvoorwaardelijke items zijn waar de integratie voor bestaat: zonder
+woningprofiel, netbron en prijs meet zij niets. Ze staan er ook voor dat een verse
+installatie geen 100 kan scoren omdat zij nog niets heeft.
+
+Resultaat: `score`, `completed_items[]`, `missing_items[]`, `not_applicable_items[]`,
+`invalid_items[]`.
+
+De flexibiliteitscomponent van de **energiescore** blijft ongemoeid en mag wel 0 zijn:
+die meet of de woning iets te verplaatsen heeft, en dat is een echte eigenschap van
+de woning en niet een gat in de invoer.
 
 ### Energiescore (0–100)
 Expliciete formule zodat de uitkomst deterministisch en testbaar is:

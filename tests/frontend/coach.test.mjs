@@ -365,3 +365,61 @@ describe('measurements as a customer reads them', () => {
     assert.match(text, /netvermogen in W: 1\.235/);
   });
 });
+
+describe('a checklist item this home cannot answer', () => {
+  it('names what is not counted, so a short checklist is not a silent one', async () => {
+    // A home with no appliances is judged on four items, not six. Without this
+    // sentence the checklist would appear to have quietly skipped something,
+    // and the customer cannot see the source rows that decided it
+    // (round B, finding 6).
+    const coach = answeredCoach({
+      missing_data: [],
+      metrics: {
+        ...sampleCoach().metrics,
+        data_quality: {
+          score: 100,
+          completed_items: [
+            'home_profile_complete',
+            'grid_source_valid',
+            'solar_source_valid',
+            'price_information_available',
+          ],
+          missing_items: [],
+          not_applicable_items: [
+            'device_profile_complete',
+            'flexible_devices_have_time_window',
+          ],
+        },
+      },
+    });
+    const { tab } = await openCoachTab(fakeHass({ coach }));
+
+    const notices = noticeTexts(tab);
+    assert.ok(
+      notices.some((t) => t.includes('Niet van toepassing op deze woning')),
+      'the items that were skipped have to be named',
+    );
+    assert.ok(
+      notices.some((t) => t.includes('een compleet apparaatprofiel')),
+      'and named in Dutch, never as a checklist key',
+    );
+  });
+
+  it('says nothing extra when every item applies', async () => {
+    const coach = answeredCoach({
+      missing_data: [],
+      metrics: {
+        ...sampleCoach().metrics,
+        data_quality: {
+          score: 100,
+          completed_items: ['home_profile_complete'],
+          missing_items: [],
+          not_applicable_items: [],
+        },
+      },
+    });
+    const { tab } = await openCoachTab(fakeHass({ coach }));
+
+    assert.ok(!noticeTexts(tab).some((t) => t.includes('Niet van toepassing')));
+  });
+});

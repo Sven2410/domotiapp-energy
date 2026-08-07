@@ -660,3 +660,145 @@ describe('the contract fields that apply', () => {
     assert.equal(update.home.fixed_import_price_eur_kwh, 0.3);
   });
 });
+
+describe('the price composition against a linked price source', () => {
+  /** A price source of the given basis, plus the grid meter the sample has. */
+  function withPriceSource(price_basis, extra = {}) {
+    return sampleConfig({
+      home: { ...sampleConfig().home, contract_type: 'dynamic' },
+      sources: [
+        ...sampleConfig().sources,
+        {
+          id: 'prijs',
+          name: 'Dynamische prijs',
+          type: 'current_price',
+          enabled: true,
+          price_basis,
+          ...extra,
+        },
+      ],
+    });
+  }
+
+  /** The contract form's schema, keyed by field name. */
+  function contractFields(tab) {
+    return Object.fromEntries(
+      forms(tab)[1].schema.map((field) => [field.name, field]),
+    );
+  }
+
+  const COMPOSITION = [
+    'energy_tax_eur_kwh',
+    'supplier_markup_eur_kwh',
+    'vat_percent',
+  ];
+
+  it('disables the composition fields when the source is already all-in', async () => {
+    // The source reports the finished price and it is used unchanged, so an
+    // energy tax entered here would be applied to nothing at all.
+    const { tab } = await openHomeTab(fakeHass({ config: withPriceSource('all_in') }));
+    const fields = contractFields(tab);
+
+    for (const name of COMPOSITION) {
+      assert.equal(fields[name].disabled, true, name);
+    }
+    // Disabled, never removed: the installer has to be able to see what a
+    // market-price source would need, and the stored values survive.
+    for (const name of COMPOSITION) {
+      assert.ok(name in fields, name);
+    }
+    assert.ok(
+      noticeTexts(tab).some((t) => t.includes('levert de all-in prijs')),
+      'the reason the fields are greyed out has to be on screen',
+    );
+  });
+
+  it('leaves them active for a source that reports the bare market price', async () => {
+    // This is the case they exist for: the conversion cannot happen without
+    // them, so disabling them here would break the price entirely.
+    const { tab } = await openHomeTab(fakeHass({ config: withPriceSource('market') }));
+    const fields = contractFields(tab);
+
+    for (const name of COMPOSITION) {
+      assert.ok(!fields[name].disabled, name);
+    }
+  });
+
+  it('leaves them active when there is no price source at all', async () => {
+    // "Heb ik geen energiebron voor stroomprijs dan wil ik zelf alles
+    // invullen" — nothing is converting anything, so nothing is in the way.
+    const config = sampleConfig({
+      home: { ...sampleConfig().home, contract_type: 'dynamic' },
+    });
+    const { tab } = await openHomeTab(fakeHass({ config }));
+    const fields = contractFields(tab);
+
+    for (const name of COMPOSITION) {
+      assert.ok(!fields[name].disabled, name);
+    }
+  });
+
+  it('ignores a disabled price source', async () => {
+    // A source switched off converts nothing, so the fields are the installer's
+    // again — the same reading the engine uses for a disabled row.
+    const config = withPriceSource('all_in', { enabled: false });
+    const { tab } = await openHomeTab(fakeHass({ config }));
+    const fields = contractFields(tab);
+
+    for (const name of COMPOSITION) {
+      assert.ok(!fields[name].disabled, name);
+    }
+  });
+});
+
+describe('what a price field will accept', () => {
+  it('gives every price field the same step, fine enough for a real tariff', async () => {
+    // They used to disagree — 0.001 on some, 0.0001 on others, same unit, same
+    // card — and both were coarser than a supplier's own figure. `step` reaches
+    // the browser's number validation, so it decides which prices may be typed.
+    //
+    // Both contract types are walked, because each hides the other's fields and
+    // one pass would leave half of them unchecked.
+    const { tab } = await openHomeTab();
+    const seen = new Set();
+
+    for (const contract_type of ['fixed', 'dynamic']) {
+      change(tab, { contract_type }, 1);
+      await settle();
+
+      const priceFields = forms(tab)
+        .flatMap((form) => form.schema)
+        .filter((field) => field.selector?.number?.unit_of_measurement === '€/kWh');
+
+      for (const field of priceFields) {
+        seen.add(field.name);
+        assert.equal(field.selector.number.step, 0.000001, field.name);
+      }
+    }
+
+    // The whole set, so a field added later cannot slip through unchecked.
+    assert.deepEqual([...seen].sort(), [
+      'energy_tax_eur_kwh',
+      'feed_in_cost_eur_kwh',
+      'feed_in_price_eur_kwh',
+      'fixed_import_price_eur_kwh',
+      'high_price_threshold_eur_kwh',
+      'low_price_threshold_eur_kwh',
+      'supplier_markup_eur_kwh',
+    ]);
+  });
+
+  it('accepts a six-decimal tariff without a step mismatch', async () => {
+    // 0,241710 is the figure from the contract that reported this.
+    const { tab } = await openHomeTab();
+    const field = forms(tab)[1].schema.find(
+      (item) => item.name === 'fixed_import_price_eur_kwh',
+    );
+
+    const remainder = 0.241710 / field.selector.number.step;
+    assert.ok(
+      Math.abs(remainder - Math.round(remainder)) < 1e-6,
+      '0,241710 has to sit exactly on the step',
+    );
+  });
+});

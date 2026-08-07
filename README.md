@@ -242,6 +242,25 @@ the price source cannot be used. A price source needs an entity, a unit, and an 
 statement of whether it reports the all-in price or the bare market price. A market
 price additionally needs the energy tax and the supplier markup on the Woning tab.
 
+### Energiebelasting, opslag and btw are greyed out
+
+The linked price source already reports an all-in price, so there is nothing to
+convert and those three fields would never be read. Set the source to the bare market
+price if you want to use them, or remove the price source to fill everything in
+yourself. The values you already entered are kept either way.
+
+### A price field will not take a comma (or will not take a full stop)
+
+Which decimal separator a number field accepts is decided by **the browser's
+language**, not by Home Assistant and not by this integration. A number input parses
+according to the browser locale: a Dutch-language Chrome takes `0,241710`, an
+English-language Chrome takes `0.241710` and silently rejects the comma. If a tariff
+will not go in, this is almost always why — try the other separator before assuming
+the field is broken.
+
+The step is not the cause. Every €/kWh field accepts six decimals, which is what a
+supplier bills; a figure like 0,241710 goes in exactly.
+
 ## Development
 
 ```bash

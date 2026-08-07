@@ -308,10 +308,13 @@ export const coachTab = {
       adviceList.sync(rest.map((item, index) => ({ ...item, id: item.id || index })));
 
       const missing = live.missing_data || live.metrics?.data_quality?.missing_items;
-      renderMissing(missing || []);
+      renderMissing(
+        missing || [],
+        live.metrics?.data_quality?.not_applicable_items || [],
+      );
     }
 
-    function renderMissing(items) {
+    function renderMissing(items, notApplicable) {
       // A checklist key with no words behind it is left off the list. The
       // customer is told what is missing, never in what identifier it is missing.
       const named = items.map(checklistLabel).filter((label) => label !== null);
@@ -319,11 +322,26 @@ export const coachTab = {
         ...named.map((label) => el('li', { class: 'plain-item', text: label })),
       );
       setVisible(missingList, named.length > 0);
+
+      // What this home is not judged on is named too. A checklist that silently
+      // shrank from six items to four would look like it had skipped something,
+      // and the customer cannot see the source rows that decided it.
+      const skipped = notApplicable.map(checklistLabel).filter((l) => l !== null);
+      const skippedSentence = skipped.length
+        ? `Niet van toepassing op deze woning, en dus niet meegeteld: ${skipped.join(
+            ', ',
+          )}.`
+        : '';
       missingNotice.set(
         items.length
-          ? ''
-          : 'Alle gegevens voor een betrouwbaar advies zijn ingevuld.',
-        { tone: 'success' },
+          ? skippedSentence
+          : [
+              'Alle gegevens voor een betrouwbaar advies zijn ingevuld.',
+              skippedSentence,
+            ]
+              .filter(Boolean)
+              .join(' '),
+        { tone: items.length ? 'info' : 'success' },
       );
     }
 

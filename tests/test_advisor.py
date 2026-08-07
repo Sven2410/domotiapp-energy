@@ -15,6 +15,7 @@ from homeassistant.core import HomeAssistant
 
 from custom_components.domotiapp_energy.const import (
     CONFIDENCE_HIGH,
+    CONFIDENCE_MEDIUM,
     CONTRACT_TYPE_DYNAMIC,
     CONTRACT_TYPE_FIXED,
     DEVICE_TYPE_DISHWASHER,
@@ -63,11 +64,19 @@ def _config(**home_overrides: Any) -> StoredConfiguration:
     the world from 2027 onwards, where a fed-in kWh is worth the feed-in tariff
     and self-consumption has real value. The net-metering regime has its own
     tests further down, because it makes a different claim entirely.
+
+    The feed-in cost is an explicit **0.0**, meaning "this home pays nothing to
+    feed in", because that is what these tests are about: the arithmetic of the
+    savings formula. Leaving it at ``None`` says something else entirely — that
+    the amount is unknown and no saving may be quoted — and that rule has its
+    own tests further down. The two used to be the same thing, and every test
+    here silently relied on the guess.
     """
     defaults: dict[str, Any] = {
         "main_fuse_a": 25,
         "max_grid_power_w": 5750.0,
         "net_metering_until": None,
+        "feed_in_cost_eur_kwh": 0.0,
     }
     return StoredConfiguration(home=HomeProfile(**(defaults | home_overrides)))
 
@@ -733,14 +742,16 @@ async def test_a_dynamic_contract_prices_the_saving_at_the_live_price(
     assert advice[0].estimated_savings_eur == 0.50
 
 
-async def test_a_saving_that_works_out_negative_is_reported_as_zero(
+async def test_a_saving_that_works_out_negative_is_reported_as_it_stands(
     hass: HomeAssistant,
 ) -> None:
-    """Feeding in pays better, so there is nothing to gain — but not nothing to say.
+    """Feeding in pays better, and the customer is told so in euros.
 
-    Zero is a calculated answer, not an unknown one. The advice survives,
-    because the reason to run the appliance on your own surplus still holds;
-    only the money is absent.
+    This used to be clamped to zero, which is the one presentation that hides
+    the situation worth knowing about: self-consumption is currently *costing*
+    money, and "EUR 0,00" reads as "makes no difference". The advice survives —
+    the surplus is real — but neither the amount nor the sentence may claim a
+    favourable moment (round B, finding 2).
     """
     config = _config(
         min_solar_surplus_w=500.0,
@@ -753,8 +764,157 @@ async def test_a_saving_that_works_out_negative_is_reported_as_zero(
 
     advice = Advisor().generate(config, metrics)
 
+    # 1 kWh x (0.05 - 0.30) = EUR -0.25.
     assert advice[0].reason_code == REASON_SOLAR_SURPLUS_AVAILABLE
-    assert advice[0].estimated_savings_eur == 0.0
+    assert advice[0].estimated_savings_eur == -0.25
+    # The sentence has to follow the arithmetic rather than talk over it.
+    assert "gunstig moment" not in advice[0].message
+    assert "€ 0,25" in advice[0].message
+
+
+async def test_an_unknown_feed_in_cost_yields_no_amount_at_all(
+    hass: HomeAssistant,
+) -> None:
+    """An empty feed-in cost means unknown, and unknown is not zero.
+
+    Reading a blank field as 0.0 was a guess wearing the clothes of a
+    calculation. Under net metering it was the whole answer, because the avoided
+    feed-in cost is the only term that survives the cancellation — so a customer
+    who had never filled the field in was shown "EUR 0,00" as though it had been
+    worked out (round B, finding 4c).
+    """
+    config = _config(
+        min_solar_surplus_w=500.0,
+        contract_type=CONTRACT_TYPE_FIXED,
+        fixed_import_price_eur_kwh=0.30,
+        feed_in_price_eur_kwh=0.05,
+        feed_in_cost_eur_kwh=None,
+    )
+    config.devices.append(_device())
+    metrics = _metrics(solar_surplus_w=1500.0)
+
+    advice = Advisor().generate(config, metrics)
+
+    assert advice[0].reason_code == REASON_SOLAR_SURPLUS_AVAILABLE
+    assert advice[0].estimated_savings_eur is None
+    # And it says which field would answer it, rather than going quiet.
+    assert "terugleverkosten" in advice[0].message
+
+
+async def test_a_missing_amount_names_the_term_that_is_actually_missing(
+    hass: HomeAssistant,
+) -> None:
+    """Four gaps can stop the sum, and the sentence has to name the right one.
+
+    Found on the running instance, not in this suite: a home whose price source
+    had gone stale was told to go and fill in the feed-in cost — a field it had
+    already filled in. Every unknown saving blamed the same field, because the
+    message was written as though only one thing could ever be missing.
+    """
+    config = _config(
+        min_solar_surplus_w=500.0,
+        contract_type=CONTRACT_TYPE_DYNAMIC,
+        feed_in_price_eur_kwh=0.05,
+        feed_in_cost_eur_kwh=0.0,
+    )
+    config.devices.append(_device())
+    # A dynamic contract with no live price: the price is the missing term.
+    metrics = _metrics(solar_surplus_w=1500.0, current_price_eur_kwh=None)
+
+    advice = Advisor().generate(config, metrics)
+
+    assert advice[0].estimated_savings_eur is None
+    assert "geen actuele prijs" in advice[0].message
+    assert "terugleverkosten" not in advice[0].message
+
+
+async def test_a_missing_energy_per_cycle_names_the_device_field(
+    hass: HomeAssistant,
+) -> None:
+    """The first check in the formula, and it points at the Apparaten tab."""
+    config = _config(
+        min_solar_surplus_w=500.0,
+        contract_type=CONTRACT_TYPE_FIXED,
+        fixed_import_price_eur_kwh=0.30,
+        feed_in_price_eur_kwh=0.05,
+        feed_in_cost_eur_kwh=0.0,
+    )
+    config.devices.append(_device(energy_per_cycle_kwh=None))
+    metrics = _metrics(solar_surplus_w=1500.0)
+
+    advice = Advisor().generate(config, metrics)
+
+    assert advice[0].estimated_savings_eur is None
+    assert "energie per cyclus" in advice[0].message
+    assert "terugleverkosten" not in advice[0].message
+
+
+async def test_a_feed_in_cost_of_zero_is_a_calculated_zero(
+    hass: HomeAssistant,
+) -> None:
+    """The same home with an explicit 0.0 gets a real amount, not a blank.
+
+    This is the pair of the test above, and together they are the whole point of
+    the distinction: same form, one field, two different truths.
+    """
+    config = _config(
+        min_solar_surplus_w=500.0,
+        contract_type=CONTRACT_TYPE_FIXED,
+        fixed_import_price_eur_kwh=0.30,
+        feed_in_price_eur_kwh=0.05,
+        feed_in_cost_eur_kwh=0.0,
+    )
+    config.devices.append(_device())
+    metrics = _metrics(solar_surplus_w=1500.0)
+
+    advice = Advisor().generate(config, metrics)
+
+    # 1 kWh x (0.30 - 0.05) = EUR 0.25.
+    assert advice[0].estimated_savings_eur == 0.25
+
+
+async def test_a_charger_caps_its_confidence_at_medium(hass: HomeAssistant) -> None:
+    """A perfect surplus reading does not make a charger's energy figure certain.
+
+    "Energie per laadsessie" is a typical session the installer estimated; the
+    state of charge is not knowable in this release. Reporting high confidence
+    for a euro amount built on that estimate claims more than we know
+    (round B, finding 7).
+    """
+    config = _config(
+        min_solar_surplus_w=500.0,
+        contract_type=CONTRACT_TYPE_FIXED,
+        fixed_import_price_eur_kwh=0.30,
+        feed_in_price_eur_kwh=0.05,
+    )
+    config.devices.append(
+        _device(device_type=DEVICE_TYPE_EV_CHARGER, energy_per_cycle_kwh=10.0)
+    )
+    metrics = _metrics(solar_surplus_w=1500.0, solar_surplus_confidence=CONFIDENCE_HIGH)
+
+    advice = Advisor().generate(config, metrics)
+
+    assert advice[0].confidence == CONFIDENCE_MEDIUM
+    # The saving itself is still calculated; only the claim about it is softened.
+    assert advice[0].estimated_savings_eur == 2.50
+
+
+async def test_a_dishwasher_keeps_the_confidence_the_measurement_earned(
+    hass: HomeAssistant,
+) -> None:
+    """The cap is about the charger's unknown, not a blanket downgrade."""
+    config = _config(
+        min_solar_surplus_w=500.0,
+        contract_type=CONTRACT_TYPE_FIXED,
+        fixed_import_price_eur_kwh=0.30,
+        feed_in_price_eur_kwh=0.05,
+    )
+    config.devices.append(_device())
+    metrics = _metrics(solar_surplus_w=1500.0, solar_surplus_confidence=CONFIDENCE_HIGH)
+
+    advice = Advisor().generate(config, metrics)
+
+    assert advice[0].confidence == CONFIDENCE_HIGH
 
 
 # --- Net metering (SPEC.md §16) ---------------------------------------------

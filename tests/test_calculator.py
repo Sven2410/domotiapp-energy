@@ -19,7 +19,6 @@ from custom_components.domotiapp_energy.const import (
     COMPLETENESS_ITEM_PRICE,
     COMPLETENESS_ITEM_SOLAR,
     COMPLETENESS_ITEM_TIME_WINDOWS,
-    COMPLETENESS_POINTS,
     COMPONENT_MAX,
     CONFIDENCE_HIGH,
     CONFIDENCE_LOW,
@@ -894,17 +893,37 @@ async def test_an_unknown_load_is_not_a_peak_risk(hass: HomeAssistant) -> None:
 
 
 def test_an_empty_configuration_scores_zero() -> None:
-    """Nothing configured means no points at all."""
+    """Nothing configured means no points at all.
+
+    Only the three unconditional items are asked of an empty configuration —
+    there is no solar row and no appliance to judge — and all three fail, so the
+    score is zero either way. A fresh install must never score 100 for owning
+    nothing, which is the failure mode the unconditional three exist to prevent.
+    """
     result = evaluate_completeness(StoredConfiguration(), EnergySnapshot())
 
     assert result.score == 0
     assert result.completed_items == []
-    assert len(result.missing_items) == len(COMPLETENESS_POINTS)
+    assert set(result.missing_items) == {
+        COMPLETENESS_ITEM_HOME,
+        COMPLETENESS_ITEM_GRID,
+        COMPLETENESS_ITEM_PRICE,
+    }
+    assert set(result.not_applicable_items) == {
+        COMPLETENESS_ITEM_SOLAR,
+        COMPLETENESS_ITEM_DEVICE_PROFILE,
+        COMPLETENESS_ITEM_TIME_WINDOWS,
+    }
 
 
 def test_each_checklist_item_is_worth_its_documented_points() -> None:
-    """The weights are the ones in the SPEC.md §16 table."""
+    """The weights are the ones in the SPEC.md §16 table.
+
+    A home that owns all six things is judged on all six, and the weights then
+    sum to 100 exactly as they always did.
+    """
     config = _config(contract_type=CONTRACT_TYPE_FIXED, fixed_import_price_eur_kwh=0.28)
+    config.sources.append(_source(SOURCE_TYPE_SOLAR, "sensor.solar"))
     config.devices.append(
         DeviceProfile(
             id="d1",
@@ -928,6 +947,61 @@ def test_each_checklist_item_is_worth_its_documented_points() -> None:
         COMPLETENESS_ITEM_TIME_WINDOWS,
     }
     assert result.score == 100
+
+
+def test_solar_panels_and_a_meter_but_no_appliances_can_reach_a_hundred() -> None:
+    """The install that reported this: solar, a smart meter, no smart appliances.
+
+    It used to be told "2 van de 6 onderdelen is nog niet compleet" for as long
+    as it existed, because the two were about appliances the home does not own.
+    Nothing the owner could do would ever close them. The checklist now asks
+    only what this home can answer (round B, finding 6).
+    """
+    config = _config(contract_type=CONTRACT_TYPE_FIXED, fixed_import_price_eur_kwh=0.28)
+    config.sources.append(_source(SOURCE_TYPE_SOLAR, "sensor.solar"))
+    snapshot = EnergySnapshot(grid_power_w=1000.0, solar_power_w=500.0)
+
+    result = evaluate_completeness(config, snapshot)
+
+    assert result.score == 100
+    assert result.missing_items == []
+    assert set(result.not_applicable_items) == {
+        COMPLETENESS_ITEM_DEVICE_PROFILE,
+        COMPLETENESS_ITEM_TIME_WINDOWS,
+    }
+
+
+def test_a_home_without_solar_is_not_held_to_the_solar_item() -> None:
+    """No solar row means nobody said this home has panels, so it is not asked.
+
+    The row is the statement. This is not discovery by another name: nothing is
+    inferred from the entity register, only from what an installer entered.
+    """
+    config = _config(contract_type=CONTRACT_TYPE_FIXED, fixed_import_price_eur_kwh=0.28)
+    snapshot = EnergySnapshot(grid_power_w=1000.0)
+
+    result = evaluate_completeness(config, snapshot)
+
+    assert COMPLETENESS_ITEM_SOLAR in result.not_applicable_items
+    assert COMPLETENESS_ITEM_SOLAR not in result.missing_items
+    assert result.score == 100
+
+
+def test_a_solar_row_that_reports_nothing_still_costs_points() -> None:
+    """Owning panels and not reading them is a real gap, and stays one.
+
+    The distinction the whole rescaling rests on: "no panels" is not a fault,
+    "panels we cannot read" is. If both scored 100 the item would mean nothing.
+    """
+    config = _config(contract_type=CONTRACT_TYPE_FIXED, fixed_import_price_eur_kwh=0.28)
+    config.sources.append(_source(SOURCE_TYPE_SOLAR, "sensor.solar"))
+    snapshot = EnergySnapshot(grid_power_w=1000.0, solar_power_w=None)
+
+    result = evaluate_completeness(config, snapshot)
+
+    assert COMPLETENESS_ITEM_SOLAR in result.missing_items
+    # 20 + 25 + 15 earned out of an applicable 20 + 25 + 15 + 15.
+    assert result.score == 80
 
 
 def test_a_dynamic_contract_needs_a_live_price() -> None:
@@ -1446,10 +1520,13 @@ def test_the_checklist_asks_a_device_for_exactly_these_fields() -> None:
         without = _score(**{**complete, field_name: None})
         assert item in without.missing_items, field_name
 
-    # A device that is not flexible is never moved, so it needs no window —
-    # which is why the form stops marking those two fields as well.
+    # A device that is not flexible is never moved, so it needs no window — and
+    # the item is therefore not asked at all rather than counted as missing. A
+    # home whose only appliance cannot be moved has nothing to fix here, so
+    # holding ten points back from it would be a penalty with no remedy.
     inflexible = _score(
         nominal_power_w=2000.0, energy_per_cycle_kwh=1.2, is_flexible=False
     )
     assert COMPLETENESS_ITEM_DEVICE_PROFILE in inflexible.completed_items
-    assert COMPLETENESS_ITEM_TIME_WINDOWS in inflexible.missing_items
+    assert COMPLETENESS_ITEM_TIME_WINDOWS in inflexible.not_applicable_items
+    assert COMPLETENESS_ITEM_TIME_WINDOWS not in inflexible.missing_items

@@ -226,17 +226,28 @@ describe('the list of devices', () => {
     assert.match(rows(tab)[0].textContent, /energie per cyclus ontbreekt/);
   });
 
-  it('names a missing time window on a flexible device too', async () => {
+  it('does not call a missing time window incomplete', async () => {
+    // The form's own helper says both times may be left empty, so a device
+    // without a window is finished, not half-filled. It used to be listed as
+    // missing and marked with an asterisk at the same time — the form
+    // contradicting itself in two adjacent lines (round B, finding 8).
     const hass = fakeHass({
       config: sampleConfig({
-        devices: [dishwasher({ earliest_start: null, latest_finish: null })],
+        devices: [
+          dishwasher({
+            earliest_start: null,
+            latest_finish: null,
+            nominal_power_w: 2000,
+            energy_per_cycle_kwh: 1.2,
+          }),
+        ],
       }),
     });
     const { tab } = await openDevicesTab(hass);
 
-    assert.match(rows(tab)[0].textContent, /vroegste start/);
-    assert.match(rows(tab)[0].textContent, /laatste eindtijd/);
-    assert.match(rows(tab)[0].textContent, /ontbreken/);
+    assert.doesNotMatch(rows(tab)[0].textContent, /vroegste start/);
+    assert.doesNotMatch(rows(tab)[0].textContent, /laatste eindtijd/);
+    assert.match(rows(tab)[0].textContent, /Compleet/);
   });
 
   it('keeps the agreement about control readable on an incomplete device', async () => {
@@ -781,19 +792,20 @@ describe('what the data quality checklist needs', () => {
     // `required` is what ha-form hands to the selector, which renders the
     // marker from --ha-input-required-marker. Our own text suffix imitated
     // that styling instead of inheriting it.
-    assert.deepEqual(marked.sort(), [
-      'earliest_start',
-      'energy_per_cycle_kwh',
-      'latest_finish',
-      'nominal_power_w',
-    ]);
+    //
+    // The two window fields are deliberately absent: their helper says they may
+    // be left empty, and an asterisk over that sentence was the defect
+    // (round B, finding 8).
+    assert.deepEqual(marked.sort(), ['energy_per_cycle_kwh', 'nominal_power_w']);
     // And it stays a marking, not a gate: a half-filled device is savable.
     assert.equal(buttonIn(formDialog(panel), 'Opslaan').disabled, true);
     change(panel, { name: 'Vaatwasser' });
     assert.equal(buttonIn(formDialog(panel), 'Opslaan').disabled, false);
   });
 
-  it('stops asking for a window once the device is not flexible', async () => {
+  it('marks the same two fields whether or not the device is flexible', async () => {
+    // Flexibility moves which fields are *asked*, never which are marked: the
+    // two the checklist needs are the same either way.
     const { panel, tab } = await openDevicesTab();
     buttonIn(tab, 'Apparaat toevoegen').click();
     await settle();
@@ -805,6 +817,7 @@ describe('what the data quality checklist needs', () => {
       .map((field) => field.name);
 
     assert.deepEqual(marked.sort(), ['energy_per_cycle_kwh', 'nominal_power_w']);
+    assert.ok(!fieldNames(panel).includes('earliest_start'));
   });
 
   it('lists what is still missing, and shortens the list as it is filled', async () => {
@@ -981,5 +994,55 @@ describe('the dialog folds into sections a phone can hold', () => {
 
     assert.ok(fieldNames(panel).includes('is_flexible'));
     assert.ok(!fieldNames(panel).includes('earliest_start'));
+  });
+});
+
+describe('what a charger is actually asked', () => {
+  /** The schema of the open device form, keyed by field name. */
+  function fields(panel) {
+    return Object.fromEntries(form(panel).schema.map((f) => [f.name, f]));
+  }
+
+  it('names the charger fields after what a charger has', async () => {
+    // "Nominaal vermogen" on a charger reads as a rating plate figure, and
+    // "energie per cyclus" asks for a number nobody can state: it depends on
+    // how empty the car is (round B, finding 7).
+    const { panel, tab } = await openDevicesTab();
+    buttonIn(tab, 'Apparaat toevoegen').click();
+    await settle();
+
+    change(panel, { device_type: 'ev_charger' });
+    const charger = fields(panel);
+
+    assert.equal(charger.nominal_power_w.label, 'Maximaal laadvermogen');
+    assert.equal(charger.energy_per_cycle_kwh.label, 'Energie per laadsessie');
+    assert.equal(charger.duration_minutes.label, 'Duur van een laadsessie');
+  });
+
+  it('says in so many words that the charge figure is an estimate', async () => {
+    // The honest version of a question that cannot be answered exactly, and it
+    // names the consequence rather than leaving the installer to wonder.
+    const { panel, tab } = await openDevicesTab();
+    buttonIn(tab, 'Apparaat toevoegen').click();
+    await settle();
+
+    change(panel, { device_type: 'ev_charger' });
+    const helper = fields(panel).energy_per_cycle_kwh.helper;
+
+    assert.match(helper, /schatting/);
+    assert.match(helper, /hoe leeg de auto is/);
+  });
+
+  it('leaves the labels alone for everything that does have a cycle', async () => {
+    const { panel, tab } = await openDevicesTab();
+    buttonIn(tab, 'Apparaat toevoegen').click();
+    await settle();
+
+    change(panel, { device_type: 'dishwasher' });
+    const dishwasher = fields(panel);
+
+    assert.equal(dishwasher.nominal_power_w.label, 'Nominaal vermogen');
+    assert.equal(dishwasher.energy_per_cycle_kwh.label, 'Energie per cyclus');
+    assert.equal(dishwasher.duration_minutes.label, 'Duur van een cyclus');
   });
 });

@@ -26,6 +26,7 @@ from custom_components.domotiapp_energy.const import (
     CONFIDENCE_HIGH,
     CONFIDENCE_MEDIUM,
     CONTRACT_TYPE_DYNAMIC,
+    DEVICE_TYPE_EV_CHARGER,
     MEASUREMENT_GRID_LOAD_PERCENT,
     MEASUREMENT_GRID_POWER_W,
     MEASUREMENT_MISSING_ITEMS,
@@ -234,33 +235,134 @@ def _advise_solar_surplus(context: _Context) -> list[AdviceItem]:
         return []
 
     savings = _solar_savings(context, device)
-    message = (
-        f"Er is momenteel zonneoverschot beschikbaar. Dit is een gunstig "
-        f"moment om {device.name} te gebruiken."
-    )
-    if context.net_metering and savings == 0:
-        # Saying "gunstig moment" while showing a saving of EUR 0,00 reads as a
-        # contradiction. It is not: the advice is about using your own surplus,
-        # and under net metering that simply earns nothing extra.
-        message += (
-            " Zolang de salderingsregeling geldt levert dit geen extra "
-            "besparing op, maar het overschot zelf gebruiken blijft de meest "
-            "efficiënte keuze."
-        )
 
     return [
         AdviceItem(
             id=f"{REASON_SOLAR_SURPLUS_AVAILABLE}:{device.id}",
             title="Zonneoverschot beschikbaar",
-            message=message,
+            message=_surplus_message(context, device, savings),
             severity=SEVERITY_INFO,
             reason_code=REASON_SOLAR_SURPLUS_AVAILABLE,
-            confidence=context.metrics.solar_surplus_confidence,
+            confidence=_surplus_confidence(context, device),
             estimated_savings_eur=savings,
             related_device_ids=[device.id],
             measurements={MEASUREMENT_SOLAR_SURPLUS_W: round(surplus, 1)},
         )
     ]
+
+
+def _surplus_confidence(context: _Context, device: DeviceProfile) -> str:
+    """Return how much to trust the surplus advice for this device.
+
+    The measurement can be excellent and the advice still be a guess. A charger
+    is the case: "energie per laadsessie" is a typical session the installer
+    estimated, because nothing here knows how empty the car is — that arrives
+    with the state of charge in a later release. Claiming high confidence for a
+    euro amount resting on that estimate overstates what we know, so a charger
+    is capped at medium however good the surplus reading is (SPEC.md §16).
+    """
+    measured = context.metrics.solar_surplus_confidence
+    if device.device_type != DEVICE_TYPE_EV_CHARGER:
+        return measured
+    return CONFIDENCE_MEDIUM if measured == CONFIDENCE_HIGH else measured
+
+
+def _surplus_message(
+    context: _Context, device: DeviceProfile, savings: float | None
+) -> str:
+    """Phrase the surplus advice so it matches the amount underneath it.
+
+    Four situations, and the sentence has to follow the arithmetic rather than
+    assume it. "Dit is een gunstig moment" under a loss, or under a blank
+    amount, is the panel contradicting its own figure.
+    """
+    opening = "Er is momenteel zonneoverschot beschikbaar."
+    favourable = f"Dit is een gunstig moment om {device.name} te gebruiken."
+
+    if savings is None:
+        # Name the term that is actually missing. Four different gaps can stop
+        # the sum, and an earlier version of this sentence blamed the feed-in
+        # cost for all of them — it told an installer whose price source had
+        # gone stale to go and fill in a field that was already filled in.
+        return f"{opening} {favourable} {_why_no_amount(context, device)}"
+
+    if savings < 0:
+        # Feeding in pays better than self-consumption. Rare, but real once the
+        # feed-in tariff exceeds the import price, and the customer is owed the
+        # figure rather than a cheerful sentence over the top of it.
+        return (
+            f"{opening} Zelf verbruiken levert nu echter minder op dan "
+            f"terugleveren: {device.name} nu gebruiken kost naar schatting "
+            f"{_euro(-savings)} ten opzichte van het overschot terugleveren. "
+            f"Wachten tot de terugleververgoeding lager ligt is voordeliger."
+        )
+
+    if savings == 0 and context.net_metering:
+        # Saying "gunstig moment" while showing a saving of EUR 0,00 reads as a
+        # contradiction. It is not: the advice is about using your own surplus,
+        # and under net metering that simply earns nothing extra.
+        return (
+            f"{opening} {favourable} Zolang de salderingsregeling geldt levert "
+            f"dit geen extra besparing op, maar het overschot zelf gebruiken "
+            f"blijft de meest efficiënte keuze."
+        )
+
+    if savings == 0:
+        return (
+            f"{opening} {favourable} Het levert op dit moment niets extra op, "
+            f"maar het kost ook niets."
+        )
+
+    return f"{opening} {favourable}"
+
+
+def _euro(amount: float) -> str:
+    """Return an amount as Dutch currency, with the comma these texts use."""
+    return f"€ {amount:.2f}".replace(".", ",")
+
+
+def _why_no_amount(context: _Context, device: DeviceProfile) -> str:
+    """Say which missing term stopped the saving from being calculated.
+
+    The order matches the checks in :func:`_solar_savings`, so the sentence
+    names the term that actually stopped it rather than the last one that could
+    have. Each answer says where to go and what to enter, because "niet te
+    berekenen" on its own leaves the installer hunting.
+    """
+    home = context.config.home
+
+    if device.energy_per_cycle_kwh is None:
+        return (
+            f"Hoeveel dit oplevert is niet te berekenen zonder de energie per "
+            f"cyclus van {device.name} — vul die in bij Apparaten."
+        )
+
+    if (
+        context.metrics.current_price_eur_kwh
+        if home.contract_type == CONTRACT_TYPE_DYNAMIC
+        else home.fixed_import_price_eur_kwh
+    ) is None:
+        if home.contract_type == CONTRACT_TYPE_DYNAMIC:
+            return (
+                "Hoeveel dit oplevert is niet te berekenen zolang er geen "
+                "actuele prijs is. Controleer de prijsbron bij Energiebronnen."
+            )
+        return (
+            "Hoeveel dit oplevert is niet te berekenen zonder het vaste "
+            "leveringstarief — vul dat in bij Woning."
+        )
+
+    if not context.net_metering and home.feed_in_price_eur_kwh is None:
+        return (
+            "Hoeveel dit oplevert is niet te berekenen zonder de "
+            "terugleververgoeding — vul die in bij Woning."
+        )
+
+    return (
+        "Hoeveel dit oplevert is niet te berekenen zolang de terugleverkosten "
+        "niet zijn ingevuld — vul ze in bij Woning, of zet ze op 0 als deze "
+        "aansluiting ze niet betaalt."
+    )
 
 
 def _advise_price(context: _Context) -> list[AdviceItem]:
@@ -435,6 +537,20 @@ def _solar_savings(context: _Context, device: DeviceProfile) -> float | None:
     is a calculated answer, not an unknown one, and the advice stays visible
     because the reason to run the appliance now still holds.
 
+    **A negative result is returned as it stands.** It used to be clamped to
+    zero, which turned "self-consumption costs you money right now" into a
+    cheerful EUR 0,00 — the one figure that hides exactly the situation worth
+    knowing about. It happens once the feed-in tariff exceeds the import price,
+    and it is a fact about the customer's contract, not an error to smooth over.
+
+    **An empty feed-in cost means unknown, not zero.** The two are different
+    statements and the form now says so: leave it empty and the saving cannot be
+    calculated, enter 0 and the saving is genuinely zero. Reading an empty field
+    as 0.0 was a guess presented as a number, and under net metering it was the
+    whole answer — the avoided feed-in cost is the only term that survives the
+    cancellation, so a blank field silently produced "EUR 0,00" for what was
+    actually unknown.
+
     Every amount in the formula is all-in: the dynamic price because the
     calculator normalised it on reading, the fixed tariff and the feed-in
     amounts because the form asks for them that way (SPEC.md §16). Mixing a bare
@@ -462,9 +578,12 @@ def _solar_savings(context: _Context, device: DeviceProfile) -> float | None:
     else:
         effective_feed_in = home.feed_in_price_eur_kwh
 
-    feed_in_cost = home.feed_in_cost_eur_kwh or 0.0
+    feed_in_cost = home.feed_in_cost_eur_kwh
+    if feed_in_cost is None:
+        return None
+
     saving = energy * (import_price - effective_feed_in + feed_in_cost)
-    return round(max(saving, 0.0), 2)
+    return round(saving, 2)
 
 
 def _filter_by_savings(
@@ -479,6 +598,10 @@ def _filter_by_savings(
     still holds, there is simply nothing extra to earn. Under net metering that
     is the normal case, and filtering it would leave the panel almost silent
     for a year while its advice was perfectly sound.
+
+    A negative saving reaches the customer for the same reason, and it is the
+    one the threshold would have swallowed most quietly: "not worth mentioning"
+    is the wrong verdict on "this is currently costing you money".
 
     So the threshold applies to exactly one situation: there is money in this,
     but not enough to bother the customer with.

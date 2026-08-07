@@ -32,6 +32,25 @@ const DRAFT = 'home';
 /** Volts per phase, for the theoretical maximum hint (SPEC.md §8). */
 const VOLTAGE_PER_PHASE = 230;
 
+/**
+ * The number selector every price field uses.
+ *
+ * One step for all of them, and fine enough for what a real tariff looks like.
+ * They used to disagree — 0,001 on some fields and 0,0001 on others, for the
+ * same unit on the same card — and both were coarser than the six decimals the
+ * backend keeps and a supplier actually bills: 0,241710 is a real figure from a
+ * real contract. A `step` reaches the browser's own number validation, so a
+ * coarse one is not merely a hint about the arrows; it is a rule about which
+ * prices may be typed at all.
+ *
+ * Note that `step` is the only part of this that is locale-independent. Whether
+ * the field accepts "0,24" or "0.24" is decided by the browser's language, not
+ * by us — see the README.
+ */
+const PRICE_SELECTOR = {
+  number: { min: 0, step: 0.000001, unit_of_measurement: '€/kWh' },
+};
+
 const CONNECTION_SCHEMA = [
   { name: 'home_name', label: 'Naam van de woning', selector: { text: {} } },
   {
@@ -85,7 +104,7 @@ const CONNECTION_SCHEMA = [
  * The rule, for both forms: a value is dropped when the new choice makes it
  * meaningless, and kept when it is merely inactive.
  */
-function contractSchema(draft) {
+function contractSchema(draft, config) {
   const dynamic = draft.contract_type === 'dynamic';
   const onlyFor = {
     fixed_import_price_eur_kwh: 'fixed',
@@ -95,15 +114,58 @@ function contractSchema(draft) {
     supplier_markup_eur_kwh: 'dynamic',
     vat_percent: 'dynamic',
   };
+  const allIn = allInPriceSource(config);
   return CONTRACT_SCHEMA.filter((field) => {
     const needs = onlyFor[field.name];
     return !needs || needs === (dynamic ? 'dynamic' : 'fixed');
-  });
+  }).map((field) =>
+    allIn && COMPOSITION_FIELDS.includes(field.name)
+      ? { ...field, disabled: true }
+      : field,
+  );
+}
+
+/**
+ * The three fields that only exist to convert a bare market price.
+ *
+ * They are the price composition of SPEC.md §16 —
+ * `(markt + opslag + belasting) x (1 + btw)` — and they have a job only when
+ * something has to be converted.
+ */
+const COMPOSITION_FIELDS = [
+  'energy_tax_eur_kwh',
+  'supplier_markup_eur_kwh',
+  'vat_percent',
+];
+
+/**
+ * The linked price source that already reports an all-in price, if any.
+ *
+ * When one exists the three composition fields have nothing to do: the price
+ * arrives finished and is used unchanged, so an energy tax entered here would
+ * be applied to nothing. Asking for it anyway invites the installer to fill in
+ * three numbers that will never be read, and then to wonder why the price on
+ * the Overzicht does not match them.
+ *
+ * They are **disabled rather than hidden**, and their values are kept. An
+ * installer has to be able to see what a market-price source would need, and a
+ * source that changes from all-in to market must not find its composition
+ * wiped (SPEC.md §16). This is the same rule the contract fields follow: drop a
+ * value when the choice makes it meaningless, keep it when it is merely
+ * inactive.
+ */
+function allInPriceSource(config) {
+  return (config?.sources || []).find(
+    (source) =>
+      source.type === 'current_price' &&
+      source.enabled !== false &&
+      source.price_basis === 'all_in',
+  );
 }
 
 /** Contract fields that are filled in but not in force right now. */
-function inactiveContractFields(draft) {
-  const shown = new Set(contractSchema(draft).map((field) => field.name));
+function inactiveContractFields(draft, config) {
+  const shown = new Set(contractSchema(draft, config).map((field) => field.name));
   return CONTRACT_SCHEMA.filter(
     (field) =>
       !shown.has(field.name) &&
@@ -133,7 +195,7 @@ const CONTRACT_SCHEMA = [
     helper:
       'Het all-in bedrag per kWh, inclusief energiebelasting en btw — dus wat ' +
       'de klant werkelijk betaalt.',
-    selector: { number: { min: 0, step: 0.001, unit_of_measurement: '€/kWh' } },
+    selector: PRICE_SELECTOR,
   },
   {
     name: 'energy_tax_eur_kwh',
@@ -141,7 +203,7 @@ const CONTRACT_SCHEMA = [
     helper:
       'Een bedrag per kWh, exclusief btw. Nodig zodra een prijsbron de kale ' +
       'marktprijs levert; die wordt hiermee naar een all-in prijs omgerekend.',
-    selector: { number: { min: 0, step: 0.0001, unit_of_measurement: '€/kWh' } },
+    selector: PRICE_SELECTOR,
   },
   {
     name: 'supplier_markup_eur_kwh',
@@ -152,7 +214,9 @@ const CONTRACT_SCHEMA = [
     helper:
       'Een bedrag per kWh, exclusief btw — géén vast maandbedrag. Reken een ' +
       'maandbedrag niet om: alleen de opslag per kWh hoort hier.',
-    selector: { number: { step: 0.0001, unit_of_measurement: '€/kWh' } },
+    // No minimum, unlike every other price field: a supplier markup can be
+    // negative when the contract gives a discount per kWh.
+    selector: { number: { step: 0.000001, unit_of_measurement: '€/kWh' } },
   },
   {
     name: 'vat_percent',
@@ -169,18 +233,22 @@ const CONTRACT_SCHEMA = [
       'Het vaste bedrag dat de klant per teruggeleverde kWh daadwerkelijk ' +
       'vergoed krijgt. Geen marktprijs en geen percentage: dit veld wordt ' +
       'niet omgerekend.',
-    selector: { number: { min: 0, step: 0.001, unit_of_measurement: '€/kWh' } },
+    selector: PRICE_SELECTOR,
   },
   {
     name: 'feed_in_cost_eur_kwh',
     label: 'Terugleverkosten',
-    // The warning that matters: several suppliers bill a fixed monthly amount
+    // Two warnings in one field. Several suppliers bill a fixed monthly amount
     // per band, and entering that here would be wrong by two orders of
-    // magnitude (SPEC.md §8).
+    // magnitude (SPEC.md §8). And empty is not zero: under net metering the
+    // avoided feed-in cost is the *entire* saving, so a blank field is the
+    // difference between "we cannot work this out" and "it saves nothing".
     helper:
       'Een bedrag per teruggeleverde kWh — géén vast maandbedrag. Reken een ' +
-      'maandstaffel om, of laat dit leeg.',
-    selector: { number: { min: 0, step: 0.001, unit_of_measurement: '€/kWh' } },
+      'maandstaffel om. Vul 0 in als deze aansluiting geen terugleverkosten ' +
+      'betaalt; laat het leeg als je het niet weet, dan toont de coach geen ' +
+      'geschatte besparing in plaats van een bedrag dat op een aanname rust.',
+    selector: PRICE_SELECTOR,
   },
   {
     name: 'net_metering_until',
@@ -199,7 +267,7 @@ const CONTRACT_SCHEMA = [
     helper:
       'Vergelijk met de all-in prijs, niet met de kale marktprijs van je ' +
       'prijsbron.',
-    selector: { number: { min: 0, step: 0.001, unit_of_measurement: '€/kWh' } },
+    selector: PRICE_SELECTOR,
   },
   {
     name: 'high_price_threshold_eur_kwh',
@@ -207,7 +275,7 @@ const CONTRACT_SCHEMA = [
     helper:
       'Vergelijk met de all-in prijs, niet met de kale marktprijs van je ' +
       'prijsbron.',
-    selector: { number: { min: 0, step: 0.001, unit_of_measurement: '€/kWh' } },
+    selector: PRICE_SELECTOR,
   },
 ];
 
@@ -373,7 +441,14 @@ export const homeTab = {
         'welke van de twee het is.',
       { tone: 'info' },
     );
-    contract.body.append(priceNotice.element, inactiveNotice.element);
+    // Why three fields are greyed out. Without it the installer sees inputs
+    // that refuse to be filled in and no reason given (SPEC.md §16).
+    const compositionNotice = notice('mdi:database-arrow-right-outline');
+    contract.body.append(
+      priceNotice.element,
+      compositionNotice.element,
+      inactiveNotice.element,
+    );
 
     // --- The control level, fixed in 0.1.0 ----------------------------------
     const controlForm = createForm(
@@ -462,9 +537,13 @@ export const homeTab = {
      * invisible.
      */
     function refreshContractFields() {
-      const schema = contractSchema(draft);
+      const config = state.get().config;
+      const schema = contractSchema(draft, config);
       const names = schema.map((field) => field.name);
-      const key = JSON.stringify(names);
+      // The disabled flags belong in the key as well: linking an all-in price
+      // source changes no field name, only whether three of them accept input,
+      // and a key built from names alone would leave the old schema in place.
+      const key = JSON.stringify(schema.map((field) => [field.name, !!field.disabled]));
       if (key !== contractKey) {
         contractKey = key;
         // Update this together with the schema and never apart from it: the
@@ -476,11 +555,24 @@ export const homeTab = {
         entry.form.setData(only(draft, names));
       }
 
-      const inactive = inactiveContractFields(draft);
+      const inactive = inactiveContractFields(draft, config);
       inactiveNotice.set(
         inactive.length
           ? `Deze gegevens horen bij het andere contracttype en worden nu niet ` +
               `gebruikt, maar blijven bewaard: ${inactive.join(', ')}.`
+          : '',
+        { tone: 'info' },
+      );
+
+      const allIn = allInPriceSource(config);
+      compositionNotice.set(
+        allIn
+          ? `De prijsbron "${allIn.name || 'zonder naam'}" levert de all-in ` +
+              `prijs, dus die wordt ongewijzigd gebruikt. Energiebelasting, ` +
+              `opslag leverancier en btw zijn daarom uitgeschakeld: ze rekenen ` +
+              `alleen een kale marktprijs om. Zet de prijsbron op "kale ` +
+              `marktprijs" als je ze wél wilt gebruiken, of verwijder de bron ` +
+              `om alles zelf in te vullen.`
           : '',
         { tone: 'info' },
       );
@@ -515,7 +607,7 @@ export const homeTab = {
       // Each card is handed only its own fields, so it cannot carry a stale
       // copy of another card's values.
       contractKey = '';
-      visibleContractNames = contractSchema(draft).map((field) => field.name);
+      visibleContractNames = contractSchema(draft, config).map((field) => field.name);
       for (const { form, names, conditional } of forms) {
         form.setData(only(draft, conditional ? visibleContractNames : names));
       }

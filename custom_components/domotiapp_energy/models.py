@@ -1184,6 +1184,11 @@ class DataQualityResult:
     score: int = 0
     completed_items: list[str] = field(default_factory=list)
     missing_items: list[str] = field(default_factory=list)
+    # Items this home cannot be judged on, because it does not own the thing
+    # they are about — no solar row, no appliances. They are neither earned nor
+    # missing, and the panel needs the distinction to say "3 van de 4" instead
+    # of holding a customer to a checklist item they can never satisfy.
+    not_applicable_items: list[str] = field(default_factory=list)
     invalid_items: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -1192,6 +1197,7 @@ class DataQualityResult:
             "score": self.score,
             "completed_items": list(self.completed_items),
             "missing_items": list(self.missing_items),
+            "not_applicable_items": list(self.not_applicable_items),
             "invalid_items": list(self.invalid_items),
         }
 
@@ -1203,6 +1209,7 @@ class DataQualityResult:
             score=_as_int(data.get("score"), 0, minimum=0, maximum=100),
             completed_items=_as_str_list(data.get("completed_items")),
             missing_items=_as_str_list(data.get("missing_items")),
+            not_applicable_items=_as_str_list(data.get("not_applicable_items")),
             invalid_items=_as_str_list(data.get("invalid_items")),
         )
 

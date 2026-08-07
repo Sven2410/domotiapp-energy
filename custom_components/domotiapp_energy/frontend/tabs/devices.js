@@ -199,17 +199,18 @@ function flexibleByDefault(deviceType) {
  * The fields the data quality checklist actually asks of a device.
  *
  * This mirrors `engine/completeness.py`, which is the real source of truth:
- * `_has_complete_device_profile` wants a power **and** an energy per cycle, and
- * `_flexible_devices_have_windows` wants both ends of a window on every usable
- * flexible device. `tests/test_calculator.py` pins those two rules, so a change
- * there fails a test rather than quietly leaving this marking behind.
+ * `_has_complete_device_profile` wants a power **and** an energy per cycle.
+ *
+ * **The time window is deliberately not marked.** It used to be, on a flexible
+ * device, and the asterisk then sat directly above a helper reading "laat beide
+ * tijden leeg als er geen venster is" — the form contradicting itself in two
+ * adjacent lines. The helper is right: a device with no window is allowed at any
+ * hour, which makes it *more* available for advice, not less. A window is worth
+ * points on the quality checklist because it sharpens the advice, and that is a
+ * different claim from "this field must be filled in".
  */
-function requiredFields(draft) {
-  const required = ['nominal_power_w', 'energy_per_cycle_kwh'];
-  if (draft.is_flexible) {
-    required.push('earliest_start', 'latest_finish');
-  }
-  return required;
+function requiredFields() {
+  return ['nominal_power_w', 'energy_per_cycle_kwh'];
 }
 
 /**
@@ -238,13 +239,11 @@ function markRequired(field, required) {
 const REQUIRED_LABELS = {
   nominal_power_w: 'nominaal vermogen',
   energy_per_cycle_kwh: 'energie per cyclus',
-  earliest_start: 'vroegste start',
-  latest_finish: 'laatste eindtijd',
 };
 
 /** Which of the checklist's fields this draft has not filled in yet. */
 function missingRequired(draft) {
-  return requiredFields(draft).filter((name) => {
+  return requiredFields().filter((name) => {
     const value = draft[name];
     return value === undefined || value === null || value === '';
   });
@@ -258,7 +257,7 @@ function missingRequired(draft) {
  * nothing is asked that could not.
  */
 function schemaFor(draft) {
-  const required = requiredFields(draft);
+  const required = requiredFields();
   const fields = [
     { name: 'name', label: 'Naam', selector: { text: {} } },
     {
@@ -303,18 +302,34 @@ function schemaFor(draft) {
   return fields.map((field) => markRequired(field, required));
 }
 
-/** What the device uses, which is what a saving can be calculated from. */
+/**
+ * What the device uses, which is what a saving can be calculated from.
+ *
+ * The **labels** move with the type, not only the helpers. "Nominaal vermogen"
+ * on a charger reads as a rating plate figure, and a charger has no such thing
+ * that matters here — what the calculation needs is the maximum it can deliver
+ * to the car. "Energie per cyclus" and "duur van een cyclus" are worse: a
+ * charger has no cycle whose size anyone can state, because that depends on how
+ * empty the car is, and nothing in this release knows that. The state of charge
+ * arrives with the vehicle of a later release (SPEC.md §30); until then the
+ * honest question is what a *typical* session looks like, and the field has to
+ * ask that in so many words rather than demand a number that does not exist.
+ *
+ * The advice built on it is capped at medium confidence for exactly this
+ * reason; see `_surplus_confidence` in `engine/advisor.py`.
+ */
 function powerFields(draft) {
+  const charger = draft.device_type === 'ev_charger';
   return [
     {
       name: 'nominal_power_w',
-      label: 'Nominaal vermogen',
+      label: charger ? 'Maximaal laadvermogen' : 'Nominaal vermogen',
       helper: powerHelper(draft.device_type),
       selector: { number: { min: 0, step: 10, unit_of_measurement: 'W' } },
     },
     {
       name: 'energy_per_cycle_kwh',
-      label: 'Energie per cyclus',
+      label: charger ? 'Energie per laadsessie' : 'Energie per cyclus',
       // Without this there is no saving to calculate, so the advice can only
       // say "now is a good moment" and never what it is worth (SPEC.md §16).
       helper: energyHelper(draft.device_type),
@@ -322,8 +337,8 @@ function powerFields(draft) {
     },
     {
       name: 'duration_minutes',
-      label: 'Duur van een cyclus',
-      helper: 'In minuten. Wordt getoetst aan het tijdvenster hieronder.',
+      label: charger ? 'Duur van een laadsessie' : 'Duur van een cyclus',
+      helper: durationHelper(draft.device_type),
       selector: { number: { min: 0, step: 5, unit_of_measurement: 'min' } },
     },
   ];
@@ -332,7 +347,9 @@ function powerFields(draft) {
 /** What "a cycle" means differs enough per type to be worth saying. */
 function powerHelper(deviceType) {
   const perType = {
-    ev_charger: 'Het laadvermogen waarmee deze paal levert.',
+    ev_charger:
+      'Het hoogste vermogen waarmee deze paal kan laden — niet wat de auto ' +
+      'er vandaag van afneemt.',
     home_battery: 'Het laad- of ontlaadvermogen van de batterij.',
     heat_pump: 'Het elektrische opgenomen vermogen, niet het thermische.',
     electric_boiler: 'Het vermogen van het verwarmingselement.',
@@ -342,7 +359,11 @@ function powerHelper(deviceType) {
 
 function energyHelper(deviceType) {
   const perType = {
-    ev_charger: 'De energie van een gemiddelde laadbeurt.',
+    ev_charger:
+      'Een schatting van een typische laadbeurt, bijvoorbeeld 10 kWh voor ' +
+      'een dagelijkse rit. Exact kan niet: DomotiApp Energy weet niet hoe ' +
+      'leeg de auto is, dus het advies rekent met dit getal en houdt zijn ' +
+      'betrouwbaarheid daarom op "gemiddeld".',
     dishwasher: 'De energie van één programma, bijvoorbeeld 1,0 tot 1,5 kWh.',
     washing_machine: 'De energie van één wasbeurt.',
     dryer: 'De energie van één droogbeurt.',
@@ -352,6 +373,16 @@ function energyHelper(deviceType) {
     (perType[deviceType] || 'De energie van één cyclus.') +
     ' Zonder dit getal is er geen besparing te berekenen.'
   );
+}
+
+function durationHelper(deviceType) {
+  if (deviceType === 'ev_charger') {
+    return (
+      'In minuten, voor een typische laadbeurt. Wordt getoetst aan het ' +
+      'tijdvenster hieronder.'
+    );
+  }
+  return 'In minuten. Wordt getoetst aan het tijdvenster hieronder.';
 }
 
 /**
@@ -370,10 +401,14 @@ function windowFields(draft) {
     {
       name: 'earliest_start',
       label: 'Vroegste start',
+      // No asterisk on this field or the next; see requiredFields(). The helper
+      // now says what leaving it empty costs, which is the honest version of
+      // what the asterisk was trying to convey.
       helper:
-        'Laat beide tijden leeg als er geen venster is. Een eindtijd vóór de ' +
-        'starttijd loopt door tot de volgende dag — 22:00 tot 06:00 is het ' +
-        'normale geval.',
+        'Laat beide tijden leeg als er geen venster is; het apparaat mag dan ' +
+        'op elk uur. Een venster telt wel mee voor de datakwaliteit, omdat het ' +
+        'advies er gerichter van wordt. Een eindtijd vóór de starttijd loopt ' +
+        'door tot de volgende dag — 22:00 tot 06:00 is het normale geval.',
       // Seconds are meaningless for a window a dishwasher runs in.
       selector: { time: { no_second: true } },
     },

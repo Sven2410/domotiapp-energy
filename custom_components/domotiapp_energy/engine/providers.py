@@ -244,15 +244,36 @@ def _peak_risk(metrics: EnergyMetrics) -> str:
 
 
 def _missing_data(metrics: EnergyMetrics) -> str:
-    """List what still has to be configured."""
-    missing = metrics.data_quality.missing_items
-    if not missing:
-        return "Alle gegevens voor een betrouwbaar advies zijn ingevuld."
+    """List what still has to be configured.
 
-    named = [label for item in missing if (label := _ITEM_LABELS.get(item)) is not None]
-    if not named:
-        return "Alle gegevens voor een betrouwbaar advies zijn ingevuld."
-    return f"Nog ontbrekend: {', '.join(named)}."
+    Items this home cannot be judged on are named separately rather than left
+    out in silence. A customer looking at a data quality of 100 with four items
+    behind it is owed the sentence explaining why it was four and not six —
+    otherwise the score looks like it skipped something.
+    """
+    quality = metrics.data_quality
+    named = [
+        label
+        for item in quality.missing_items
+        if (label := _ITEM_LABELS.get(item)) is not None
+    ]
+    skipped = [
+        label
+        for item in quality.not_applicable_items
+        if (label := _ITEM_LABELS.get(item)) is not None
+    ]
+
+    if named:
+        sentence = f"Nog ontbrekend: {', '.join(named)}."
+    else:
+        sentence = "Alle gegevens voor een betrouwbaar advies zijn ingevuld."
+
+    if skipped:
+        sentence += (
+            f" Niet van toepassing op deze woning, en dus niet meegeteld: "
+            f"{', '.join(skipped)}."
+        )
+    return sentence
 
 
 def _score_breakdown(metrics: EnergyMetrics) -> str:

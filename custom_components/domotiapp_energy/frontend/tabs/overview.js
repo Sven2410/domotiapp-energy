@@ -252,11 +252,19 @@ export const overviewTab = {
       energyScore.set(metrics.energy_score ?? null);
       dataQuality.set(metrics.data_quality?.score ?? null);
 
-      const missingCount = metrics.data_quality?.missing_items?.length ?? 0;
+      // "van de zes" was a constant, and it was wrong for any home that does
+      // not own all six things — a home with solar and a smart meter but no
+      // smart appliances was told two of six were incomplete and could never
+      // fix either. The checklist now drops what does not apply, so the total
+      // is counted rather than assumed (engine/completeness.py).
+      const quality = metrics.data_quality || {};
+      const missingCount = quality.missing_items?.length ?? 0;
+      const applicable = missingCount + (quality.completed_items?.length ?? 0);
       missingNotice.set(
         missingCount > 0
-          ? `${missingCount} van de zes onderdelen van de datakwaliteit is nog ` +
-              'niet compleet. Het tabblad Energiecoach laat zien welke.'
+          ? `${missingCount} van de ${applicable} onderdelen van de ` +
+              'datakwaliteit is nog niet compleet. Het tabblad Energiecoach ' +
+              'laat zien welke.'
           : 'Alle gegevens voor een betrouwbaar advies zijn ingevuld.',
         { tone: missingCount > 0 ? 'warning' : 'success' },
       );

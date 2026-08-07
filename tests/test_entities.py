@@ -322,8 +322,11 @@ async def test_sensor_states_and_units(
     data_quality = hass.states.get(SENSOR_DATA_QUALITY)
     assert data_quality is not None
     assert data_quality.attributes["unit_of_measurement"] == "%"
-    # Home, grid, price and a complete device profile pass; solar does not.
-    assert int(data_quality.state) == 20 + 25 + 15 + 15 + 10
+    # This home has no solar row, so the solar item is not asked of it and its
+    # 15 points leave the divisor with them. Everything that *is* asked passes,
+    # and that is what 100 means: complete for this home, not complete for a
+    # home with panels. It used to read 85 with no way to ever reach more.
+    assert int(data_quality.state) == 100
 
     score = hass.states.get(SENSOR_SCORE)
     assert score is not None
