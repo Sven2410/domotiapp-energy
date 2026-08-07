@@ -852,6 +852,24 @@ devices/create · devices/update · devices/delete · preferences/update · logs
 Leesacties: elke ingelogde gebruiker. De frontend verbergt configuratietabbladen voor
 niet-admins (`hass.user.is_admin`), maar de backend is altijd leidend.
 
+**Configuratie is niet hetzelfde als bediening — en dat onderscheid is bewust.**
+
+De lijst hierboven is niet "alles wat schrijft", maar "alles wat de **configuratie**
+wijzigt". Dat is werk van de installateur, en het is wat `expected_revision` bewaakt.
+Daarnaast bestaat er een tweede soort schrijfactie: de **bewoner die iets over de
+huidige toestand meldt**. Die raakt de configuratie niet, verhoogt de revision niet, en
+mag daarom door elke ingelogde gebruiker worden uitgevoerd.
+
+Vandaag valt daar `coach/recalculate` onder, en vanaf het gereed-venster ook
+`devices/set_ready` (§32.5) — de bewoner die zegt dat de machine vol is. Beide zijn
+**opzettelijk niet** `require_admin`.
+
+**Timmer dit later niet dicht als inconsistentie.** Een bewoner die zijn eigen vaatwasser
+niet als "vol" mag markeren omdat hij geen beheerder is, kan de functie niet gebruiken —
+en dan is het hele gereedheidsmodel zinloos voor precies de persoon voor wie het bedoeld
+is. Een commando hoort in de admin-lijst wanneer het de opgeslagen configuratie verandert,
+niet omdat het toevallig schrijft.
+
 **`coach/recalculate` blijft bewust open voor elke gebruiker**, ook al schrijft hij via de
 coordinator een `advice_recalculated`-regel in het logboek. Een niet-admin kan daarmee
 hooguit één regel per kwartier laten ontstaan — de anti-spam uit §8 klapt de rest samen —
@@ -1841,14 +1859,24 @@ ready_before = latest_finish
 klaar vóór". `latest_finish` betekende "mag niet meer draaien na", wat het dichtst bij
 een deadline ligt.
 
-**Dit is een gedragsverandering en die hoort in de CHANGELOG.** Voor een apparaat met een
-ingevulde duur wordt het venster strenger: waar het oude model een vaatwasser van 180
-minuten om 05:55 liet starten bij een `latest_finish` van 06:00 — en dus tot 08:55 liet
-doorlopen, ruim na de eindtijd die de bewoner opgaf — eist het nieuwe model dat hij om
-03:00 begint. De oude uitkomst was feitelijk fout: de validator controleerde alleen of de
-duur in het venster *paste*, nooit of de start laat genoeg was.
+#### Het oude venstermodel was defect, niet alleen anders
 
-Voor een apparaat zonder duur is de migratie volledig gedragsneutraal.
+**Dit hoort in de CHANGELOG als bugfix**, en niet als "het werkt ineens anders" — anders
+leest een klant een correctie als een grillige wijziging (besluit Sven, 2026-08-07).
+
+Het oude model toetste alleen of de *start* binnen het venster viel. Een vaatwasser van
+180 minuten met `latest_finish` op 06:00 mocht daardoor om 05:55 beginnen en liep tot
+08:55 door — bijna drie uur voorbij de eindtijd die de bewoner had opgegeven. Voor een
+apparaat dat om 07:00 leeggeruimd moet worden, of dat in de stille uren hoort te zwijgen,
+is dat precies het scenario dat het venster moest voorkomen.
+
+De validator zag het niet: die controleerde of de duur in het venster *paste*
+(`duration_minutes > window_length`), nooit of er op het gekozen moment nog genoeg tijd
+over was.
+
+Het nieuwe model eist dat dezelfde vaatwasser om 03:00 begint. Dat is strenger, en het is
+de correctie. Voor een apparaat zonder ingevulde duur is de migratie volledig
+gedragsneutraal.
 
 ### 32.5 Gereedheid, en waarom de vlag niet in de configuratie hoort
 
@@ -1862,8 +1890,15 @@ zit. Zonder dat gegeven adviseert de coach vroeg of laat het draaien van een leg
 needs_ready_flag — boolean, default per type
 ```
 
-Default `true` voor `dishwasher`, `washing_machine`, `dryer` en `ev_charger` (de auto moet
-aan de lader staan); `false` voor de rest.
+Default `true` voor `dishwasher`, `washing_machine` en `dryer`; **`false` voor de rest,
+inclusief `ev_charger`.**
+
+**Waarom een laadpaal `false` krijgt** (besluit Sven, 2026-08-07): een lader meldt via
+`status_entity` zelf of er een auto hangt, en een vlag die de bewoner met de hand moet
+omzetten terwijl het systeem het kan zien is precies het invulwerk waar deze ronde vanaf
+wil. Voor een lader zónder statuskoppeling is dat jammer; dat wordt opgelost met een
+koppeling, niet met een knop. Het blijft een **typedefault**, dus een installateur kan
+hem aanzetten waar hij wél nodig is.
 
 **De vlag zelf staat buiten de configuratie**, in een eigen store:
 
@@ -1909,10 +1944,25 @@ betekenen.
 **Is er geen enkele entiteit gekoppeld, dan wordt er niet gegokt.** Het paneel zegt erbij
 dat we niet kunnen zien wanneer het apparaat klaar is, en de bewoner zet de vlag zelf uit.
 
-**Wel vervalt de vlag aan het einde van het gereed-venster** (of om middernacht als er
-geen venster is). Dat is geen aanname over de machine maar een houdbaarheidstermijn van de
-*intentie*: "hij is vol" van vanochtend zegt niets meer over morgen. Zonder die
-vervaltermijn blijft een vergeten vlag het urgentie-advies eeuwig voeden.
+**Wel vervalt de vlag**, en dat is geen aanname over de machine maar een
+houdbaarheidstermijn op de *intentie*: "hij is vol" van vanochtend zegt niets meer over
+morgen. Zonder vervaltermijn blijft een vergeten vlag het urgentie-advies eeuwig voeden.
+
+| Situatie | Vervalt |
+|---|---|
+| Apparaat met een gereed-venster | aan het einde van dat venster |
+| Apparaat zonder venster | **24 uur na het zetten** |
+
+**Niet om middernacht** (besluit Sven, 2026-08-07). Middernacht is precies verkeerd voor
+een woning die 's avonds laat de vaatwasser vult: de vlag zou verlopen voordat de machine
+gedraaid heeft. Vierentwintig uur zegt bovendien iets zinnigers — als er een dag lang
+niets is gebeurd, klopt er iets anders niet.
+
+`READY_FLAG_MAX_AGE_HOURS` is een **vaste constante, niet instelbaar**, net als de
+hysterese en `URGENCY_LEAD_MINUTES`.
+
+**Het paneel noemt het vervalmoment** bij het zetten van de vlag, zodat een bewoner er
+niet door verrast wordt.
 
 ### 32.7 De vier beperkingen: wat wel en wat niet
 
@@ -1951,18 +2001,22 @@ manier om planning binnen te halen zónder prognose.
   `ready_from` / `ready_before` / `needs_ready_flag` komen erbij. `duration_minutes`
   verdwijnt niet langer uit het formulier — het heeft nu een functie.
 - **§13**: een tweede store, zonder revision, met de motivatie uit §32.5.
-- **§14**: `devices/set_ready`, zonder `require_admin`.
+- **§14**: `devices/set_ready`, zonder `require_admin`, met het onderscheid tussen
+  configuratie en bediening dat daar nu is vastgelegd.
 - **§16**: `deadline_approaching` in de reason codes en op rank 3; de vensterregels
   verwijzen naar het gereed-venster.
 - **De datakwaliteitschecklist**: het item `flexible_devices_have_time_window` gaat over
   het gereed-venster in plaats van het startvenster. De weging verandert niet.
 
-### 32.10 Wat ik nog aan Sven wil voorleggen
+### 32.10 Bouwvolgorde
 
-1. **`needs_ready_flag` voor een laadpaal.** Ik zet hem op `true` omdat de auto aan de
-   lader moet staan, maar dat maakt het handmatig terwijl een `status_entity` van een
-   Easee het waarschijnlijk zelf meldt. Detectie dekt dat, maar de eerste keer moet de
-   bewoner de vlag alsnog zetten.
-2. **De vervaltermijn van de vlag.** Aan het einde van het gereed-venster is verdedigbaar,
-   maar een apparaat zonder venster valt terug op middernacht. Voor een woning die
-   's avonds laat de vaatwasser vult is dat net verkeerd.
+Drie fases, elk met een eigen PR, elk op zichzelf bruikbaar:
+
+| Fase | Inhoud | Klaar wanneer |
+|---|---|---|
+| 1 | `ready_from` / `ready_before`, de afgeleide start, de migratie, formulier en validatie | een bestaande woning laadt ongewijzigd door en het nieuwe venster stuurt het advies |
+| 2 | `deadline_approaching` op rank 3, met `URGENCY_LEAD_MINUTES` | het advies verschijnt op tijd en wint van zon en prijs |
+| 3 | `needs_ready_flag`, de runtime-store, `set_ready`, detectie en vervaltermijn | de vlag stuurt het urgentie-advies en gaat vanzelf uit |
+
+Fase 2 kan pas na 1 (de deadline volgt uit het venster), fase 3 kan pas na 2 (de vlag
+bepaalt of het urgentie-advies mag vuren).
