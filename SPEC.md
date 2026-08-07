@@ -469,6 +469,18 @@ temperature_entity · battery_level_entity
 
 Gebruik `null` of laat het veld weg. Nooit `""`.
 
+Type-specifieke velden bij `ev_charger` (§34.3):
+
+```text
+target_soc_percent      0–100, nullable, geen default   — bewonersveld (§33.4)
+vehicle_capacity_kwh    > 0, nullable, geen default     — installateursveld
+```
+
+Samen met `battery_level_entity`, `nominal_power_w` en `ready_before` maken deze twee het
+verschil tussen een laadpaal die **gepland** kan worden en een die **opportunistisch**
+laadt. Dat onderscheid wordt niet als modus opgeslagen maar als predicaat afgeleid; zie
+§34.4 voor waarom dat hier anders ligt dan bij `meter_mode` en `price_basis`.
+
 ### Voorkeuren
 
 ```text
@@ -1018,6 +1030,11 @@ Gewogen checklist, transparant en testbaar:
 | Prijsinformatie beschikbaar (dynamisch: geldige prijsbron; vast: tarief ingevuld) | 15 | altijd |
 | Minimaal één apparaatprofiel met vermogen én energie/cyclus | 15 | er is ≥1 bruikbaar apparaat |
 | Alle flexibele apparaten hebben een tijdvenster | 10 | er is ≥1 bruikbaar flexibel apparaat |
+
+> Het apparaatitem krijgt er bij de laadpaalronde één voorwaarde bij en **geen nieuw item
+> en geen andere weging** (§34.6): een laadpaal met een SOC-koppeling maar zonder
+> accucapaciteit of doel-SOC is onvolledig. Een laadpaal *zonder* die koppeling verandert
+> hier niets — die laadt opportunistisch en mist niets.
 
 **De score is het aandeel van wat van toepassing is**, niet de som van alle punten:
 
@@ -2027,6 +2044,11 @@ manier om planning binnen te halen zónder prognose.
 - **De laadtoestand van een auto en het voertuig als object.** Zolang die er niet is,
   blijft "energie per laadsessie" een schatting en blijft het advies gecapt op `medium`
   (§16).
+
+  > **Deels ingehaald door §34.** De laadtoestand komt daar wél binnen, met een
+  > doel-SOC en een accucapaciteit erbij, en voor een laadpaal die daarmee compleet is
+  > vervalt de cap op `medium`. Het **voertuig als eigen object** blijft eruit, en die
+  > grens is in §34.7 expliciet getrokken: één auto per paal, geen wagenpark.
 - **Prijs- en zonneprognose**, en daarmee het activeren van `solar_forecast`. Echte
   planning is een eigen onderwerp; het urgentie-advies levert het grootste deel van de
   winst zonder.
@@ -2051,7 +2073,7 @@ Drie fases, elk met een eigen PR, elk op zichzelf bruikbaar:
 | Fase | Inhoud | Klaar wanneer |
 |---|---|---|
 | 1 | `ready_from` / `ready_before`, de afgeleide start, de migratie, formulier en validatie | een bestaande woning laadt ongewijzigd door en het nieuwe venster stuurt het advies |
-| 2 | `deadline_approaching` op rank 3, met `URGENCY_LEAD_MINUTES` | het advies verschijnt op tijd en wint van zon en prijs |
+| 2 | `deadline_approaching` op rank 3, met `URGENCY_LEAD_MINUTES`, en de duur via `required_duration_minutes(device, snapshot)` (§34.8) | het advies verschijnt op tijd en wint van zon en prijs |
 | 3 | `needs_ready_flag`, de runtime-store, `set_ready`, detectie en vervaltermijn | de vlag stuurt het urgentie-advies en gaat vanzelf uit |
 
 Fase 2 kan pas na 1 (de deadline volgt uit het venster), fase 3 kan pas na 2 (de vlag
@@ -2339,3 +2361,246 @@ verhogen omdat er een afspraak op ligt, hoort **de reden** te zien. Daarom is
 - de frontendtests tonen per formulier aan dat de eigenaarschapskaart wordt toegepast;
 - de twee dode velden zijn weg en een bestaande opslag laadt ongewijzigd door;
 - geverifieerd in de echte browser als niet-adminaccount, met echte kliks.
+
+---
+
+## 34. De laadpaal: twee modi die geen glijdende schaal zijn
+
+**Status: ontwerp, besloten maar niet gebouwd.** Deze sectie legt het datamodel vast en
+zegt wat het formulier toont. De aansturing zelf blijft de aansturingsrelease (§32.8); dit
+gaat over wat er geregistreerd wordt, wat het paneel ermee laat zien en wat de coach
+ermee zegt.
+
+### 34.1 Waarom dit twee dingen zijn en niet één met een schuifje
+
+Een laadpaal kent twee manieren van laden die niets met elkaar te maken hebben:
+
+| | Wat de bewoner zegt | Wat het systeem moet kunnen |
+|---|---|---|
+| **Plannen** | "vol om 7 uur" | uitrekenen hoeveel er nog in moet, dus hoe lang het duurt, dus wanneer het uiterlijk moet beginnen |
+| **Opportunistisch** | "laad wanneer het goedkoop is" | herkennen dat de prijs laag is |
+
+Het verschil is niet gradueel, en dat komt door één ding: **zonder de laadtoestand van de
+auto bestaat de hoeveelheid niet.** Geen hoeveelheid betekent geen duur, en geen duur
+betekent geen laatste startmoment. Een deadline die niet uit te rekenen is, is slechter
+dan geen deadline: dan zou het urgentie-advies (§32.3) op een gok vuren, en dat is precies
+wat harde regel 1 verbiedt.
+
+Opportunistisch laden is dus geen afgezwakte planning. Het is een andere uitspraak, die
+niets nodig heeft wat er niet is.
+
+### 34.2 De laadtoestand alleen is niet genoeg
+
+`battery_level_entity` bestaat al voor `ev_charger`, met de hulptekst "de laadtoestand van
+de auto, als de laadpaal die meldt". Maar een percentage is geen energie. Om van een SOC
+naar een laadduur te komen:
+
+```text
+laadduur_minuten = (doel% − huidig%) / 100 × accucapaciteit_kwh / laadvermogen_w × 60000
+```
+
+Wat daarvoor nodig is, en wat er vandaag van bestaat:
+
+| Nodig | Bestaat |
+|---|---|
+| huidige SOC | **ja** — `battery_level_entity` |
+| doel-SOC | **nee** |
+| accucapaciteit van de auto in kWh | **nee** — een laadpaal publiceert dit niet |
+| laadvermogen | ja — `nominal_power_w` |
+| de deadline | ja — `ready_before` (§32.2) |
+
+"Vol" is bij bijna niemand 100%, en de capaciteit weet de paal niet: hij meet stroom, niet
+de auto die eraan hangt. Dat zijn precies de twee dingen die een latere release niet kan
+afleiden en waarvoor je anders bij elke klant terug moet — dezelfde reden waarom
+`capabilities` en `control_forbidden` vroeg zijn toegevoegd (§12).
+
+### 34.3 De twee velden
+
+```text
+target_soc_percent      0–100, nullable      — bewonersveld  (§33.4)
+vehicle_capacity_kwh    > 0, nullable        — installateursveld
+```
+
+**Waarom de eigenaars verschillen.** De capaciteit is een eigenschap van de auto, dus
+hetzelfde soort feit als de hoofdzekering: iets wat je opzoekt, niet iets waar je een
+mening over hebt. Het doelpercentage is een mening — 80% voor de accu, 100% voor een lange
+rit — en het is er één die per week verandert. Daarmee valt hij aan dezelfde kant van
+§33.3 als het gereed-venster.
+
+`target_soc_percent` komt er dus bij in `DEVICE_OPERATION_FIELDS` (`const.py`) en in de
+bewonerslijst van `frontend/core/roles.js`; `vehicle_capacity_kwh` in geen van beide.
+De kaart uit §33.4 breidt daarmee uit zonder van vorm te veranderen.
+
+**Geen defaults.** Niet 80, niet 100, niet een gemiddelde accu. Een stille default zou een
+laadduur produceren die op niets slaat, en die duur gaat rechtstreeks een advies in dat
+zegt wanneer je moet beginnen. Dezelfde regel als bij `energy_tax_eur_kwh` en
+`feed_in_markup_eur_kwh`: een expliciete waarde is een antwoord, "niet ingevuld" blokkeert
+(§16).
+
+### 34.4 Geen modus-enum, maar een predicaat
+
+De actieve modus wordt **niet opgeslagen.** Er komt geen `charge_strategy: deadline |
+opportunistic`.
+
+```text
+kan_plannen(apparaat) =  battery_level_entity is gekoppeld
+                       ∧ vehicle_capacity_kwh is ingevuld
+                       ∧ target_soc_percent is ingevuld
+                       ∧ nominal_power_w is ingevuld
+                       ∧ ready_before is ingevuld
+```
+
+**Waarom dit afwijkt van `meter_mode` en `price_basis`, die juist wél strikte
+opgeslagen keuzes zijn.** Die twee vragen iets wat alleen de installateur weet en wat het
+systeem nooit kan zien: een sensor zegt niet of hij de kale marktprijs levert. Hier kan
+het systeem wél zien wat het moet weten — of er een SOC-entiteit gekoppeld is, is geen
+onbekende. Een enum ernaast introduceert een toestand die de werkelijkheid kan tegenspreken
+(`modus = deadline`, geen SOC-koppeling), en dan hebben we een opgeslagen intentie die de
+motor moet weigeren. Dat is het soort veld waar §12 een quarantaine voor moest bedenken.
+
+**De vorm bestaat al in dit project**, en dat is het tweede argument: `has_ready_window`
+versus `has_complete_ready_window` beantwoordt precies zo de vraag "is deze configuratie
+compleet genoeg voor dít gedrag" met een predicaat in plaats van met een vlag. Er zijn dan
+ook twee predicaten nodig en niet één, om dezelfde reden als daar — de checklist en de
+motor stellen niet dezelfde vraag. Zie §34.6.
+
+De naam en de plaats liggen vast: `engine/completeness.py`, naast
+`is_complete_device_profile`, zodat de checklist, het formulier en de coach niet uit
+elkaar kunnen lopen.
+
+### 34.5 Het formulier
+
+Bij `device_type = ev_charger`, en alleen daar:
+
+- **`vehicle_capacity_kwh`** staat er altijd. Het is een feit over de auto en het is ook
+  zonder planning zinvol om te weten.
+- **`target_soc_percent` en het deadlineblok verschijnen alleen wanneer
+  `battery_level_entity` gekoppeld is.** Zonder die koppeling is er niets te plannen, en
+  een deadlineveld tonen dat nergens toe leidt is dezelfde fout als een batterijniveau op
+  een vaatwasser (§8): een vraag zonder antwoord, op het scherm gehouden.
+- Het paneel zegt in **één zin** welke modus actief is en waarom. Niet als waarschuwing —
+  opportunistisch laden is een volwaardige keuze, geen tekortkoming:
+
+  > *Deze laadpaal laadt opportunistisch: op de goedkoopste momenten, op vol vermogen.
+  > Koppel de laadtoestand van de auto om in plaats daarvan op een tijdstip te kunnen
+  > plannen.*
+
+- Is de SOC wél gekoppeld maar ontbreekt de capaciteit of het doelpercentage, dan zegt de
+  zin dát, met de naam van het ontbrekende veld. Dit is het geval waarin de bewoner iets
+  verwacht dat niet gebeurt, en dan is stilte de duurste optie.
+
+`ready_from` blijft ook hier gewoon bestaan en betekent hetzelfde: niet eerder klaar dan.
+Bij een auto is dat zelden zinvol, maar er is geen reden hem te verbergen.
+
+### 34.6 De drie lezers, in dezelfde ronde als de velden
+
+Een opgeslagen veld zonder lezer is een belofte die we niet nakomen (§12, en het is de
+reden dat `default_strategy` in §33.5 geschrapt is in plaats van verhuisd). Deze twee
+velden krijgen daarom in hun eigen ronde drie lezers, en geen ervan stuurt iets aan:
+
+1. **De datakwaliteitschecklist.** Een laadpaal met een SOC-koppeling maar zonder
+   capaciteit of doel-SOC is onvolledig, en dat is een gat dat de installateur kan
+   dichten — precies het onderscheid tussen "niet gevraagd" en "ontbrekend" uit §16. Dit
+   is het tweede predicaat: `is_complete_device_profile` blijft ongewijzigd (vermogen en
+   energie per cyclus, voor álle types), en hiernaast komt de vraag of een *planbare*
+   laadpaal compleet beschreven is. Ze door elkaar halen zou elke laadpaal zonder SOC
+   incompleet maken, en dat is hij niet.
+2. **Het paneel toont de afgeleide planning.** "Bij starten om 23:40 is de auto om 07:00
+   op 80%." Dat is weergave, geen aansturing (§2.2), en het is meteen de controle op de
+   invoer: een capaciteit die er tien keer naast zit, is aan die zin te zien.
+3. **Het urgentie-advies van fase 2** rekent zijn laatste startmoment met de afgeleide
+   duur in plaats van met `duration_minutes`. Zie §34.8.
+
+### 34.7 Eén auto per paal, en niet meer
+
+**Het model draagt de auto die gewoonlijk aan deze paal hangt. Niet twee auto's, geen
+wagenpark.**
+
+Dat staat hier omdat het anders bij de derde klant ontdekt wordt in plaats van nu besloten:
+`vehicle_capacity_kwh` hangt aan de laadpaal, dus een huishouden met twee auto's die om en
+om laden krijgt één capaciteit voor beide. De planning klopt dan voor de ene en niet voor
+de andere, zonder dat iets dat meldt.
+
+Dit is bewust **niet** opgelost, en het alternatief is duidelijk genoeg om te kunnen
+afwijzen: een `Vehicle` als eigen object met een koppeling naar de paal, plus een manier om
+te weten wélke auto er nu hangt. Dat laatste is het echte werk — het vereist een signaal
+dat de meeste palen niet leveren, en zonder dat signaal is het raden welke auto er staat.
+Dat is harde regel 1.
+
+Voor twee auto's met sterk verschillende accu's is het eerlijke antwoord daarom: **koppel
+de laadtoestand niet, en laad opportunistisch.** Dat werkt zonder capaciteit en zonder
+gok. Het staat in de README onder Limitations, want een installateur moet dit weten vóór
+hij het invult.
+
+### 34.8 Wat dit voor fase 2 betekent (en waarom het nu al telt)
+
+Voor een vaatwasser is de duur een opgeslagen constante. Voor een laadpaal is zij een
+**functie van de actuele laadtoestand**, die elk kwartier verandert.
+
+Dat botst met hoe het startmoment vandaag wordt afgeleid. `DeviceProfile.latest_start` en
+`DeviceProfile.earliest_start` zijn **properties op het profiel** en lezen
+`self.duration_minutes`. Een property op een dataclass kan per definitie niet naar de
+snapshot kijken, dus voor een laadpaal kán het juiste antwoord daar niet uit komen.
+
+Daarom, **in fase 2 en niet later**:
+
+```text
+engine/…: required_duration_minutes(device, snapshot) -> int | None
+          latest_start_minutes(device, snapshot)      -> int | None
+```
+
+Fase 2 hoeft de laadpaal **niet** te ondersteunen: `required_duration_minutes` geeft in
+die fase gewoon `device.duration_minutes` terug. Het punt is dat het urgentie-advies zijn
+deadline via die functie berekent in plaats van via de property, zodat de laadpaal later
+een tak in één functie is en niet een herbouw van het advies.
+
+De properties op `DeviceProfile` blijven bestaan voor wat ze wél goed doen — het
+formulier en de validatie, die geen snapshot hebben.
+
+**Dit is de enige reden dat deze sectie vóór fase 2 geschreven is.** De velden zelf hebben
+geen haast; de vorm van de duurberekening wel, want die is nu vijf regels en later een
+verbouwing.
+
+### 34.9 Opportunistisch laden vraagt geen enkel nieuw veld
+
+De coach kent `low_energy_price` al. Voor een opportunistische laadpaal is dat hetzelfde
+advies met een ander onderwerp, en er is geen stopvoorwaarde nodig: de auto stopt zelf
+wanneer hij vol is.
+
+Eén verfijning is het overwegen waard maar hoort niet in deze ronde: een lader met
+capability `set_current` kan meemoduleren, dus de regel "het overschot moet het apparaat
+kunnen dragen" (§16) ligt voor hem anders dan voor een vaatwasser, die alleen aan of uit
+kan. Dat is adviesvorming en geen datamodel, en het kan zonder migratie later.
+
+### 34.10 Gevolgen elders
+
+- **§8, Apparaten**: `target_soc_percent` en `vehicle_capacity_kwh` als type-specifieke
+  velden bij `ev_charger`.
+- **§33.4**: `target_soc_percent` wordt een bewonersveld en komt in
+  `DEVICE_OPERATION_FIELDS`; `vehicle_capacity_kwh` blijft installateursgebied.
+- **§16, datakwaliteit**: een extra voorwaarde binnen het bestaande apparaatitem, geen
+  nieuw item en geen nieuwe weging. Een laadpaal zonder SOC-koppeling verandert niets.
+- **§32.8**: de daar geparkeerde regel dat "energie per laadsessie" een schatting blijft
+  en het advies op `medium` gecapt is, vervalt **alleen** voor een laadpaal die
+  `kan_plannen`. Voor de rest blijft zij staan.
+- **README**: de beperking uit §34.7 onder Limitations, en de twee velden bij de
+  apparaattypes.
+
+### 34.11 Wat deze ronde niet raakt
+
+- **De aansturing.** Eigen release, eigen spec. Hier wordt gerekend en getoond.
+- **Het voertuig als eigen object.** Zie §34.7; de grens is bewust getrokken.
+- **Prijs- en zonneprognose.** Ongewijzigd buiten beeld (§32.8). De planning die hier
+  ontstaat is "wanneer moet ik uiterlijk beginnen", niet "wanneer is het het goedkoopst".
+
+### 34.12 Klaar wanneer
+
+- een laadpaal zonder SOC-koppeling gedraagt zich exact als vandaag, en het paneel zegt
+  in één zin dat hij opportunistisch laadt;
+- een laadpaal mét SOC, capaciteit, doel-SOC, vermogen en deadline toont de afgeleide
+  planning in het paneel, en de datakwaliteit meldt het ontbreken van capaciteit of
+  doel-SOC bij zo'n paal;
+- `required_duration_minutes` bestaat en wordt door het urgentie-advies gebruikt, ook al
+  geeft zij in fase 2 nog gewoon `duration_minutes` terug;
+- een bestaande configuratie laadt ongewijzigd door — beide velden zijn nullable, dus er
+  is geen migratie.
