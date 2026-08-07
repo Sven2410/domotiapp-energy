@@ -1036,6 +1036,49 @@ meting** — dezelfde redenering waarmee de aansturingsterm uit deze score is ge
 "Niet van toepassing" heeft geen getal op een 0–100-as; het enige neutrale is niet
 meewegen. Onbekend blijft wél 0: het signaal bestaat en is niet geconfigureerd.
 
+### Terugleverprijs (§16, vanaf 0.1.4)
+
+Een woning kan een **dynamische terugleververgoeding** hebben, los van haar
+importcontract. Daarom is `feed_in_price` een eigen brontype naast `current_price`,
+en geen vlag erop: import dynamisch met teruglevering vast komt net zo goed voor als
+andersom.
+
+`price_basis` wordt hergebruikt — de vraag is identiek — maar **de omrekening is een
+andere**, en dat is de reden dat het een eigen type is:
+
+```text
+import:        (marktprijs + opslag + energiebelasting) × (1 + btw)
+teruglevering:  marktprijs − feed_in_markup_eur_kwh
+```
+
+Geen energiebelasting, want die wordt niet geheven over stroom die je niet hebt
+afgenomen, en geen btw erbovenop: wat de klant ontvangt is wat op de factuur komt.
+De importformule op een terugleverwaarde loslaten zou de vergoeding **ruwweg
+verdrievoudigen** — dezelfde factor die `price_basis` überhaupt verplicht maakte.
+
+De opslag wordt **afgetrokken** waar de importopslag wordt opgeteld: aan deze kant van
+de meter verlaagt wat de leverancier inhoudt je opbrengst.
+
+- `feed_in_markup_eur_kwh` staat op **HomeProfile**, niet op de bron: hij hoort bij het
+  contract, niet bij de sensor — dezelfde redenering als bij de importcomponenten.
+- **Geen default.** Een stille 0 zou overschatten wat de klant krijgt. Een expliciete
+  0 is wél een antwoord ("deze leverancier houdt niets in"); alleen "niet ingevuld"
+  blokkeert, en `validate_configuration` meldt dat tegen de woning.
+- **Een bruikbare bron wint van `feed_in_price_eur_kwh`.** De rij aanmaken is de
+  expliciete uitspraak dat de vergoeding varieert. Het vaste veld blijft bewaard en
+  wordt in het paneel uitgeschakeld, niet gewist, zodat het terugkomt zodra de bron
+  weg is.
+- **De uitkomst mag negatief zijn en wordt niet geklemd.** Negatieve marktprijzen
+  bestaan, en dan kóst terugleveren geld. In de besparingsformule maakt dat zelf
+  verbruiken juist méér waard, wat klopt.
+- Er kan er hoogstens één zijn (`EXCLUSIVE_SOURCE_TYPES`), net als bij de netmeter en
+  de prijsbron.
+
+**Tijdgebonden.** Zolang de saldering geldt is een teruggeleverde kWh de kale
+retailprijs waard en wordt deze waarde nooit geraadpleegd; **na 1 januari 2027 is de
+terugleverprijs het hele verschil** in `saving = energie × (import − teruglevering +
+terugleverkosten)`.
+
 #### De zonnecomponent — de oude definitie was fout
 
 **`solar_component` mat tot 0.1.2 het tegenovergestelde van zijn eigen naam.** Hij

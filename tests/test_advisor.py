@@ -26,6 +26,7 @@ from custom_components.domotiapp_energy.const import (
     PRIORITY_HIGH,
     SEVERITY_INFO,
     SEVERITY_WARNING,
+    SOURCE_TYPE_FEED_IN_PRICE,
 )
 from custom_components.domotiapp_energy.engine.advisor import Advisor
 from custom_components.domotiapp_energy.engine.providers import (
@@ -48,6 +49,7 @@ from custom_components.domotiapp_energy.models import (
     DataQualityResult,
     DeviceProfile,
     EnergyMetrics,
+    EnergySource,
     HomeProfile,
     StoredConfiguration,
     UserPreferences,
@@ -882,6 +884,100 @@ async def test_a_feed_in_cost_of_zero_is_a_calculated_zero(
 
     # 1 kWh x (0.30 - 0.05) = EUR 0.25.
     assert advice[0].estimated_savings_eur == 0.25
+
+
+async def test_a_live_feed_in_tariff_beats_the_fixed_amount(
+    hass: HomeAssistant,
+) -> None:
+    """A linked feed-in source is the statement that the tariff varies.
+
+    The fixed field stays on file — the panel disables rather than clears it —
+    so removing the source restores it (SPEC.md §16).
+    """
+    config = _config(
+        min_solar_surplus_w=500.0,
+        contract_type=CONTRACT_TYPE_FIXED,
+        fixed_import_price_eur_kwh=0.30,
+        # Deliberately different from the live rate, so the test can tell which
+        # of the two was used.
+        feed_in_price_eur_kwh=0.20,
+    )
+    config.devices.append(_device())
+    metrics = _metrics(solar_surplus_w=1500.0, feed_in_price_eur_kwh=0.05)
+
+    advice = Advisor().generate(config, metrics)
+
+    # 1 kWh x (0.30 - 0.05) = EUR 0.25, not the 0.10 the fixed amount gives.
+    assert advice[0].estimated_savings_eur == 0.25
+
+
+async def test_the_fixed_amount_applies_without_a_feed_in_source(
+    hass: HomeAssistant,
+) -> None:
+    """The pair of the test above, and the case every install starts in."""
+    config = _config(
+        min_solar_surplus_w=500.0,
+        contract_type=CONTRACT_TYPE_FIXED,
+        fixed_import_price_eur_kwh=0.30,
+        feed_in_price_eur_kwh=0.20,
+    )
+    config.devices.append(_device())
+    metrics = _metrics(solar_surplus_w=1500.0)
+
+    advice = Advisor().generate(config, metrics)
+
+    # 1 kWh x (0.30 - 0.20) = EUR 0.10.
+    assert advice[0].estimated_savings_eur == 0.10
+
+
+async def test_a_negative_feed_in_tariff_makes_self_consumption_worth_more(
+    hass: HomeAssistant,
+) -> None:
+    """Negative market prices are real, and then feeding in costs money.
+
+    The saving goes *up*, because the kWh you use yourself is one you no longer
+    pay to export. Nothing clamps it on the way through.
+    """
+    config = _config(
+        min_solar_surplus_w=500.0,
+        contract_type=CONTRACT_TYPE_FIXED,
+        fixed_import_price_eur_kwh=0.30,
+    )
+    config.devices.append(_device())
+    metrics = _metrics(solar_surplus_w=1500.0, feed_in_price_eur_kwh=-0.05)
+
+    advice = Advisor().generate(config, metrics)
+
+    # 1 kWh x (0.30 - -0.05) = EUR 0.35.
+    assert advice[0].estimated_savings_eur == 0.35
+
+
+async def test_a_broken_feed_in_source_points_at_the_source(
+    hass: HomeAssistant,
+) -> None:
+    """Do not send an installer to a field they deliberately left empty.
+
+    A home with a feed-in source has nothing to fill in on the Woning tab, and
+    saying so would repeat the wrong-field mistake the price sentence made.
+    """
+    config = _config(
+        min_solar_surplus_w=500.0,
+        contract_type=CONTRACT_TYPE_FIXED,
+        fixed_import_price_eur_kwh=0.30,
+        feed_in_price_eur_kwh=None,
+    )
+    config.sources.append(
+        EnergySource(id="f1", name="Teruglevering", type=SOURCE_TYPE_FEED_IN_PRICE)
+    )
+    config.devices.append(_device())
+    # Source linked but unreadable, so the metrics carry no live rate.
+    metrics = _metrics(solar_surplus_w=1500.0)
+
+    advice = Advisor().generate(config, metrics)
+
+    assert advice[0].estimated_savings_eur is None
+    assert "terugleverprijsbron" in advice[0].message
+    assert "vul die in bij Woning" not in advice[0].message
 
 
 async def test_a_charger_caps_its_confidence_at_medium(hass: HomeAssistant) -> None:

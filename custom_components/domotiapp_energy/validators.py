@@ -53,10 +53,12 @@ from .const import (
     PRICE_BASES,
     PRICE_BASIS_MARKET,
     PRICE_SOURCE_UNITS,
+    PRICED_SOURCE_TYPES,
     PRIORITIES,
     SEVERITY_ERROR,
     SEVERITY_WARNING,
     SOURCE_TYPE_CURRENT_PRICE,
+    SOURCE_TYPE_FEED_IN_PRICE,
     SOURCE_TYPE_GRID_METER,
     STRATEGIES,
     UNIT_CONVERSION_FACTORS,
@@ -445,7 +447,7 @@ def _validate_unit_matches_type(source: EnergySource) -> list[ValidationIssue]:
             )
         ]
 
-    if source.type == SOURCE_TYPE_CURRENT_PRICE and unit not in PRICE_SOURCE_UNITS:
+    if source.type in PRICED_SOURCE_TYPES and unit not in PRICE_SOURCE_UNITS:
         return [
             ValidationIssue(
                 "unit",
@@ -879,6 +881,43 @@ def _validate_price_components(
     ]
 
 
+def _validate_feed_in_components(
+    home: HomeProfile, sources: list[EnergySource]
+) -> list[ValidationIssue]:
+    """Check that a market feed-in source has the markup that completes it.
+
+    The mirror of :func:`_validate_price_components`, and deliberately its own
+    function: the feed-in side needs exactly one term, not three, because no
+    energy tax or VAT enters that formula (SPEC.md §16).
+
+    An explicit 0 is an answer — plenty of suppliers keep nothing — so only an
+    unset markup blocks. Without it the calculator refuses the feed-in tariff
+    silently as far as the installer can see.
+    """
+    if home.has_feed_in_components:
+        return []
+
+    needs_markup = any(
+        source.is_usable
+        and source.type == SOURCE_TYPE_FEED_IN_PRICE
+        and source.price_basis == PRICE_BASIS_MARKET
+        for source in sources
+    )
+    if not needs_markup:
+        return []
+
+    return [
+        ValidationIssue(
+            "feed_in_markup_eur_kwh",
+            VALIDATION_REQUIRED,
+            "De terugleverprijsbron levert de kale marktprijs. Vul in wat de "
+            "leverancier per teruggeleverde kWh inhoudt; zonder dat bedrag is "
+            "de vergoeding niet te berekenen en wordt de bron niet gebruikt. "
+            "Vul 0 in als de leverancier niets inhoudt.",
+        )
+    ]
+
+
 def validate_configuration(
     home: HomeProfile,
     sources: list[EnergySource],
@@ -899,6 +938,8 @@ def validate_configuration(
         # Reported against the home, because that is where the missing fields
         # live, even though it took a source to make them necessary.
         issues.setdefault("home", []).extend(component_issues)
+    if feed_in_issues := _validate_feed_in_components(home, sources):
+        issues.setdefault("home", []).extend(feed_in_issues)
     if preference_issues := validate_preferences(preferences):
         issues["preferences"] = preference_issues
 

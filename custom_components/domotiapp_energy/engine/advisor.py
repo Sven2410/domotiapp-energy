@@ -36,6 +36,7 @@ from custom_components.domotiapp_energy.const import (
     PRIORITIES,
     SEVERITY_INFO,
     SEVERITY_WARNING,
+    SOURCE_TYPE_FEED_IN_PRICE,
 )
 from custom_components.domotiapp_energy.models import (
     AdviceItem,
@@ -322,6 +323,35 @@ def _surplus_message(
     return f"{opening} {favourable}"
 
 
+def _has_feed_in_source(context: _Context) -> bool:
+    """Return whether a feed-in price source row exists at all.
+
+    The row is the statement, readable or not: a home that linked one is not
+    told to go and fill in the fixed field it deliberately left empty.
+    """
+    return any(
+        source.type == SOURCE_TYPE_FEED_IN_PRICE for source in context.config.sources
+    )
+
+
+def _feed_in_tariff(context: _Context) -> float | None:
+    """Return what a fed-in kWh is worth right now, or None when unknown.
+
+    The live rate from a ``feed_in_price`` source when one is linked and
+    readable, otherwise the fixed amount from the home profile. The live one is
+    already normalised by the feed-in formula — market price minus the
+    supplier's cut — so both branches return the same kind of number.
+
+    **This becomes the whole difference on 2027-01-01.** Until net metering
+    ends, a fed-in kWh is worth the retail price and this value never gets
+    consulted; after it, it is the only term separating self-consumption from
+    feeding in (SPEC.md §16).
+    """
+    if context.metrics.feed_in_price_eur_kwh is not None:
+        return context.metrics.feed_in_price_eur_kwh
+    return context.config.home.feed_in_price_eur_kwh
+
+
 def _euro(amount: float) -> str:
     """Return an amount as Dutch currency, with the comma these texts use."""
     return f"€ {amount:.2f}".replace(".", ",")
@@ -358,10 +388,21 @@ def _why_no_amount(context: _Context, device: DeviceProfile) -> str:
             "leveringstarief — vul dat in bij Woning."
         )
 
-    if not context.net_metering and home.feed_in_price_eur_kwh is None:
+    if not context.net_metering and _feed_in_tariff(context) is None:
+        # Which of the two routes is missing decides where to send them: a home
+        # with a feed-in source has nothing to fill in on the Woning tab, and
+        # telling it to would be the same wrong-field mistake the price sentence
+        # used to make.
+        if _has_feed_in_source(context):
+            return (
+                "Hoeveel dit oplevert is niet te berekenen zolang de "
+                "terugleverprijsbron geen bruikbare waarde geeft. Controleer "
+                "die bij Energiebronnen."
+            )
         return (
             "Hoeveel dit oplevert is niet te berekenen zonder de "
-            "terugleververgoeding — vul die in bij Woning."
+            "terugleververgoeding — vul die in bij Woning, of koppel een "
+            "terugleverprijsbron."
         )
 
     return (
@@ -625,10 +666,15 @@ def _solar_savings(context: _Context, device: DeviceProfile) -> float | None:
         # Fed in and taken back at the same price, so only the feed-in cost is
         # avoided. No feed-in tariff is needed to work this out.
         effective_feed_in = import_price
-    elif home.feed_in_price_eur_kwh is None:
-        return None
     else:
-        effective_feed_in = home.feed_in_price_eur_kwh
+        # A linked feed-in source wins over the fixed amount: creating that row
+        # is an explicit statement that this home's feed-in tariff varies, the
+        # same reading the checklist gives a source row (SPEC.md §16). The fixed
+        # field stays on file and the panel disables rather than clears it, so
+        # removing the source restores it.
+        effective_feed_in = _feed_in_tariff(context)
+        if effective_feed_in is None:
+            return None
 
     feed_in_cost = home.feed_in_cost_eur_kwh
     if feed_in_cost is None:

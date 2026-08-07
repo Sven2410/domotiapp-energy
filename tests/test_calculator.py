@@ -39,6 +39,7 @@ from custom_components.domotiapp_energy.const import (
     SCORE_COMPONENT_PRICE,
     SCORE_COMPONENT_SOLAR,
     SOURCE_TYPE_CURRENT_PRICE,
+    SOURCE_TYPE_FEED_IN_PRICE,
     SOURCE_TYPE_GENERAL_CONSUMPTION,
     SOURCE_TYPE_GRID_METER,
     SOURCE_TYPE_HOME_BATTERY,
@@ -97,6 +98,18 @@ def _price_source(entity_id: str = "sensor.price", **overrides: Any) -> EnergySo
     """
     defaults: dict[str, Any] = {"price_basis": PRICE_BASIS_ALL_IN}
     source = _source(SOURCE_TYPE_CURRENT_PRICE, entity_id, **(defaults | overrides))
+    source.binding = EntityBinding(entity_id=entity_id, unit=UNIT_EUR_KWH)
+    return source
+
+
+def _feed_in_source(entity_id: str = "sensor.terug", **overrides: Any) -> EnergySource:
+    """Return a feed-in price source in EUR/kWh.
+
+    Like `_price_source`, the basis is stated per test and has no default: a
+    source that does not say what kind of price it reports is refused rather
+    than guessed at (SPEC.md §16).
+    """
+    source = _source(SOURCE_TYPE_FEED_IN_PRICE, entity_id, **overrides)
     source.binding = EntityBinding(entity_id=entity_id, unit=UNIT_EUR_KWH)
     return source
 
@@ -1251,6 +1264,99 @@ async def test_a_fixed_contract_is_not_judged_on_price(
 
     assert SCORE_COMPONENT_PRICE not in metrics.score_components
     assert SCORE_COMPONENT_PRICE in metrics.not_applicable_components
+
+
+async def test_a_market_feed_in_source_subtracts_the_supplier_cut(
+    hass: HomeAssistant,
+) -> None:
+    """The feed-in formula, and the reason it is not the import formula.
+
+    A market price of 0.09 with the supplier keeping 0.02 leaves 0.07. Run
+    through the *import* conversion the same reading would have produced roughly
+    0.24 — the energy tax plus VAT on top of a rate the customer never receives.
+    """
+    hass.states.async_set("sensor.terug", "0.09")
+    config = _config(feed_in_markup_eur_kwh=0.02)
+    config.sources.append(_feed_in_source(price_basis=PRICE_BASIS_MARKET))
+
+    metrics = Calculator(hass).calculate(config)
+
+    assert metrics.feed_in_price_eur_kwh == 0.07
+    # The bare reading is kept so the conversion can be checked against the
+    # sensor, exactly as it is for the import price.
+    assert metrics.market_feed_in_price_eur_kwh == 0.09
+
+
+async def test_an_all_in_feed_in_source_is_used_unchanged(
+    hass: HomeAssistant,
+) -> None:
+    """A source that already reports the net rate needs no markup at all."""
+    hass.states.async_set("sensor.terug", "0.065")
+    config = _config()
+    config.sources.append(_feed_in_source(price_basis=PRICE_BASIS_ALL_IN))
+
+    metrics = Calculator(hass).calculate(config)
+
+    assert metrics.feed_in_price_eur_kwh == 0.065
+    assert metrics.market_feed_in_price_eur_kwh is None
+
+
+async def test_a_market_feed_in_source_without_a_markup_is_refused(
+    hass: HomeAssistant,
+) -> None:
+    """No silent zero: an unset markup would overstate what the customer gets.
+
+    An explicit 0 is a real answer and is accepted; only "not entered" blocks,
+    the same rule the import components follow.
+    """
+    hass.states.async_set("sensor.terug", "0.09")
+    config = _config(feed_in_markup_eur_kwh=None)
+    config.sources.append(_feed_in_source(price_basis=PRICE_BASIS_MARKET))
+
+    metrics = Calculator(hass).calculate(config)
+
+    assert metrics.feed_in_price_eur_kwh is None
+
+
+async def test_a_markup_of_zero_is_an_answer(hass: HomeAssistant) -> None:
+    """Some suppliers keep nothing, and that has to be sayable."""
+    hass.states.async_set("sensor.terug", "0.09")
+    config = _config(feed_in_markup_eur_kwh=0.0)
+    config.sources.append(_feed_in_source(price_basis=PRICE_BASIS_MARKET))
+
+    metrics = Calculator(hass).calculate(config)
+
+    assert metrics.feed_in_price_eur_kwh == 0.09
+
+
+async def test_a_negative_market_price_yields_a_negative_feed_in_rate(
+    hass: HomeAssistant,
+) -> None:
+    """Negative prices are real, and then feeding in costs money.
+
+    Returned as it stands. Clamping would hide the situation worth knowing
+    about, which is the mistake the savings formula made until 0.1.2.
+    """
+    hass.states.async_set("sensor.terug", "-0.01")
+    config = _config(feed_in_markup_eur_kwh=0.02)
+    config.sources.append(_feed_in_source(price_basis=PRICE_BASIS_MARKET))
+
+    metrics = Calculator(hass).calculate(config)
+
+    assert metrics.feed_in_price_eur_kwh == -0.03
+
+
+async def test_a_feed_in_source_without_a_basis_is_unusable(
+    hass: HomeAssistant,
+) -> None:
+    """Same rule as the import price: an unstated basis makes it unusable."""
+    hass.states.async_set("sensor.terug", "0.09")
+    config = _config(feed_in_markup_eur_kwh=0.02)
+    config.sources.append(_feed_in_source(price_basis=None))
+
+    metrics = Calculator(hass).calculate(config)
+
+    assert metrics.feed_in_price_eur_kwh is None
 
 
 async def test_a_dynamic_contract_without_a_price_scores_zero(
