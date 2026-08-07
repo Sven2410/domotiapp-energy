@@ -557,13 +557,9 @@ def test_the_default_vat_percentage_validates() -> None:
 
 def test_invalid_choices_in_the_home_profile_are_reported() -> None:
     """A directly constructed profile with nonsense choices is caught."""
-    home = HomeProfile(phases=2, contract_type="barter", default_strategy="vibes")
+    home = HomeProfile(phases=2, contract_type="barter")
 
-    assert _fields(validate_home_profile(home)) == {
-        "phases",
-        "contract_type",
-        "default_strategy",
-    }
+    assert _fields(validate_home_profile(home)) == {"phases", "contract_type"}
 
 
 # --- Energy source validation -----------------------------------------------

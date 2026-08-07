@@ -37,6 +37,11 @@ import {
   splitFieldErrors,
 } from '../core/forms.js';
 import { createRowList } from '../core/rows.js';
+import {
+  MANAGED_NOTICE,
+  applyRole,
+  messageForRole,
+} from '../core/roles.js';
 import { onTap } from '../core/tap.js';
 
 /** The key this tab stores its unsaved edits under. */
@@ -507,7 +512,6 @@ export const sourcesTab = {
   id: 'sources',
   label: 'Energiebronnen',
   icon: 'mdi:transmission-tower',
-  adminOnly: true,
 
   create({ getHass, state, overlay }) {
     const element = el('div', { class: 'tab-content' });
@@ -523,6 +527,15 @@ export const sourcesTab = {
     let revision = null;
     /** The schema currently on the form, so it is only replaced when it moves. */
     let schemaKey = '';
+    /**
+     * Whether this user may change anything here.
+     *
+     * A source is entirely installer territory (SPEC.md §33.4): nobody but the
+     * person who linked the meter can judge a meter mode or a price basis. A
+     * resident may still open a row and read it — seeing that a source is
+     * broken is exactly what lets him ring us about it.
+     */
+    let isAdmin = true;
 
     const rowList = createRowList({
       emptyText:
@@ -531,9 +544,13 @@ export const sourcesTab = {
       createRow: () => createSourceRow(),
     });
 
+    const addActions = el('div', { class: 'actions' }, [addButton]);
+    const managedNotice = notice('mdi:shield-account-outline');
+
     sources.body.append(
       rowList.element,
-      el('div', { class: 'actions' }, [addButton]),
+      addActions,
+      managedNotice.element,
       listNotice.element,
     );
     element.appendChild(sources.element);
@@ -616,6 +633,10 @@ export const sourcesTab = {
           current = source;
           name.textContent = source.name || 'Naamloze bron';
           meta.textContent = describeSource(source);
+          // A resident opens the same dialog, so the button says what it will
+          // actually do rather than promising an edit it cannot make.
+          editButton.textContent = isAdmin ? 'Bewerken' : 'Bekijken';
+          setVisible(deleteButton, isAdmin);
 
           const shown = statusOf(source);
           statusIcon.setAttribute('icon', shown.icon);
@@ -698,7 +719,7 @@ export const sourcesTab = {
     }
 
     function refreshDialog() {
-      const schema = schemaFor(draft);
+      const schema = applyRole(schemaFor(draft), DRAFT, isAdmin);
       // Only when the questions actually changed. Handing `ha-form` a fresh
       // schema on every keystroke makes it rebuild every field, which throws
       // away whatever control the installer had open.
@@ -751,7 +772,7 @@ export const sourcesTab = {
         const mine = {};
         for (const name of definition.fields) {
           if (name in shown) {
-            mine[name] = shown[name];
+            mine[name] = messageForRole(DRAFT, name, shown[name], isAdmin);
           }
         }
         form.setErrors(Object.keys(mine).length ? mine : null);
@@ -760,6 +781,20 @@ export const sourcesTab = {
       orphanNotice.set(describeOrphanedErrors(orphaned, labelOf), {
         tone: 'warning',
       });
+    }
+
+    /** Push the current role into the list and the dialog. */
+    function applyRoleToTab() {
+      setVisible(addActions, isAdmin);
+      setVisible(saveButton, isAdmin);
+      cancelButton.textContent = isAdmin ? 'Annuleren' : 'Sluiten';
+      managedNotice.set(isAdmin ? '' : MANAGED_NOTICE, { tone: 'info' });
+      // The rows carry their own buttons, and the dialog its own schema.
+      rowList.sync(state.get().config?.sources || []);
+      if (dialog.isOpen()) {
+        schemaKey = '';
+        refreshDialog();
+      }
     }
 
     function isDirty() {
@@ -951,6 +986,10 @@ export const sourcesTab = {
       const config = panelState.config;
       if (!config) {
         return;
+      }
+      if (panelState.isAdmin !== isAdmin) {
+        isAdmin = panelState.isAdmin;
+        applyRoleToTab();
       }
       rowList.sync(config.sources || []);
       for (const { form } of forms) {

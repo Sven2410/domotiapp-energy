@@ -1,9 +1,20 @@
-"""The WebSocket API the panel talks to (SPEC.md §14).
+"""The WebSocket API the panel talks to (SPEC.md §14 and §33.9).
 
-Sixteen commands: four read-only ones that any logged-in user may call, and the
-write commands that require an admin. The frontend hides the configuration tabs
-for non-admins, but this is where it is actually enforced — a hidden tab is not
-a permission check.
+Seventeen commands. The reads may be called by any logged-in user; the writes
+divide along **who owns the field**, not along whether they write:
+
+* commands that change **installer** configuration require an admin — the home
+  profile, the sources, the whole of an appliance row, the logbook;
+* commands that change **resident** configuration do not — the advice
+  preferences and the six operating fields of an appliance
+  (:data:`~.const.DEVICE_OPERATION_FIELDS`).
+
+That second group does raise the revision, so it looks like it belongs in the
+admin list. It does not: the line is drawn by whose data changes. A resident who
+may not set his own quiet hours cannot use the tab that exists for him
+(SPEC.md §33.9). The panel no longer hides any tab; it greys out what a resident
+does not own, and this module is where that is actually enforced — a disabled
+field is not a permission check.
 
 Two rules shape every write:
 
@@ -46,6 +57,7 @@ from .const import (
     ATTR_ITEM,
     ATTR_REVISION,
     CONF_HOME_NAME,
+    CONTROL_MODES,
     DEVICE_TYPES,
     DOMAIN,
     ERR_DUPLICATE_ID,
@@ -56,6 +68,9 @@ from .const import (
     LOG_EVENT_CONFIG_CHANGED,
     LOG_EVENT_DEVICE_ADDED,
     LOG_EVENT_DEVICE_REMOVED,
+    MAX_DAY_OF_WEEK,
+    MIN_DAY_OF_WEEK,
+    PRIORITIES,
     SOURCE_TYPES,
     VALIDATION_CONTROL_FORBIDDEN,
     WS_COACH_GET,
@@ -64,6 +79,7 @@ from .const import (
     WS_DEVICES_CREATE,
     WS_DEVICES_DELETE,
     WS_DEVICES_LIST,
+    WS_DEVICES_SET_OPERATION,
     WS_DEVICES_UPDATE,
     WS_HOME_UPDATE,
     WS_LOGS_CLEAR,
@@ -139,6 +155,39 @@ _UPDATE_DEVICE = vol.Schema(
     {vol.Required("id"): str, **_DEVICE_TYPE}, extra=vol.ALLOW_EXTRA
 )
 
+# The one schema in this module that does **not** allow extra keys, and that is
+# the whole point of it (SPEC.md §33.10). Everywhere else a stray key is
+# harmless because an admin sent it and from_dict drops it. Here the absence of
+# a key is the permission boundary: this command is open to every logged-in
+# user, so anything beyond the six resident fields has to be refused rather than
+# quietly ignored. Voluptuous rejects an unknown key by default and Home
+# Assistant turns that into `invalid_format`, which is exactly the answer the
+# caller should see.
+#
+# `vol.Length(min=1)` keeps an empty operation out: it would change nothing and
+# still consume a revision, which is the write amplification round A removed.
+# Each field is validated on its own here rather than generated from
+# DEVICE_OPERATION_FIELDS, because a list of names cannot say that a priority is
+# one of four words and a weekday is 0-6. The two are kept in step by a test
+# that compares them — the same arrangement the entity object ids use.
+_OPERATION_SCHEMA = vol.Schema(
+    {
+        vol.Optional("control_mode"): vol.In(CONTROL_MODES),
+        vol.Optional("priority"): vol.In(PRIORITIES),
+        # A time as "HH:MM", or null to clear the bound. Both fields are
+        # independently optional on a ready window (SPEC.md §32.2), so clearing
+        # one has to be expressible.
+        vol.Optional("ready_from"): vol.Any(str, None),
+        vol.Optional("ready_before"): vol.Any(str, None),
+        vol.Optional("days_of_week"): [
+            vol.All(int, vol.Range(min=MIN_DAY_OF_WEEK, max=MAX_DAY_OF_WEEK))
+        ],
+        vol.Optional("is_noisy"): bool,
+    }
+)
+
+_SET_OPERATION = vol.All(_OPERATION_SCHEMA, vol.Length(min=1))
+
 
 @callback
 def async_register_commands(hass: HomeAssistant) -> None:
@@ -154,6 +203,7 @@ def async_register_commands(hass: HomeAssistant) -> None:
         handle_devices_create,
         handle_devices_update,
         handle_devices_delete,
+        handle_devices_set_operation,
         handle_preferences_get,
         handle_preferences_update,
         handle_coach_get,
@@ -502,7 +552,13 @@ def _async_sync_entry_name(hass: HomeAssistant, home_name: str) -> None:
         )
 
 
-@websocket_api.require_admin
+# **Deliberately not require_admin** (SPEC.md §33.9). Every field on this
+# command is resident territory: the quiet hours, how many pieces of advice to
+# show, whether to show the estimated saving. It does change the configuration
+# and it does raise the revision, so it looks like it belongs in the admin list
+# — but the line is drawn by *whose* data changes, not by *whether* something
+# changes. A resident who may not set his own quiet hours cannot use the tab
+# that exists for him. Do not "fix" this back; read §33.9 first.
 @websocket_api.websocket_command(
     {
         vol.Required("type"): WS_PREFERENCES_UPDATE,
@@ -768,6 +824,79 @@ async def handle_devices_delete(
         subject=device_id,
     )
     _send_write_result(connection, msg, revision, None, data.store.config)
+
+
+# **Deliberately not require_admin** (SPEC.md §33.9, §33.10). This is the
+# resident saying what his own appliance should do: when it must be finished, on
+# which days, whether it may make noise, and whether it may be steered at all.
+#
+# It is the counterpart of `devices/update`, which stays admin-only and has no
+# field filter — a resident calling that one could overwrite `nominal_power_w`,
+# the entity links and `control_forbidden`, and an agreement would disappear
+# with a click. The safety here is the allow-list in `_SET_OPERATION`, not the
+# caller's role.
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): WS_DEVICES_SET_OPERATION,
+        vol.Required(ATTR_EXPECTED_REVISION): int,
+        vol.Required("device_id"): str,
+        vol.Required("operation"): _SET_OPERATION,
+    }
+)
+@websocket_api.async_response
+async def handle_devices_set_operation(
+    hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Change the operating fields a resident owns on one appliance."""
+    if (data := _async_get_data(hass, connection, msg)) is None:
+        return
+
+    device_id = msg["device_id"]
+    operation = msg["operation"]
+    updated: list[DeviceProfile] = []
+
+    def _apply(config: StoredConfiguration) -> None:
+        index = _find(config.devices, device_id, "Dit apparaat")
+        stored = config.devices[index]
+
+        # A quarantined row is not something anyone operates. Refusing here also
+        # keeps derived state out of the file: `from_dict` disables an unknown
+        # type on the way in, and a merge-and-store would write that derivation
+        # back, which SPEC.md §13 forbids.
+        if stored.invalid_reason is not None:
+            raise _CommandError(
+                ERR_INVALID_FORMAT,
+                "Dit apparaat heeft een onbekend type en is buiten werking gesteld.",
+            )
+
+        # Merged rather than replaced: the caller sends only the fields it owns,
+        # and everything else on the row is the installer's and must survive
+        # untouched. Going back through from_dict keeps the coercion — time
+        # normalisation, the day list, the type defaults — in the one place that
+        # already does it.
+        merged = DeviceProfile.from_dict({**stored.to_dict(), **operation})
+
+        # The installer's veto, and the first time it actually carries weight:
+        # until now only an admin could set `control_mode`, and an admin also
+        # sets `control_forbidden` (SPEC.md §33.11).
+        if (refusal := _forbidden_control_error(merged)) is not None:
+            raise _CommandError(ERR_INVALID_FORMAT, refusal)
+
+        config.devices[index] = merged
+        updated.append(merged)
+
+    revision = await _async_write(connection, msg, data, _apply)
+    if revision is None:
+        return
+
+    device = updated[0]
+    await data.store.async_add_log_entry(
+        LOG_EVENT_CONFIG_CHANGED,
+        "Bediening gewijzigd",
+        f"De instellingen van '{device.name}' zijn bijgewerkt.",
+        subject=device.id,
+    )
+    _send_write_result(connection, msg, revision, device.to_dict(), data.store.config)
 
 
 @websocket_api.require_admin

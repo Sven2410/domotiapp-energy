@@ -40,7 +40,6 @@ export const overviewTab = {
   id: 'overview',
   label: 'Overzicht',
   icon: 'mdi:view-dashboard-outline',
-  adminOnly: false,
 
   create() {
     const element = el('div', { class: 'tab-content' });

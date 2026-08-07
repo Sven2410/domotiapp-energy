@@ -283,8 +283,13 @@ Voorkom dubbele registratie bij reload.
 
 ## 8. GUI-indeling
 
-Tabbladen: `Overzicht`, `Woning`, `Energiebronnen`, `Apparaten`, `Voorkeuren`,
-`Energiecoach`, `Logboek`.
+Tabbladen: `Overzicht`, `Energiecoach`, `Apparaten`, `Mijn voorkeuren`, `Installatie`,
+`Logboek` — zes, en dezelfde zes voor een installateur en een bewoner (§33.6).
+`Installatie` bevat de secties `Woning` en `Energiebronnen`, die hieronder afzonderlijk
+beschreven blijven omdat het twee verschillende soorten gegevens zijn.
+
+**Wie welk veld mag wijzigen staat in §33.4**, niet hieronder. Deze sectie beschrijft
+wélke velden er zijn; de eigenaarschapskaart beschrijft van wie ze zijn.
 
 ### Overzicht
 Status integratie · datakwaliteit (%) · energiescore (0–100) · actueel netvermogen ·
@@ -336,8 +341,11 @@ all-in bron is er niets extra's te tonen, want dan zijn beide getallen hetzelfde
 - `low_price_threshold_eur_kwh` — **all-in**, zie §16
 - `high_price_threshold_eur_kwh` — **all-in**, zie §16
 - `min_solar_surplus_w` (default 500)
-- `default_strategy` — `comfort` | `balanced` | `save` | `max_self_consumption`
 - `control_level` — vast op `advice_only` in 0.1.0
+
+> `default_strategy` is geschrapt in ronde 1 (§33.5): het veld werd opgeslagen,
+> gevalideerd en getoond, en door niets gelezen. Voeg het niet terug toe zonder een lezer
+> in dezelfde ronde.
 
 **Alle prijsvelden zijn all-in (verplichte GUI-hulptekst).** De prijsgrenzen, het vaste
 leveringstarief en de terugleververgoeding zijn bedragen inclusief energiebelasting en
@@ -465,10 +473,16 @@ Gebruik `null` of laat het veld weg. Nooit `""`.
 
 ```text
 quiet_hours_start · quiet_hours_end · allow_advice_during_quiet_hours
-prefer_solar · prefer_low_price · respect_max_grid_load
+prefer_solar · prefer_low_price
 min_savings_eur · max_advice_count (1–5)
 show_technical_explanation · show_estimated_savings · show_confidence
 ```
+
+Dit tabblad heet `Mijn voorkeuren` en is **volledig bewonersgebied** (§33.4): elk veld
+hier is een uitspraak over wat de bewoner van het advies wil, niet over wat de woning is.
+
+> `respect_max_grid_load` is geschrapt in ronde 1 (§33.5), om dezelfde reden als
+> `default_strategy`: opgeslagen en getoond, door niets gelezen.
 
 **Verduidelijking `min_savings_eur`:** deze drempel filtert **uitsluitend** adviezen
 waarvoor een `estimated_savings_eur` is berekend **die boven nul uitkomt**. Twee soorten
@@ -802,6 +816,7 @@ domotiapp_energy/sources/list      domotiapp_energy/sources/create
 domotiapp_energy/sources/update    domotiapp_energy/sources/delete
 domotiapp_energy/devices/list      domotiapp_energy/devices/create
 domotiapp_energy/devices/update    domotiapp_energy/devices/delete
+domotiapp_energy/devices/set_operation
 domotiapp_energy/preferences/get   domotiapp_energy/preferences/update
 domotiapp_energy/coach/get         domotiapp_energy/coach/recalculate
 domotiapp_energy/logs/list         domotiapp_energy/logs/clear
@@ -850,11 +865,18 @@ Schrijfacties met `@websocket_api.require_admin`:
 
 ```text
 home/update · sources/create · sources/update · sources/delete
-devices/create · devices/update · devices/delete · preferences/update · logs/clear
+devices/create · devices/update · devices/delete · logs/clear
 ```
 
-Leesacties: elke ingelogde gebruiker. De frontend verbergt configuratietabbladen voor
-niet-admins (`hass.user.is_admin`), maar de backend is altijd leidend.
+Leesacties: elke ingelogde gebruiker. De frontend verbergt geen enkel tabblad meer; zij
+grijst uit wat een bewoner niet bezit (§33.7), en de backend is altijd leidend.
+
+> **Gewijzigd in ronde 1 (§33.9).** `preferences/update` stond in bovenstaande lijst en
+> staat er niet meer in; `devices/set_operation` is erbij gekomen en staat er bewust
+> buiten. De regel is niet langer "alles wat de configuratie wijzigt", maar:
+> **`require_admin` bewaakt installateursvelden.** De grens ligt bij wíens gegevens er
+> veranderen, niet bij óf er iets verandert. Lees §33.9 voordat je dit als gat in de
+> beveiliging repareert.
 
 **Configuratie is niet hetzelfde als bediening — en dat onderscheid is bewust.**
 
@@ -867,6 +889,13 @@ mag daarom door elke ingelogde gebruiker worden uitgevoerd.
 Vandaag valt daar `coach/recalculate` onder, en vanaf het gereed-venster ook
 `devices/set_ready` (§32.5) — de bewoner die zegt dat de machine vol is. Beide zijn
 **opzettelijk niet** `require_admin`.
+
+**Ronde 1 voegt hier een tweede as aan toe, en die vervangt deze niet.** Naast
+configuratie-versus-bediening bestaat sinds §33 het onderscheid tussen configuratie van de
+*installateur* en configuratie van de *bewoner*. `preferences/update` en
+`devices/set_operation` wijzigen wél de configuratie en verhogen wél de revision, en staan
+tóch open voor elke ingelogde gebruiker — omdat het zijn gegevens zijn. De twee assen
+samen: `require_admin` geldt voor een commando dat **installateursconfiguratie** wijzigt.
 
 **Timmer dit later niet dicht als inconsistentie.** Een bewoner die zijn eigen vaatwasser
 niet als "vol" mag markeren omdat hij geen beheerder is, kan de functie niet gebruiken —
@@ -1688,7 +1717,10 @@ Alleen nette uitbreidingspunten waar dat logisch is.
 12. Minimaal zonne-, prijs-, piek- en ontbrekende-data-adviezen worden gegenereerd.
 13. De frontend toont de gestructureerde adviezen correct.
 14. De eigen sensors worden aangemaakt en bijgewerkt met de exacte ID's uit §19.
-15. Niet-admins kunnen de configuratie niet wijzigen (ook niet via directe WS-calls).
+15. Niet-admins kunnen geen **installateursvelden** wijzigen, ook niet via directe
+    WS-calls; de bewonersvelden uit §33.4 kunnen zij wél wijzigen en niets daarbuiten.
+    *(Herschreven in ronde 1. De oude formulering — "de configuratie niet wijzigen" —
+    beschreef een product waarin de bewoner zijn eigen stille uren niet kon instellen.)*
 16. De integratie functioneert zonder internetverbinding.
 17. De integratie stuurt geen apparaten aan (geen `async_call` naar andere domeinen).
 18. Tests voor de kritieke logica slagen.
@@ -2024,3 +2056,286 @@ Drie fases, elk met een eigen PR, elk op zichzelf bruikbaar:
 
 Fase 2 kan pas na 1 (de deadline volgt uit het venster), fase 3 kan pas na 2 (de vlag
 bepaalt of het urgentie-advies mag vuren).
+
+---
+
+## 33. Twee rollen: de installateur en de bewoner
+
+**Status: ontwerp, ronde 1.** Deze sectie legt vast wie welk veld bezit, wat een
+bewoner ziet en mag, en waarom de admincontrole in de WebSocket-API van vorm
+verandert zonder zwakker te worden.
+
+### 33.1 De context die tot nu toe niet opgeschreven stond
+
+DomotiApp Energy staat uitsluitend bij klanten van DomotiTech, als onderdeel van een
+pakket. Er zijn twee soorten gebruikers, en ze hebben verschillende vragen:
+
+- **de installateur** richt de woning in en beheert de configuratie;
+- **de bewoner** is baas over zijn eigen woning en bepaalt wat de automatisering doet.
+
+De bewoner moet zo min mogelijk hoeven zoeken.
+
+Uit die tweede zin volgt het scenario waar deze hele sectie op rust: **de bewoner die
+belt.** Hij ziet dat zijn hoofdzekering op 25 A staat terwijl er 40 in de meterkast zit,
+en hij belt DomotiTech. Vandaag kan dat niet — hij ziet het veld niet, dus de fout blijft
+onzichtbaar fout staan, en niemand ontdekt hem tot er iets misgaat.
+
+### 33.2 Wat er vandaag misgaat
+
+Een niet-admin ziet drie van de zeven tabbladen: Overzicht, Energiecoach, Logboek. Achter
+het adminslot zitten Woning, Energiebronnen, Apparaten en **Voorkeuren**.
+
+Dat laatste is een defect en niet alleen een ongelukkige indeling. Voorkeuren bestaat
+vrijwel volledig uit bewonersinstellingen — stille uren, hoeveel adviezen ik wil zien, of
+ik de geschatte besparing wil zien — en is volledig dichtgetimmerd. **Een bewoner kan
+vandaag zijn eigen stille uren niet instellen.** Hetzelfde geldt voor het gereed-venster
+uit paragraaf 32, dat expliciet voor hem is gebouwd: hij mag zeggen dat de machine vol is
+(`set_ready`, bewust geen `require_admin`) maar niet wanneer zij klaar moet zijn.
+
+### 33.3 Het criterium
+
+> **De installateur bezit wat de woning *is*. De bewoner bezit wat de woning moet *doen*.**
+
+Een fout in de eerste categorie is voor de bewoner iets om te **melden**, niet om te
+repareren. Daarom is het antwoord op 33.2 niet "geef hem meer rechten" maar: laat hem
+alles zien, laat hem bewerken wat van hem is, en zeg bij de rest wie het beheert.
+
+Dit criterium is geen weergave van vertrouwen. Een bewoner mag `main_fuse_a` niet zetten
+omdat hij niet in de meterkast heeft gekeken, niet omdat hij niet te vertrouwen is.
+
+### 33.4 De veldeigenaarschapskaart
+
+Dit is de normatieve lijst. Zij staat in de code op een plek (`frontend/core/roles.js`)
+en nergens anders; een veld dat er niet in staat is installateursgebied, zodat een nieuw
+veld standaard veilig is en niet standaard open.
+
+| Formulier | Bewoner bezit | Installateur bezit |
+|---|---|---|
+| **Installatie, woning** | *(niets)* | `home_name`, `phases`, `main_fuse_a`, `max_grid_power_w`, `peak_warning_percent`, `contract_type`, alle prijs-, belasting-, btw-, teruglever- en salderingsvelden, `low_price_threshold_eur_kwh`, `high_price_threshold_eur_kwh`, `min_solar_surplus_w`, `control_level` |
+| **Installatie, energiebronnen** | *(niets)* | alles |
+| **Apparaten** | `control_mode`, `ready_from`, `ready_before`, `days_of_week`, `is_noisy`, `priority` | `name`, `device_type`, `enabled`, `location`, `notes`, `nominal_power_w`, `energy_per_cycle_kwh`, `duration_minutes`, `is_flexible`, `capabilities`, `control_forbidden` (+reden), alle `entity_links` |
+| **Mijn voorkeuren** | alles | *(niets)* |
+
+Vier grenzen die niet vanzelf spreken en daarom hier hun reden krijgen:
+
+- **`home_name` blijft van de installateur**, ook al is het de naam van andermans huis.
+  Hij staat ook in de config entry en hernoemt het device in het device registry
+  (paragraaf 6 en 19); het is dus geen paneelveld maar een HA-object. Hem openzetten zou
+  `home/update` uit de adminlijst trekken voor een cosmetisch veld.
+- **De prijsgrenzen blijven van de installateur**, hoewel "wat vind ik duur" een
+  smaakoordeel is. Ze zijn all-in bedragen in euro's per kWh en hun hulptekst
+  veronderstelt een technische lezer (paragraaf 16). Dit is de meest waarschijnlijke
+  kandidaat voor een volgende ronde; hem nu verplaatsen zou een derde WS-commando kosten
+  voor twee velden.
+- **`enabled` blijft van de installateur, `control_mode` niet.** De uitknop van de bewoner
+  is `monitor_only`, en dat is precies waar `control_mode` voor bestaat. `enabled` haalt
+  de hele rij uit de datakwaliteit en de rekenmotor, en dat is een andere handeling.
+- **`is_flexible` van de installateur, `is_noisy` van de bewoner.** `is_flexible` is een
+  uitspraak over de machine (kan dit ding verplaatst worden), `is_noisy` over het
+  huishouden (heb ik daar 's nachts last van).
+
+### 33.5 Twee dode velden worden geschrapt, niet verhuisd
+
+`default_strategy` en `respect_max_grid_load` worden opgeslagen, gevalideerd en getoond,
+en **door niets gelezen**. Beide liggen op de grens van bewonersgebied, dus zonder besluit
+zouden ze in deze ronde meeverhuizen, en dan staat er een knop op het tabblad van de
+bewoner die niets doet. Dat is slechter dan geen knop: een genegeerde instructie kost meer
+vertrouwen dan een afwezig veld (dezelfde regel die `days_of_week` in 0.1.2 heeft
+gerepareerd).
+
+Ze verdwijnen uit `HomeProfile`, `UserPreferences`, de formulieren en `validators.py`.
+`from_dict` negeert onbekende sleutels, dus een bestaande opslag laadt ongewijzigd door en
+er is geen migratie nodig. Besluit Sven, 2026-08-07: **komen ze later terug, dan met een
+lezer in dezelfde ronde.**
+
+### 33.6 Tabbladindeling: een set voor beide rollen
+
+Zeven tabbladen worden er zes, voor iedereen:
+
+```text
+Overzicht - Energiecoach - Apparaten - Mijn voorkeuren - Installatie - Logboek
+```
+
+`Installatie` is het samengaan van `Woning` en `Energiebronnen` als twee secties onder een
+tabknop. Het hoeft **geen** enkel bestand te worden; de tab mag zijn twee bestaande
+modules onder elkaar monteren.
+
+**Beide rollen zien dezelfde zes tabbladen. Er is geen tabblad dat een bewoner niet ziet.**
+
+Dat is de kern van het voorstel en het is een keuze tegen het alternatief in (twee
+tabbladensets, een per rol). De reden is het telefoongesprek uit 33.1: met twee sets
+kijken installateur en bewoner naar verschillende schermen en is *"ga naar Installatie,
+wat staat er bij Hoofdzekering?"* geen bruikbare zin. Een set betekent een mentaal model,
+een codepad en een testmatrix. Het scheelt de installateur bovendien ook een tabblad.
+
+De bewoner heeft daarmee vijf vragen en vijf plekken: hoe doe ik het (Overzicht), wat moet
+ik nu doen (Energiecoach), wanneer moet de vaatwasser klaar zijn (Apparaten), laat me
+slapen (Mijn voorkeuren), waarom staat mijn zekering verkeerd (Installatie). Het Logboek
+is diagnostiek en wordt zelden geopend, maar hoort niet verborgen: het is de enige plek
+waar staat wat er is gebeurd.
+
+### 33.7 Zichtbaar maar niet bewerkbaar, zonder tweede formulierpad
+
+Er komt **geen** read-onlyvariant van enig formulier. Het mechanisme bestaat al en is in
+de browser bewezen (ronde B, bevinding 4a):
+
+- `ha-form` draagt een per-veld `disabled: true` uit het schema door tot een echte
+  uitgeschakelde control, **met behoud van de waarde**;
+- `home.js` mapt zijn schema al en injecteert `disabled: true` bij de prijscomponenten
+  zodra een all-in bron bestaat.
+
+De implementatie is daarom een functie in `core/forms.js`:
+
+```text
+applyRole(schema, isAdmin) -> schema waarin elk installateursveld disabled: true draagt
+```
+
+met de eigenaarschapskaart uit 33.4 in `core/roles.js` als enige bron. Daarnaast per
+kaart, voor een niet-admin:
+
+- de opslaanknop verborgen via `setVisible` (nooit alleen `hidden`, zie CLAUDE.md);
+- toevoegen en verwijderen verborgen, want een bewoner voegt geen bron of apparaat toe;
+- een `notice()` met de vaste tekst **"Deze gegevens worden beheerd door DomotiTech."**
+
+**Een rij mag nooit verborgen worden voor een bewoner.** Uitgrijzen is het hele punt: een
+verborgen fout blijft fout.
+
+**Wat de testlaag hier wel en niet kan.** De jsdom-stub van `ha-form` zet alleen
+properties en rendert geen control, dus **geen enkele test in die laag kan bewijzen dat
+een uitgegrijsd veld een klik weigert.** Wat daar wel toetsbaar is, en verplicht wordt:
+voor elk formulier draagt bij `isAdmin = false` elk installateursveld `disabled: true` en
+elk bewonersveld niet. Dat vangt de drift die ontstaat zodra iemand een veld toevoegt.
+
+Het gedrag zelf wordt geverifieerd in de echte browser, met echte kliks, **als tweede
+gebruiker zonder adminrechten** (staande afspraak, CLAUDE.md). Dat vereist een niet-admin
+HA-account voor het paneel; voor de WS-kant bestaat die route al (`ha_check.py --as`).
+
+### 33.8 Een foutmelding aan een bewoner luidt anders
+
+`splitFieldErrors` blijft ongewijzigd werken: een uitgegrijsd veld is gerenderd, dus de
+melding landt er gewoon op. Maar de **tekst** klopt niet meer.
+
+"Vul de energiebelasting aan" bij een veld dat de lezer niet kan aanraken is een opdracht
+die hij niet kan uitvoeren, precies de faalvorm die paragraaf 16 al beschrijft voor een
+melding die nergens landt, alleen een stap later. Voor een niet-admin geldt daarom: een
+melding op een **installateursveld** wordt vervangen door een meldzin die zegt dat
+DomotiTech dit beheert en dat hij het kan doorgeven. Een melding op een **bewonersveld**
+blijft ongewijzigd, want dat kan hij wel oplossen.
+
+De backendteksten veranderen niet. Dit is een vertaling in de frontend, op dezelfde plek
+waar de verweesde meldingen al worden opgevangen.
+
+### 33.9 De WebSocket-API: `require_admin` bewaakt installateursvelden
+
+Paragraaf 14 legde de grens bij **configuratie versus bediening**: wat de opgeslagen
+configuratie wijzigt is admin, wat de huidige toestand meldt (`coach/recalculate`,
+`devices/set_ready`) niet. Die grens is niet fout, maar hij dekt dit geval niet: de stille
+uren en het gereed-venster van een bewoner *zijn* configuratie, verhogen wel de revision,
+en horen toch niet achter het adminslot.
+
+De regel wordt daarom:
+
+> **`require_admin` bewaakt installateursvelden, niet alle schrijfacties.**
+
+**Timmer dit later niet dicht als inconsistentie.** Dat een niet-admin een schrijfcommando
+mag uitvoeren dat de revision ophoogt, ziet eruit als een gat in de beveiliging en is het
+niet: de grens ligt bij *wiens* gegevens er veranderen, niet bij *of* er iets verandert.
+Een bewoner die zijn eigen stille uren niet mag zetten omdat hij geen beheerder is, kan de
+functie niet gebruiken, en dan is het tabblad Voorkeuren zinloos voor precies de persoon
+voor wie het bedoeld is. Zelfde redenering als bij `set_ready` in 32.5.
+
+Concreet:
+
+| Commando | Nu | Wordt |
+|---|---|---|
+| `home/update` | admin | **ongewijzigd admin**, de hele Installatietab is installateursgebied (33.4) |
+| `sources/*` | admin | **ongewijzigd admin** |
+| `devices/create`, `devices/update`, `devices/delete` | admin | **ongewijzigd admin**, de volledige rij blijft installateurswerk |
+| `logs/clear` | admin | **ongewijzigd admin** |
+| `preferences/update` | admin | **open voor elke ingelogde gebruiker**, elk veld is bewonersgebied |
+| `devices/set_operation` | — | **nieuw, open voor elke ingelogde gebruiker** |
+
+`devices/update` blijft dus volledig admin, en dat is bewust. Er is geen veldfilter op dat
+commando: zou een bewoner het mogen aanroepen, dan kan hij `nominal_power_w`,
+`entity_links` en `control_forbidden` overschrijven, en verdwijnt een afspraak met een
+klik.
+
+### 33.10 `devices/set_operation`
+
+```text
+domotiapp_energy/devices/set_operation
+  device_id         : str
+  expected_revision : int
+  operation         : { control_mode?, ready_from?, ready_before?,
+                        days_of_week?, is_noisy?, priority? }
+```
+
+- **Strikte allow-list.** Elke andere sleutel in `operation` levert `invalid_format` op.
+  Niet negeren, niet stilzwijgend laten vallen: een verzoek dat meer wil dan het mag is
+  een fout die de aanroeper hoort te zien.
+- **Geen `require_admin`**, om de reden in 33.9. Een admin mág hem gebruiken, maar het
+  paneel doet dat niet: een installateur bewerkt de hele rij en slaat die heel op via
+  `devices/update`, een bewoner bewerkt zijn zes velden en stuurt alleen die. Twee paden,
+  omdat het twee verschillende handelingen zijn.
+- **Verhoogt de revision met 1**, want dit *is* een configuratiewijziging uit een
+  expliciete gebruikersactie (paragraaf 13). Dat wijkt bewust af van `set_ready`, dat in
+  een eigen store zonder revision leeft omdat die vlag vanzelf uitgaat.
+- Antwoordvorm gelijk aan elk ander schrijfcommando: `{ "revision", "item", "issues" }`.
+- Dezelfde validatie als `devices/update`, inclusief de blokkade uit 33.11.
+
+### 33.11 `control_forbidden` wordt hier voor het eerst dragend
+
+Paragraaf 12 noemt drie soorten waarheid over aansturing. Ze mappen exact op de twee
+rollen:
+
+| Veld | Soort waarheid | Eigenaar |
+|---|---|---|
+| `capabilities` | wat de hardware kan | installateur |
+| `control_forbidden` (+reden) | wat met deze klant is afgesproken | installateur |
+| `control_mode` | wat er gewild wordt | **bewoner** |
+
+De enige harde blokkade in `validators.py`, `control_forbidden = true` samen met een
+aansturende `control_mode`, was tot nu toe een dode regel: alleen een admin kon ooit
+`control_mode` zetten, en die zet ook `control_forbidden`. **Vanaf deze ronde is het het
+veto van de installateur over wat de bewoner wil**, en dat is exact waar paragraaf 12 hem
+voor ontwierp. De blokkade geldt onverkort op `set_operation`, met foutcode
+`invalid_format`.
+
+Daaruit volgt ook wat het paneel moet tonen: een bewoner die `control_mode` niet mag
+verhogen omdat er een afspraak op ligt, hoort **de reden** te zien. Daarom is
+`control_forbidden_reason` zichtbaar voor de bewoner, uitgegrijsd zoals de rest.
+
+### 33.12 Gevolgen elders
+
+- **Paragraaf 8**: `default_strategy` vervalt uit Woning, `respect_max_grid_load` uit
+  Voorkeuren. De tabbladenlijst wordt de zes uit 33.6.
+- **Paragraaf 14**: de regel uit 33.9 en het nieuwe commando uit 33.10. Het bestaande
+  onderscheid configuratie/bediening blijft staan; er komt een tweede as bij.
+- **Paragraaf 29, acceptatiecriterium 15**: "Niet-admins kunnen de configuratie niet
+  wijzigen (ook niet via directe WS-calls)" wordt: *"Niet-admins kunnen geen
+  installateursvelden wijzigen, ook niet via directe WS-calls; de bewonersvelden uit 33.4
+  kunnen zij wel wijzigen en niets daarbuiten."*
+- **Paragraaf 7**: het paneel blijft `require_admin=False`; ongewijzigd.
+- **README**: de rolindeling hoort bij *setup* en bij *security notes*: welke velden een
+  bewoner mag wijzigen, en dat de backend dat afdwingt.
+
+### 33.13 Wat deze ronde niet raakt
+
+- **De prijsgrenzen naar de bewoner.** Kandidaat voor later (33.4), nu niet.
+- **De energiescore.** Eigen ronde, eigen SPEC-sectie.
+- **De laadpaal.** Eigen ronde; `target_soc_percent` is een bewonersveld en
+  `vehicle_capacity_kwh` een installateursveld, dus de kaart uit 33.4 breidt dan uit
+  zonder van vorm te veranderen.
+- **Rollen fijner dan twee.** Er is geen derde rol en geen per-veldrecht per klant. Twee
+  rollen volgen uit `hass.user.is_admin`, dat HA al bijhoudt; iets fijners vereist een
+  eigen gebruikersadministratie en die hoort niet in deze integratie.
+
+### 33.14 Klaar wanneer
+
+- een niet-admin ziet zes tabbladen, kan op elk daarvan elk veld **lezen**, en kan
+  uitsluitend de bewonersvelden uit 33.4 wijzigen;
+- een niet-admin die het probeert via een directe WS-call op een installateursveld krijgt
+  `not_authorized` of `invalid_format`, aantoonbaar met `ha_check.py --as`;
+- de frontendtests tonen per formulier aan dat de eigenaarschapskaart wordt toegepast;
+- de twee dode velden zijn weg en een bestaande opslag laadt ongewijzigd door;
+- geverifieerd in de echte browser als niet-adminaccount, met echte kliks.

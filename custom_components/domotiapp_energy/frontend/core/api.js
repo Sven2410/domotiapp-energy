@@ -72,6 +72,25 @@ export function createApi(hass) {
         device_id: deviceId,
       }),
 
+    /**
+     * Change only the operating fields a resident owns (SPEC.md §33.10).
+     *
+     * Not a narrower `updateDevice`: it is a different command with a strict
+     * allow-list, and that allow-list is the permission boundary. `updateDevice`
+     * requires an admin and filters nothing, so sending a resident's edit
+     * through it would be sending the whole row.
+     *
+     * Which of the two the dialog uses follows from the role: an installer
+     * edits the whole appliance and saves it whole, a resident edits his six
+     * fields and sends only those.
+     */
+    setDeviceOperation: (expectedRevision, deviceId, operation) =>
+      call('devices/set_operation', {
+        expected_revision: expectedRevision,
+        device_id: deviceId,
+        operation,
+      }),
+
     /** Replace the advice preferences. */
     updatePreferences: (expectedRevision, preferences) =>
       call('preferences/update', {

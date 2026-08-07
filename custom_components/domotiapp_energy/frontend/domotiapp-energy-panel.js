@@ -25,22 +25,33 @@ import { createState } from './core/state.js';
 import { onTap } from './core/tap.js';
 import { coachTab } from './tabs/coach.js';
 import { devicesTab } from './tabs/devices.js';
-import { homeTab } from './tabs/home.js';
+import { installationTab } from './tabs/installation.js';
 import { logbookTab } from './tabs/logbook.js';
 import { overviewTab } from './tabs/overview.js';
 import { preferencesTab } from './tabs/preferences.js';
-import { sourcesTab } from './tabs/sources.js';
 
-const VERSION = '0.2.1';
+const VERSION = '0.3.0';
 
-/** Tab order as SPEC.md §8 lists it. */
+/**
+ * Tab order as SPEC.md §33.6 lists it.
+ *
+ * Six tabs, and **the same six for an installer and a resident**. There is no
+ * tab a resident does not see; what he does not own is greyed out where he can
+ * read it (`core/roles.js`).
+ *
+ * That is a choice against the alternative of two tab sets, one per role. The
+ * reason is the phone call this whole round exists for: a resident rings about
+ * his main fuse, and with two sets the two of them are looking at different
+ * screens, so "ga naar Installatie, wat staat er bij Hoofdzekering?" is not a
+ * usable sentence. One set is one mental model, one code path and one test
+ * matrix — and one tab fewer for the installer as well.
+ */
 const TABS = [
   overviewTab,
-  homeTab,
-  sourcesTab,
+  coachTab,
   devicesTab,
   preferencesTab,
-  coachTab,
+  installationTab,
   logbookTab,
 ];
 
@@ -854,16 +865,12 @@ class DomotiAppEnergyPanel extends HTMLElement {
     }
     const state = this._state.get();
 
-    // Configuration tabs are hidden for non-admins. This is visibility only:
-    // the backend refuses their writes regardless (SPEC.md §14).
-    for (const tab of TABS) {
-      const visible = state.isAdmin || !tab.adminOnly;
-      setVisible(this._tabButtons.get(tab.id), visible);
-      if (!visible && this._activeTab === tab.id) {
-        this._activeTab = TABS[0].id;
-      }
-    }
-
+    // No tab is hidden any more. Four of them used to disappear for a
+    // non-admin, which meant a resident could not see that his main fuse was
+    // wrong — and could not set his own quiet hours either, on a tab made
+    // entirely of his own preferences. Each form now greys out what he does not
+    // own (SPEC.md §33.6), and the backend still refuses the write regardless: a
+    // disabled field is not a permission check.
     for (const tab of TABS) {
       this._tabButtons
         .get(tab.id)

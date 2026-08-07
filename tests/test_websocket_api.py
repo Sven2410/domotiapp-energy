@@ -24,7 +24,9 @@ from custom_components.domotiapp_energy.const import (
     CONF_HOME_NAME,
     CONF_MANUAL_SETUP_ACKNOWLEDGED,
     CONTROL_AUTOMATIC,
+    CONTROL_MONITOR_ONLY,
     DEFAULT_HOME_NAME,
+    DEVICE_OPERATION_FIELDS,
     DEVICE_TYPE_DISHWASHER,
     DOMAIN,
     ERR_DUPLICATE_ID,
@@ -46,6 +48,7 @@ from custom_components.domotiapp_energy.const import (
     WS_DEVICES_CREATE,
     WS_DEVICES_DELETE,
     WS_DEVICES_LIST,
+    WS_DEVICES_SET_OPERATION,
     WS_DEVICES_UPDATE,
     WS_HOME_UPDATE,
     WS_LOGS_CLEAR,
@@ -58,6 +61,11 @@ from custom_components.domotiapp_energy.const import (
     WS_SOURCES_UPDATE,
 )
 from custom_components.domotiapp_energy.coordinator import tracked_entity_ids
+from custom_components.domotiapp_energy.models import (
+    DeviceProfile,
+    StoredConfiguration,
+)
+from custom_components.domotiapp_energy.websocket_api import _OPERATION_SCHEMA
 
 SOURCE_PAYLOAD: dict[str, Any] = {
     "id": "grid",
@@ -321,21 +329,21 @@ async def test_updating_the_preferences(
         {"type": WS_DEVICES_CREATE, "device": DEVICE_PAYLOAD},
         {"type": WS_DEVICES_UPDATE, "device": DEVICE_PAYLOAD},
         {"type": WS_DEVICES_DELETE, "device_id": "dishwasher"},
-        {"type": WS_PREFERENCES_UPDATE, "preferences": {}},
         {"type": WS_LOGS_CLEAR},
     ],
 )
-async def test_a_non_admin_may_not_write(
+async def test_a_non_admin_may_not_write_installer_fields(
     hass: HomeAssistant,
     entry: MockConfigEntry,
     hass_ws_client: WebSocketGenerator,
     hass_read_only_access_token: str,
     command: dict[str, Any],
 ) -> None:
-    """Every write command refuses a read-only user (SPEC.md §14).
+    """Every installer command refuses a read-only user (SPEC.md §14, §33.9).
 
-    The panel hides the configuration tabs for non-admins, but that is a
-    convenience; this is the check that actually holds.
+    The panel greys these fields out for a resident, but that is presentation;
+    this is the check that actually holds. ``preferences/update`` used to be in
+    this list and deliberately is not any more — see the resident tests below.
     """
     client = await hass_ws_client(hass, hass_read_only_access_token)
 
@@ -889,3 +897,326 @@ async def test_forbidden_control_without_a_controlling_mode_is_fine(
 
     assert response["success"] is True
     assert entry.runtime_data.store.config.devices[0].control_forbidden is True
+
+
+# --- Writing as a resident (SPEC.md §33.9) ----------------------------------
+
+
+async def test_a_resident_may_set_his_own_preferences(
+    hass: HomeAssistant,
+    entry: MockConfigEntry,
+    hass_ws_client: WebSocketGenerator,
+    hass_read_only_access_token: str,
+) -> None:
+    """The whole preferences tab is resident territory (SPEC.md §33.4).
+
+    This command used to require an admin, which meant a resident could not set
+    his own quiet hours — the defect that opened round 1. It does change the
+    configuration and it does raise the revision; the line is drawn by whose
+    data changes, not by whether something changes.
+    """
+    client = await hass_ws_client(hass, hass_read_only_access_token)
+    store = entry.runtime_data.store
+    revision = store.revision
+
+    response = await _send(
+        client,
+        {
+            "type": WS_PREFERENCES_UPDATE,
+            ATTR_EXPECTED_REVISION: revision,
+            "preferences": {"quiet_hours_start": "23:30"},
+        },
+    )
+
+    assert response["success"] is True
+    assert store.config.preferences.quiet_hours_start == "23:30"
+    assert store.revision == revision + 1
+
+
+async def test_a_resident_may_set_the_operating_fields_of_an_appliance(
+    hass: HomeAssistant,
+    entry: MockConfigEntry,
+    hass_ws_client: WebSocketGenerator,
+    hass_read_only_access_token: str,
+) -> None:
+    """The six fields from DEVICE_OPERATION_FIELDS, and the row survives."""
+    admin = await hass_ws_client(hass)
+    await _send(
+        admin,
+        {
+            "type": WS_DEVICES_CREATE,
+            ATTR_EXPECTED_REVISION: _revision(entry),
+            "device": DEVICE_PAYLOAD,
+        },
+    )
+
+    resident = await hass_ws_client(hass, hass_read_only_access_token)
+    response = await _send(
+        resident,
+        {
+            "type": WS_DEVICES_SET_OPERATION,
+            ATTR_EXPECTED_REVISION: _revision(entry),
+            "device_id": "dishwasher",
+            "operation": {
+                "ready_before": "07:00",
+                "days_of_week": [0, 1, 2, 3, 4],
+                "is_noisy": False,
+            },
+        },
+    )
+
+    assert response["success"] is True
+    stored = entry.runtime_data.store.config.devices[0]
+    assert stored.ready_before == "07:00"
+    assert stored.days_of_week == [0, 1, 2, 3, 4]
+    assert stored.is_noisy is False
+    # Merged, not replaced: what the installer filled in has to survive a
+    # resident touching his own fields.
+    assert stored.nominal_power_w == 2000.0
+    assert stored.energy_per_cycle_kwh == 1.0
+    assert stored.name == "Vaatwasser"
+
+
+@pytest.mark.parametrize(
+    "operation",
+    [
+        {"nominal_power_w": 1.0},
+        {"control_forbidden": False},
+        {"entity_links": {}},
+        {"status_entity": "sensor.iets"},
+        {"name": "Andere naam"},
+        {"enabled": False},
+        {"ready_before": "07:00", "energy_per_cycle_kwh": 99.0},
+    ],
+)
+async def test_set_operation_refuses_anything_outside_the_allow_list(
+    hass: HomeAssistant,
+    entry: MockConfigEntry,
+    hass_ws_client: WebSocketGenerator,
+    hass_read_only_access_token: str,
+    operation: dict[str, Any],
+) -> None:
+    """An unknown key is refused, never silently dropped (SPEC.md §33.10).
+
+    This is the one schema in the module that forbids extra keys, and the
+    reason is that the absence of a key *is* the permission boundary here: the
+    command is open to every logged-in user. The last case matters most — a
+    legitimate field alongside a forbidden one must not sneak the forbidden one
+    through.
+    """
+    admin = await hass_ws_client(hass)
+    await _send(
+        admin,
+        {
+            "type": WS_DEVICES_CREATE,
+            ATTR_EXPECTED_REVISION: _revision(entry),
+            "device": DEVICE_PAYLOAD,
+        },
+    )
+
+    resident = await hass_ws_client(hass, hass_read_only_access_token)
+    response = await _send(
+        resident,
+        {
+            "type": WS_DEVICES_SET_OPERATION,
+            ATTR_EXPECTED_REVISION: _revision(entry),
+            "device_id": "dishwasher",
+            "operation": operation,
+        },
+    )
+
+    assert response["success"] is False
+    assert response["error"]["code"] == ERR_INVALID_FORMAT
+    stored = entry.runtime_data.store.config.devices[0]
+    assert stored.nominal_power_w == 2000.0
+    assert stored.energy_per_cycle_kwh == 1.0
+    assert stored.ready_before is None
+
+
+async def test_an_empty_operation_is_refused(
+    hass: HomeAssistant,
+    entry: MockConfigEntry,
+    hass_ws_client: WebSocketGenerator,
+    hass_read_only_access_token: str,
+) -> None:
+    """Changing nothing must not consume a revision."""
+    admin = await hass_ws_client(hass)
+    await _send(
+        admin,
+        {
+            "type": WS_DEVICES_CREATE,
+            ATTR_EXPECTED_REVISION: _revision(entry),
+            "device": DEVICE_PAYLOAD,
+        },
+    )
+    revision = _revision(entry)
+
+    resident = await hass_ws_client(hass, hass_read_only_access_token)
+    response = await _send(
+        resident,
+        {
+            "type": WS_DEVICES_SET_OPERATION,
+            ATTR_EXPECTED_REVISION: revision,
+            "device_id": "dishwasher",
+            "operation": {},
+        },
+    )
+
+    assert response["success"] is False
+    assert response["error"]["code"] == ERR_INVALID_FORMAT
+    assert _revision(entry) == revision
+
+
+async def test_the_agreement_outranks_what_the_resident_wants(
+    hass: HomeAssistant,
+    entry: MockConfigEntry,
+    hass_ws_client: WebSocketGenerator,
+    hass_read_only_access_token: str,
+) -> None:
+    """``control_forbidden`` finally carries weight (SPEC.md §33.11).
+
+    Until the resident could set ``control_mode``, this block could not fire in
+    practice: only an admin could set the mode, and an admin also sets the
+    agreement. It is now the installer's veto over what the resident wants,
+    which is exactly what SPEC.md §12 designed it for.
+    """
+    admin = await hass_ws_client(hass)
+    await _send(
+        admin,
+        {
+            "type": WS_DEVICES_CREATE,
+            ATTR_EXPECTED_REVISION: _revision(entry),
+            "device": DEVICE_PAYLOAD
+            | {
+                "control_forbidden": True,
+                "control_forbidden_reason": "Geen aansturing afgesproken",
+            },
+        },
+    )
+
+    resident = await hass_ws_client(hass, hass_read_only_access_token)
+    response = await _send(
+        resident,
+        {
+            "type": WS_DEVICES_SET_OPERATION,
+            ATTR_EXPECTED_REVISION: _revision(entry),
+            "device_id": "dishwasher",
+            "operation": {"control_mode": CONTROL_AUTOMATIC},
+        },
+    )
+
+    assert response["success"] is False
+    assert response["error"]["code"] == ERR_INVALID_FORMAT
+    assert entry.runtime_data.store.config.devices[0].control_mode != CONTROL_AUTOMATIC
+
+
+async def test_a_resident_may_still_switch_a_permitted_appliance_off(
+    hass: HomeAssistant,
+    entry: MockConfigEntry,
+    hass_ws_client: WebSocketGenerator,
+    hass_read_only_access_token: str,
+) -> None:
+    """``monitor_only`` is the resident's off switch, which is why `enabled` is not.
+
+    An agreement not to steer must not also block the resident from asking for
+    *less*: monitor_only steers nothing, so the veto has nothing to object to.
+    """
+    admin = await hass_ws_client(hass)
+    await _send(
+        admin,
+        {
+            "type": WS_DEVICES_CREATE,
+            ATTR_EXPECTED_REVISION: _revision(entry),
+            "device": DEVICE_PAYLOAD
+            | {
+                "control_forbidden": True,
+                "control_forbidden_reason": "Geen aansturing afgesproken",
+            },
+        },
+    )
+
+    resident = await hass_ws_client(hass, hass_read_only_access_token)
+    response = await _send(
+        resident,
+        {
+            "type": WS_DEVICES_SET_OPERATION,
+            ATTR_EXPECTED_REVISION: _revision(entry),
+            "device_id": "dishwasher",
+            "operation": {"control_mode": CONTROL_MONITOR_ONLY},
+        },
+    )
+
+    assert response["success"] is True
+    stored = entry.runtime_data.store.config.devices[0]
+    assert stored.control_mode == CONTROL_MONITOR_ONLY
+    assert stored.enabled is True
+
+
+async def test_set_operation_on_an_unknown_device_is_not_found(
+    hass: HomeAssistant, entry: MockConfigEntry, hass_ws_client: WebSocketGenerator
+) -> None:
+    """The id has to exist, like every other row command."""
+    client = await hass_ws_client(hass)
+
+    response = await _send(
+        client,
+        {
+            "type": WS_DEVICES_SET_OPERATION,
+            ATTR_EXPECTED_REVISION: _revision(entry),
+            "device_id": "bestaat-niet",
+            "operation": {"is_noisy": True},
+        },
+    )
+
+    assert response["success"] is False
+    assert response["error"]["code"] == ERR_NOT_FOUND
+
+
+async def test_a_quarantined_row_cannot_be_operated(
+    hass: HomeAssistant,
+    entry: MockConfigEntry,
+    hass_ws_client: WebSocketGenerator,
+    hass_read_only_access_token: str,
+) -> None:
+    """A row with an unknown type is out of service, and stays untouched.
+
+    Refusing also keeps derived state out of the file: ``from_dict`` disables an
+    unknown type on the way in, so merging and storing would write that
+    derivation back — which SPEC.md §13 forbids.
+    """
+    store = entry.runtime_data.store
+
+    def _quarantine(config: StoredConfiguration) -> None:
+        config.devices.append(
+            DeviceProfile.from_dict({"id": "raar", "device_type": "x"})
+        )
+
+    await store.async_update(_quarantine, expected_revision=store.revision)
+
+    resident = await hass_ws_client(hass, hass_read_only_access_token)
+    response = await _send(
+        resident,
+        {
+            "type": WS_DEVICES_SET_OPERATION,
+            ATTR_EXPECTED_REVISION: _revision(entry),
+            "device_id": "raar",
+            "operation": {"is_noisy": True},
+        },
+    )
+
+    assert response["success"] is False
+    assert response["error"]["code"] == ERR_INVALID_FORMAT
+    assert store.config.devices[0].is_noisy is False
+
+
+def test_the_allow_list_and_the_schema_cannot_drift() -> None:
+    """DEVICE_OPERATION_FIELDS is the documented list; the schema is the guard.
+
+    The schema is spelled out per field rather than generated, because a list of
+    names cannot say that a priority is one of four words. That leaves two
+    places holding the same truth, so this compares them — the same arrangement
+    that keeps the entity object ids in step with their translation file.
+    """
+    schema_fields = {str(key) for key in _OPERATION_SCHEMA.schema}
+
+    assert schema_fields == set(DEVICE_OPERATION_FIELDS)

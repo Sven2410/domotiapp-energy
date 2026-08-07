@@ -648,6 +648,38 @@ def test_from_dict_of_none_yields_defaults() -> None:
     assert StoredConfiguration.from_dict(None).home.home_name == DEFAULT_HOME_NAME
 
 
+def test_a_store_written_before_round_1_loads_unchanged() -> None:
+    """The two removed dead fields need no migration (SPEC.md §33.5).
+
+    ``default_strategy`` and ``respect_max_grid_load`` were stored, validated
+    and rendered, and read by nothing. They are simply gone; ``from_dict``
+    ignores keys it does not know, so an existing customer's file loads with
+    everything around them intact and nothing has to be re-entered.
+    """
+    config = StoredConfiguration.from_dict(
+        {
+            "home": {
+                "home_name": "Kerkstraat 12",
+                "main_fuse_a": 40,
+                "default_strategy": "max_self_consumption",
+            },
+            "preferences": {
+                "quiet_hours_start": "23:00",
+                "respect_max_grid_load": False,
+            },
+        }
+    )
+
+    assert config.home.home_name == "Kerkstraat 12"
+    assert config.home.main_fuse_a == 40
+    assert config.preferences.quiet_hours_start == "23:00"
+    assert not hasattr(config.home, "default_strategy")
+    assert not hasattr(config.preferences, "respect_max_grid_load")
+    # And they do not come back out either, so the next write drops them.
+    assert "default_strategy" not in config.home.to_dict()
+    assert "respect_max_grid_load" not in config.preferences.to_dict()
+
+
 # --- Model behaviour --------------------------------------------------------
 
 

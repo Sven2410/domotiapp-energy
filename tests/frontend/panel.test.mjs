@@ -29,22 +29,20 @@ import {
 
 const ALL_TABS = [
   'Overzicht',
-  'Woning',
-  'Energiebronnen',
-  'Apparaten',
-  'Voorkeuren',
   'Energiecoach',
+  'Apparaten',
+  'Mijn voorkeuren',
+  'Installatie',
   'Logboek',
 ];
 
-const READ_ONLY_TABS = ['Overzicht', 'Energiecoach', 'Logboek'];
-
 describe('tab navigation', () => {
-  it('shows exactly one panel and hides the other six', async () => {
+  it('shows exactly one panel and hides the other five', async () => {
     const panel = await mountPanel();
 
-    // Open every tab once, so all seven panels exist and the assertion below
-    // really covers six hidden ones rather than however many happen to be built.
+    // Open every tab once, so all six panels exist and the assertion below
+    // really covers five hidden ones rather than however many happen to be
+    // built.
     for (const label of ALL_TABS) {
       clickTab(panel, label);
       await settle();
@@ -69,14 +67,14 @@ describe('tab navigation', () => {
   it('marks the opened tab as selected and no other', async () => {
     const panel = await mountPanel();
 
-    clickTab(panel, 'Voorkeuren');
+    clickTab(panel, 'Mijn voorkeuren');
     await settle();
 
     const selected = tabButtons(panel).filter(
       (button) => button.getAttribute('aria-selected') === 'true',
     );
     assert.equal(selected.length, 1);
-    assert.match(selected[0].textContent, /Voorkeuren/);
+    assert.match(selected[0].textContent, /Mijn voorkeuren/);
   });
 
   it('builds a tab once and reuses it', async () => {
@@ -94,45 +92,40 @@ describe('tab navigation', () => {
 });
 
 describe('permissions', () => {
-  it('shows an admin all seven tabs', async () => {
-    const panel = await mountPanel(fakeHass({ isAdmin: true }));
+  /**
+   * The whole point of SPEC.md §33.6, and the reverse of what this suite used
+   * to assert: four tabs disappeared for a non-admin, so a resident could not
+   * see that his main fuse was wrong and could not set his own quiet hours
+   * either. Both roles now get the same six tabs; what he does not own is
+   * greyed out where he can read it.
+   */
+  for (const isAdmin of [true, false]) {
+    it(`shows the same six tabs (isAdmin=${isAdmin})`, async () => {
+      const panel = await mountPanel(fakeHass({ isAdmin }));
 
-    const visible = tabButtons(panel).filter(isVisible);
+      const labels = tabButtons(panel)
+        .filter(isVisible)
+        .map((button) => button.textContent.trim());
 
-    assert.equal(visible.length, 7);
-  });
+      assert.equal(labels.length, ALL_TABS.length);
+      for (const label of ALL_TABS) {
+        assert.ok(
+          labels.some((text) => text.includes(label)),
+          `${label} should be visible for isAdmin=${isAdmin}`,
+        );
+      }
+    });
+  }
 
-  it('shows a non-admin only the three read-only tabs', async () => {
+  it('lets a resident open the Installatie tab', async () => {
     const panel = await mountPanel(fakeHass({ isAdmin: false }));
 
-    const visible = tabButtons(panel).filter(isVisible);
-    const labels = visible.map((button) => button.textContent.trim());
-
-    assert.equal(visible.length, 3);
-    for (const label of READ_ONLY_TABS) {
-      assert.ok(
-        labels.some((text) => text.includes(label)),
-        `${label} should be visible for a non-admin`,
-      );
-    }
-    for (const label of ['Woning', 'Energiebronnen', 'Apparaten', 'Voorkeuren']) {
-      assert.ok(
-        !labels.some((text) => text.includes(label)),
-        `${label} must be hidden for a non-admin`,
-      );
-    }
-  });
-
-  it('keeps a non-admin on a tab they may see', async () => {
-    const panel = await mountPanel(fakeHass({ isAdmin: false }));
-
-    // The button is hidden, but a stale click must not strand them either.
-    clickTab(panel, 'Overzicht');
+    clickTab(panel, 'Installatie');
     await settle();
 
     const visible = tabPanels(panel).filter(isVisible);
     assert.equal(visible.length, 1);
-    assert.equal(visible[0].id, 'panel-overview');
+    assert.equal(visible[0].id, 'panel-installation');
   });
 });
 

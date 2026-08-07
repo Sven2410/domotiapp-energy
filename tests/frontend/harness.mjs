@@ -69,7 +69,6 @@ export function sampleConfig(overrides = {}) {
       feed_in_cost_eur_kwh: null,
       net_metering_until: '2027-01-01',
       min_solar_surplus_w: 500,
-      default_strategy: 'balanced',
     },
     sources: [{ id: 'grid', name: 'Netmeter', type: 'grid_meter', enabled: true }],
     devices: [],
@@ -174,6 +173,12 @@ function writeAnswer(message, nextRevision, issues) {
     'domotiapp_energy/devices/create': () => message.device,
     'domotiapp_energy/devices/update': () => message.device,
     'domotiapp_energy/devices/delete': () => null,
+    // The resident's write. It answers with the merged row, the way the
+    // backend does — only the fields it was sent, folded into what was there.
+    'domotiapp_energy/devices/set_operation': () => ({
+      id: message.device_id,
+      ...message.operation,
+    }),
     'domotiapp_energy/home/update': () => message.home,
     'domotiapp_energy/preferences/update': () => message.preferences,
     'domotiapp_energy/logs/clear': () => null,

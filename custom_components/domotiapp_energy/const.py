@@ -16,7 +16,7 @@ from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 
 DOMAIN: Final = "domotiapp_energy"
 INTEGRATION_NAME: Final = "DomotiApp Energy"
-VERSION: Final = "0.2.1"
+VERSION: Final = "0.3.0"
 
 MANUFACTURER: Final = "DomotiApp"
 DEVICE_MODEL: Final = "Energy Coach"
@@ -101,6 +101,7 @@ WS_DEVICES_LIST: Final = f"{DOMAIN}/devices/list"
 WS_DEVICES_CREATE: Final = f"{DOMAIN}/devices/create"
 WS_DEVICES_UPDATE: Final = f"{DOMAIN}/devices/update"
 WS_DEVICES_DELETE: Final = f"{DOMAIN}/devices/delete"
+WS_DEVICES_SET_OPERATION: Final = f"{DOMAIN}/devices/set_operation"
 WS_PREFERENCES_GET: Final = f"{DOMAIN}/preferences/get"
 WS_PREFERENCES_UPDATE: Final = f"{DOMAIN}/preferences/update"
 WS_COACH_GET: Final = f"{DOMAIN}/coach/get"
@@ -212,22 +213,16 @@ ALL_IN_PRICE_DECIMALS: Final = 6
 # price and this whole composition barely matters; after it, the feed-in tariff
 # is the entire difference in the savings formula (SPEC.md §16).
 
-STRATEGY_COMFORT: Final = "comfort"
-STRATEGY_BALANCED: Final = "balanced"
-STRATEGY_SAVE: Final = "save"
-STRATEGY_MAX_SELF_CONSUMPTION: Final = "max_self_consumption"
-STRATEGIES: Final[tuple[str, ...]] = (
-    STRATEGY_COMFORT,
-    STRATEGY_BALANCED,
-    STRATEGY_SAVE,
-    STRATEGY_MAX_SELF_CONSUMPTION,
-)
+# `default_strategy` and its four strategy constants were removed in round 1
+# (SPEC.md §33.5). The field was stored, validated and rendered, and read by
+# nothing — and it sat on the border of resident territory, so the role split
+# would otherwise have moved it to a tab where a resident clicks it and nothing
+# happens. Bring it back with a reader in the same round, or not at all.
 
 MIN_PEAK_WARNING_PERCENT: Final = 0
 MAX_PEAK_WARNING_PERCENT: Final = 100
 DEFAULT_PEAK_WARNING_PERCENT: Final = 80
 DEFAULT_MIN_SOLAR_SURPLUS_W: Final = 500
-DEFAULT_STRATEGY: Final = STRATEGY_BALANCED
 
 # --- Net metering (SPEC.md §8 "Woning" and §16) -----------------------------
 #
@@ -491,6 +486,33 @@ PRIORITIES: Final[tuple[str, ...]] = (
     PRIORITY_CRITICAL,
 )
 DEFAULT_PRIORITY: Final = PRIORITY_NORMAL
+
+# --- Who owns which field (SPEC.md §33.4) -----------------------------------
+#
+# The fields on an appliance a **resident** owns, and therefore the complete
+# allow-list of `devices/set_operation`. Everything else on a DeviceProfile
+# belongs to the installer, so a field that is not named here is protected by
+# default rather than exposed by default — a new field is safe until someone
+# decides otherwise.
+#
+# The split runs *through* an appliance rather than around it: a dishwasher
+# carries installer work (power, energy per cycle, entity links) and resident
+# work (when it must be finished, on which days, may it make noise) at the same
+# time. That is why this is a field list and not a per-command permission.
+#
+# `enabled` is deliberately absent: the resident's off switch is
+# `control_mode = monitor_only`, which is what that field is for. `enabled`
+# removes the row from the data quality and the engine, which is a different
+# act. `is_flexible` is absent for the same kind of reason — it is a statement
+# about the machine, where `is_noisy` is one about the household.
+DEVICE_OPERATION_FIELDS: Final[tuple[str, ...]] = (
+    "control_mode",
+    "ready_from",
+    "ready_before",
+    "days_of_week",
+    "is_noisy",
+    "priority",
+)
 
 # Optional entity bindings on a device profile. Missing means null or absent,
 # never an empty string.

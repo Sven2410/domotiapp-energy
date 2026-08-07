@@ -61,7 +61,6 @@ from .const import (
     SOURCE_TYPE_CURRENT_PRICE,
     SOURCE_TYPE_FEED_IN_PRICE,
     SOURCE_TYPE_GRID_METER,
-    STRATEGIES,
     UNIT_CONVERSION_FACTORS,
     UNITS,
     UNUSABLE_ENTITY_STATES,
@@ -320,15 +319,6 @@ def validate_home_profile(home: HomeProfile) -> list[ValidationIssue]:
                 "contract_type",
                 VALIDATION_INVALID_CHOICE,
                 "Kies een vast of dynamisch contract.",
-            )
-        )
-
-    if home.default_strategy not in STRATEGIES:
-        issues.append(
-            ValidationIssue(
-                "default_strategy",
-                VALIDATION_INVALID_CHOICE,
-                "Kies een geldige standaardstrategie.",
             )
         )
 
