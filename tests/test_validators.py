@@ -2,7 +2,7 @@
 
 The validation list from SPEC.md §24 is the contract for this file: valid and
 invalid entities, negative power, scale factors, missing attributes, invalid
-time windows, a latest_finish before earliest_start evaluated as a window across
+time windows, a ready_before before ready_from evaluated as a window across
 midnight, an invalid main fuse, max_grid_power_w = 0, and the unit conversions
 kW->W and ct->EUR.
 """
@@ -837,8 +837,8 @@ def test_a_complete_device_profile_has_no_issues() -> None:
         nominal_power_w=2000.0,
         energy_per_cycle_kwh=1.2,
         duration_minutes=120,
-        earliest_start="08:00",
-        latest_finish="23:00",
+        ready_from="08:00",
+        ready_before="23:00",
     )
 
     assert validate_device_profile(device) == []
@@ -851,13 +851,13 @@ def test_a_device_without_a_time_window_is_not_an_error() -> None:
     assert validate_device_profile(device) == []
 
 
-def test_latest_finish_before_earliest_start_is_a_midnight_window() -> None:
+def test_ready_before_before_ready_from_is_a_midnight_window() -> None:
     """22:00-06:00 is the normal Dutch scenario, not an error (SPEC.md §16)."""
     device = DeviceProfile(
         id="d1",
         device_type=DEVICE_TYPE_DISHWASHER,
-        earliest_start="22:00",
-        latest_finish="06:00",
+        ready_from="22:00",
+        ready_before="06:00",
     )
 
     assert validate_device_profile(device) == []
@@ -869,8 +869,8 @@ def test_a_run_fitting_inside_a_midnight_window_is_accepted() -> None:
         id="d1",
         device_type=DEVICE_TYPE_DISHWASHER,
         duration_minutes=180,
-        earliest_start="22:00",
-        latest_finish="06:00",
+        ready_from="22:00",
+        ready_before="06:00",
     )
 
     assert validate_device_profile(device) == []
@@ -882,8 +882,8 @@ def test_a_run_too_long_for_a_midnight_window_is_rejected() -> None:
         id="d1",
         device_type=DEVICE_TYPE_DISHWASHER,
         duration_minutes=600,
-        earliest_start="22:00",
-        latest_finish="06:00",
+        ready_from="22:00",
+        ready_before="06:00",
     )
 
     issues = validate_device_profile(device)
@@ -897,13 +897,13 @@ def test_an_equal_start_and_finish_is_rejected() -> None:
     device = DeviceProfile(
         id="d1",
         device_type=DEVICE_TYPE_DISHWASHER,
-        earliest_start="09:00",
-        latest_finish="09:00",
+        ready_from="09:00",
+        ready_before="09:00",
     )
 
     issues = validate_device_profile(device)
 
-    assert _fields(issues) == {"latest_finish"}
+    assert _fields(issues) == {"ready_before"}
     assert has_errors(issues) is True
 
 
@@ -943,17 +943,23 @@ def test_window_length_wraps_past_midnight() -> None:
     assert window_length_minutes(9 * 60, 11 * 60) == 2 * 60
 
 
-def test_half_a_time_window_is_rejected() -> None:
-    """One end without the other leaves the window undefined."""
-    only_start = DeviceProfile(
-        id="d1", device_type=DEVICE_TYPE_DISHWASHER, earliest_start="09:00"
+def test_half_a_ready_window_is_allowed() -> None:
+    """The two bounds answer different questions, so either may stand alone.
+
+    The start window this replaced needed both ends or neither, because half a
+    window was undefined. A ready window is not: "not finished before 09:00"
+    guards against spoilage and "finished by 17:00" is a deadline, and a
+    resident may well mean only one of them (SPEC.md §32).
+    """
+    only_from = DeviceProfile(
+        id="d1", device_type=DEVICE_TYPE_DISHWASHER, ready_from="09:00"
     )
-    only_finish = DeviceProfile(
-        id="d2", device_type=DEVICE_TYPE_DISHWASHER, latest_finish="17:00"
+    only_before = DeviceProfile(
+        id="d2", device_type=DEVICE_TYPE_DISHWASHER, ready_before="17:00"
     )
 
-    assert _fields(validate_device_profile(only_start)) == {"latest_finish"}
-    assert _fields(validate_device_profile(only_finish)) == {"earliest_start"}
+    assert validate_device_profile(only_from) == []
+    assert validate_device_profile(only_before) == []
 
 
 def test_a_malformed_time_is_rejected() -> None:
@@ -961,13 +967,13 @@ def test_a_malformed_time_is_rejected() -> None:
     device = DeviceProfile(
         id="d1",
         device_type=DEVICE_TYPE_DISHWASHER,
-        earliest_start="ochtend",
-        latest_finish="17:00",
+        ready_from="ochtend",
+        ready_before="17:00",
     )
 
     issues = validate_device_profile(device)
 
-    assert _fields(issues) == {"earliest_start"}
+    assert _fields(issues) == {"ready_from"}
     assert VALIDATION_INVALID_TIME_WINDOW in _codes(issues)
 
 
@@ -977,8 +983,8 @@ def test_a_run_that_does_not_fit_its_window_is_rejected() -> None:
         id="d1",
         device_type=DEVICE_TYPE_DISHWASHER,
         duration_minutes=240,
-        earliest_start="09:00",
-        latest_finish="11:00",
+        ready_from="09:00",
+        ready_before="11:00",
     )
 
     issues = validate_device_profile(device)
@@ -993,8 +999,8 @@ def test_a_run_that_exactly_fills_its_window_is_accepted() -> None:
         id="d1",
         device_type=DEVICE_TYPE_DISHWASHER,
         duration_minutes=120,
-        earliest_start="09:00",
-        latest_finish="11:00",
+        ready_from="09:00",
+        ready_before="11:00",
     )
 
     assert validate_device_profile(device) == []
@@ -1102,14 +1108,14 @@ def test_validating_a_whole_configuration_groups_issues_per_subject() -> None:
         DeviceProfile(
             id="d1",
             device_type=DEVICE_TYPE_DISHWASHER,
-            earliest_start="22:00",
-            latest_finish="06:00",
+            ready_from="22:00",
+            ready_before="06:00",
         ),
         DeviceProfile(
             id="d2",
             device_type=DEVICE_TYPE_DISHWASHER,
-            earliest_start="09:00",
-            latest_finish="09:00",
+            ready_from="09:00",
+            ready_before="09:00",
         ),
     ]
 

@@ -943,8 +943,8 @@ def test_each_checklist_item_is_worth_its_documented_points() -> None:
             device_type=DEVICE_TYPE_DISHWASHER,
             nominal_power_w=2000.0,
             energy_per_cycle_kwh=1.2,
-            earliest_start="08:00",
-            latest_finish="23:00",
+            ready_from="08:00",
+            ready_before="23:00",
         )
     )
     snapshot = EnergySnapshot(grid_power_w=1000.0, solar_power_w=500.0)
@@ -1068,8 +1068,8 @@ def test_one_flexible_device_without_a_window_fails_the_item() -> None:
         DeviceProfile(
             id="d1",
             device_type=DEVICE_TYPE_DISHWASHER,
-            earliest_start="08:00",
-            latest_finish="23:00",
+            ready_from="08:00",
+            ready_before="23:00",
         )
     )
     config.devices.append(DeviceProfile(id="d2", device_type=DEVICE_TYPE_DISHWASHER))
@@ -1086,8 +1086,8 @@ def test_an_inflexible_device_needs_no_window() -> None:
         DeviceProfile(
             id="d1",
             device_type=DEVICE_TYPE_DISHWASHER,
-            earliest_start="08:00",
-            latest_finish="23:00",
+            ready_from="08:00",
+            ready_before="23:00",
         )
     )
     # Through from_dict, so is_flexible picks up its type-dependent default.
@@ -1136,8 +1136,8 @@ async def test_a_fixed_input_gives_a_fixed_score(hass: HomeAssistant) -> None:
             device_type=DEVICE_TYPE_DISHWASHER,
             nominal_power_w=2000.0,
             energy_per_cycle_kwh=1.2,
-            earliest_start="08:00",
-            latest_finish="23:00",
+            ready_from="08:00",
+            ready_before="23:00",
         )
     )
 
@@ -1644,8 +1644,8 @@ def test_the_checklist_asks_a_device_for_exactly_these_fields() -> None:
     complete: dict[str, Any] = {
         "nominal_power_w": 2000.0,
         "energy_per_cycle_kwh": 1.2,
-        "earliest_start": "22:00",
-        "latest_finish": "06:00",
+        "ready_from": "22:00",
+        "ready_before": "06:00",
     }
 
     passed = _score(**complete).completed_items
@@ -1656,8 +1656,8 @@ def test_the_checklist_asks_a_device_for_exactly_these_fields() -> None:
     for field_name, item in (
         ("nominal_power_w", COMPLETENESS_ITEM_DEVICE_PROFILE),
         ("energy_per_cycle_kwh", COMPLETENESS_ITEM_DEVICE_PROFILE),
-        ("earliest_start", COMPLETENESS_ITEM_TIME_WINDOWS),
-        ("latest_finish", COMPLETENESS_ITEM_TIME_WINDOWS),
+        ("ready_from", COMPLETENESS_ITEM_TIME_WINDOWS),
+        ("ready_before", COMPLETENESS_ITEM_TIME_WINDOWS),
     ):
         without = _score(**{**complete, field_name: None})
         assert item in without.missing_items, field_name

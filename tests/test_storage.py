@@ -775,14 +775,117 @@ def test_device_times_are_normalised() -> None:
         {
             "id": "d1",
             "device_type": DEVICE_TYPE_DISHWASHER,
-            "earliest_start": "07:30:00",
-            "latest_finish": "23:00",
+            "ready_from": "07:30:00",
+            "ready_before": "23:00",
         }
     )
 
-    assert device.earliest_start == "07:30"
-    assert device.latest_finish == "23:00"
+    assert device.ready_from == "07:30"
+    assert device.ready_before == "23:00"
     assert device.has_time_window is True
+
+
+# --- Migrating the old start window (SPEC.md §32.4) --------------------------
+
+
+def test_an_old_start_window_becomes_a_ready_window() -> None:
+    """A stored device from before 0.2 keeps meaning what it meant.
+
+    `earliest_start` said "do not start before"; adding the duration makes that
+    exactly "do not be finished before", which is what `ready_from` means. The
+    translation happens on reading, so `async_load` still writes nothing
+    (SPEC.md §13).
+    """
+    device = DeviceProfile.from_dict(
+        {
+            "id": "d1",
+            "device_type": DEVICE_TYPE_DISHWASHER,
+            "earliest_start": "22:00",
+            "latest_finish": "06:00",
+            "duration_minutes": 180,
+        }
+    )
+
+    # 22:00 plus three hours is 01:00 — the earliest it can be *finished*.
+    assert device.ready_from == "01:00"
+    assert device.ready_before == "06:00"
+    # And the start window derived back from it is the one that was stored.
+    assert device.earliest_start == "22:00"
+
+
+def test_an_old_window_without_a_duration_carries_over_unchanged() -> None:
+    """Nothing to add, so the times stand as they are — and behave as before."""
+    device = DeviceProfile.from_dict(
+        {
+            "id": "d1",
+            "device_type": DEVICE_TYPE_DISHWASHER,
+            "earliest_start": "09:00",
+            "latest_finish": "17:00",
+        }
+    )
+
+    assert device.ready_from == "09:00"
+    assert device.ready_before == "17:00"
+    # Without a duration the derived start degrades to the ready time itself,
+    # which is exactly what the old start window did.
+    assert device.earliest_start == "09:00"
+    assert device.latest_start is None
+
+
+def test_a_migrated_window_crosses_midnight_correctly() -> None:
+    """23:00 plus a three-hour programme is 02:00, not 26:00."""
+    device = DeviceProfile.from_dict(
+        {
+            "id": "d1",
+            "device_type": DEVICE_TYPE_DISHWASHER,
+            "earliest_start": "23:00",
+            "duration_minutes": 180,
+        }
+    )
+
+    assert device.ready_from == "02:00"
+
+
+def test_an_already_migrated_device_is_left_alone() -> None:
+    """A configuration that has been translated once is never touched again.
+
+    Both sets of keys can coexist in a file that was written by a new release
+    and then read by one — the new fields win, and the old ones are ignored
+    rather than re-applied on top.
+    """
+    device = DeviceProfile.from_dict(
+        {
+            "id": "d1",
+            "device_type": DEVICE_TYPE_DISHWASHER,
+            "ready_from": "01:00",
+            "ready_before": "06:00",
+            "earliest_start": "22:00",
+            "latest_finish": "06:00",
+            "duration_minutes": 180,
+        }
+    )
+
+    assert device.ready_from == "01:00"
+    assert device.ready_before == "06:00"
+
+
+def test_the_old_keys_disappear_from_storage() -> None:
+    """Once read, a device is written back in the new shape only."""
+    device = DeviceProfile.from_dict(
+        {
+            "id": "d1",
+            "device_type": DEVICE_TYPE_DISHWASHER,
+            "earliest_start": "09:00",
+            "latest_finish": "17:00",
+        }
+    )
+
+    stored = device.to_dict()
+
+    assert stored["ready_from"] == "09:00"
+    assert stored["ready_before"] == "17:00"
+    assert "earliest_start" not in stored
+    assert "latest_finish" not in stored
 
 
 def test_device_days_of_week_default_to_every_day() -> None:

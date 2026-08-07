@@ -731,48 +731,47 @@ def _validate_control(row: DeviceProfile | EnergySource) -> list[ValidationIssue
 
 
 def _validate_time_window(device: DeviceProfile) -> list[ValidationIssue]:
-    """Check the allowed time window of a device.
+    """Check the ready window of a device (SPEC.md §32).
 
-    ``latest_finish`` before ``earliest_start`` is a window that crosses
-    midnight, exactly as it is for the quiet hours (SPEC.md §16). A dishwasher
-    allowed to run from 22:00 to 06:00 is the normal case, not an error. Only a
+    ``ready_before`` before ``ready_from`` is a window that crosses midnight,
+    exactly as it is for the quiet hours (SPEC.md §16). A dishwasher that has to
+    be finished between 22:00 and 06:00 is the normal case, not an error. Only a
     window whose ends are equal is refused: that is either empty or a full day
     and there is no way to tell which was meant.
+
+    **Half a window is allowed**, unlike the start window this replaced. The two
+    bounds answer different questions — "not before" guards against spoilage,
+    "not after" is the deadline — and a resident may well have only one of them.
     """
-    start = device.earliest_start
-    finish = device.latest_finish
+    malformed = [
+        ValidationIssue(
+            field_name,
+            VALIDATION_INVALID_TIME_WINDOW,
+            "Gebruik een geldige tijd in de vorm uu:mm.",
+        )
+        for value, field_name in (
+            (device.ready_from, "ready_from"),
+            (device.ready_before, "ready_before"),
+        )
+        if value is not None and minutes_since_midnight(value) is None
+    ]
+    if malformed:
+        return malformed[:1]
 
-    if start is None and finish is None:
-        # No window at all is allowed; it only costs a data quality point.
-        return []
-
-    if start is None or finish is None:
-        return [
-            ValidationIssue(
-                "latest_finish" if start is not None else "earliest_start",
-                VALIDATION_INVALID_TIME_WINDOW,
-                "Vul zowel de vroegste start als de laatste eindtijd in, of laat "
-                "ze allebei leeg.",
-            )
-        ]
-
-    start_minutes = minutes_since_midnight(start)
-    finish_minutes = minutes_since_midnight(finish)
+    start_minutes = minutes_since_midnight(device.ready_from)
+    finish_minutes = minutes_since_midnight(device.ready_before)
     if start_minutes is None or finish_minutes is None:
-        return [
-            ValidationIssue(
-                "earliest_start" if start_minutes is None else "latest_finish",
-                VALIDATION_INVALID_TIME_WINDOW,
-                "Gebruik een geldige tijd in de vorm uu:mm.",
-            )
-        ]
+        # No window, or half a window. Both are allowed: an absent bound costs a
+        # data quality point at most, and the two bounds answer different
+        # questions so either may stand alone.
+        return []
 
     if finish_minutes == start_minutes:
         return [
             ValidationIssue(
-                "latest_finish",
+                "ready_before",
                 VALIDATION_INVALID_TIME_WINDOW,
-                "De starttijd en eindtijd mogen niet gelijk zijn.",
+                "De begin- en eindtijd van het gereed-venster mogen niet gelijk zijn.",
             )
         ]
 
@@ -783,7 +782,7 @@ def _validate_time_window(device: DeviceProfile) -> list[ValidationIssue]:
             ValidationIssue(
                 "duration_minutes",
                 VALIDATION_INVALID_TIME_WINDOW,
-                "Het apparaat past niet binnen het opgegeven tijdvenster.",
+                "Het apparaat past niet binnen het opgegeven gereed-venster.",
             )
         ]
 

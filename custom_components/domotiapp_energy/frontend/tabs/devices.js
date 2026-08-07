@@ -397,28 +397,58 @@ function durationHelper(deviceType) {
  * A device the installer marked as not flexible is never moved, so a window
  * would be a question about something that will not happen.
  */
+/**
+ * What the deadline means for this device, given what else is filled in.
+ *
+ * The duration is what turns a deadline into a start time, so its absence
+ * changes what the field does — and saying so is cheaper than letting an
+ * installer wonder why nothing is being planned (SPEC.md §32.2).
+ */
+function readyBeforeHelper(draft) {
+  const base =
+    'Laat beide tijden leeg als er geen venster is; het apparaat mag dan op ' +
+    'elk uur. Een venster telt wel mee voor de datakwaliteit, omdat het advies ' +
+    'er gerichter van wordt. ';
+  return draft.duration_minutes
+    ? base +
+        'DomotiApp Energy rekent zelf terug wanneer het apparaat uiterlijk ' +
+        'moet starten om dit te halen.'
+    : base +
+        'Vul hierboven een duur in, dan rekent DomotiApp Energy terug wanneer ' +
+        'het apparaat uiterlijk moet starten. Zonder duur geldt dit alleen als ' +
+        '"mag hierna niet meer draaien".';
+}
+
 function windowFields(draft) {
   if (!draft.is_flexible) {
     return [];
   }
   return [
     {
-      name: 'earliest_start',
-      label: 'Vroegste start',
-      // No asterisk on this field or the next; see requiredFields(). The helper
-      // now says what leaving it empty costs, which is the honest version of
-      // what the asterisk was trying to convey.
-      helper:
-        'Laat beide tijden leeg als er geen venster is; het apparaat mag dan ' +
-        'op elk uur. Een venster telt wel mee voor de datakwaliteit, omdat het ' +
-        'advies er gerichter van wordt. Een eindtijd vóór de starttijd loopt ' +
-        'door tot de volgende dag — 22:00 tot 06:00 is het normale geval.',
+      name: 'ready_before',
+      label: 'Klaar uiterlijk om',
+      // The deadline, and the field a resident actually has an answer for. The
+      // start time is derived from this and the duration, so it is never asked
+      // (SPEC.md §32).
+      //
+      // No asterisk here or on the next field; see requiredFields(). The helper
+      // says what leaving it empty costs, which is the honest version of what
+      // the asterisk was trying to convey.
+      helper: readyBeforeHelper(draft),
       // Seconds are meaningless for a window a dishwasher runs in.
       selector: { time: { no_second: true } },
     },
     {
-      name: 'latest_finish',
-      label: 'Laatste eindtijd',
+      name: 'ready_from',
+      label: 'Niet eerder klaar dan',
+      // The bound that has no equivalent in a start window: washing that is
+      // done at 03:00 sits wet until 07:00, which is a spoilage problem and not
+      // a noise problem (SPEC.md §32).
+      helper:
+        'Optioneel. Handig voor was die niet uren nat mag blijven liggen: ' +
+        'zet hier bijvoorbeeld 06:00 als je hem om 07:00 uithaalt. Ligt deze ' +
+        'tijd ná "klaar uiterlijk om", dan loopt het venster door tot de ' +
+        'volgende dag — 22:00 tot 06:00 is het normale geval.',
       selector: { time: { no_second: true } },
     },
     {
@@ -573,8 +603,8 @@ function labelOf(name) {
     return link.label;
   }
   const known = {
-    earliest_start: 'Vroegste start',
-    latest_finish: 'Laatste eindtijd',
+    ready_before: 'Klaar uiterlijk om',
+    ready_from: 'Niet eerder klaar dan',
     days_of_week: 'Dagen',
     control_forbidden_reason: 'Reden',
   };
@@ -661,8 +691,8 @@ const SECTIONS = [
     fields: [
       'is_flexible',
       'is_noisy',
-      'earliest_start',
-      'latest_finish',
+      'ready_before',
+      'ready_from',
       'days_of_week',
     ],
   },

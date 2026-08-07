@@ -432,12 +432,16 @@ Algemene velden:
 ```text
 id (uuid4) · name · device_type · enabled · priority · location · control_mode
 nominal_power_w · energy_per_cycle_kwh · duration_minutes
-earliest_start · latest_finish · days_of_week · notes
+ready_from · ready_before · days_of_week · notes
 capabilities · control_forbidden · control_forbidden_reason
 ```
 
-- `earliest_start` / `latest_finish`: samen een tijdvenster. Een `latest_finish` die
-  eerder valt dan `earliest_start` betekent een venster over middernacht (zie §16).
+- `ready_from` / `ready_before`: samen het **gereed-venster** — wanneer het apparaat
+  klaar moet zijn, niet wanneer het mag starten (§32). Het startvenster is afgeleid:
+  `ready_before − duration_minutes` is het laatste moment waarop starten nog op tijd is.
+  Een `ready_before` die eerder valt dan `ready_from` betekent een venster over
+  middernacht (zie §16). Beide velden zijn onafhankelijk optioneel.
+  Vervangt `earliest_start` / `latest_finish`; zie §32.4 voor de migratie.
 - `priority` ∈ `low` | `normal` | `high` | `critical`
 - `control_mode` ∈ `monitor_only` | `advice_only` | `approval_required` | `automatic`
   → backend behandelt in 0.1.0 alles behalve `monitor_only` als `advice_only`

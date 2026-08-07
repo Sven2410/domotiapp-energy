@@ -1,5 +1,55 @@
 # Changelog
 
+## 0.2.0
+
+The time window on an appliance now asks when it must be **finished** instead of when
+it may start. Phase 1 of SPEC.md §32; nothing has to be re-entered.
+
+### Fixed
+
+- **An appliance could be advised too late to finish inside its own window.** A
+  180-minute dishwasher with a finish time of 06:00 was advised at 05:55 and would have
+  run until 08:55 — nearly three hours past the time the resident gave. For a machine
+  that has to be emptied at 07:00, or that should be silent during the quiet hours, that
+  is exactly the situation the window was meant to prevent.
+
+  The old model only asked whether *now* fell inside the window; it never asked whether
+  enough of the window was left. The validator did not catch it either, because it
+  checked that the duration *fitted* the window rather than that the start was late
+  enough. The start moment is now derived from the deadline and the duration, so this
+  cannot happen.
+
+  **This is why the window may look stricter after upgrading. It is a correction, not a
+  change of mind:** the same dishwasher is now advised to start by 03:00.
+
+### Changed
+
+- `Vroegste start` and `Laatste eindtijd` are replaced by **`Klaar uiterlijk om`** and
+  **`Niet eerder klaar dan`**. Same number of fields, and the question is the one a
+  resident can actually answer: a deadline, not a start time.
+- **`Niet eerder klaar dan` is new in kind.** It has no equivalent in a start window and
+  covers what noise settings never could: washing that finishes at 03:00 sits wet until
+  someone takes it out. That is spoilage, not noise.
+- `Duur van een cyclus` finally does something. It is what turns a deadline into a start
+  moment; without it, the deadline falls back to its old meaning of "may not run after"
+  and no duration is guessed.
+- Either bound may now stand alone. The old start window needed both ends or neither,
+  because half a window was undefined; a ready window is not.
+
+### Migration
+
+Existing appliances are translated on reading — no customer re-enters anything, and the
+configuration file is only rewritten on the next save:
+
+```text
+ready_from   = earliest_start + duration_minutes
+ready_before = latest_finish
+```
+
+`earliest_start` meant "do not start before", so adding the duration makes it exactly
+"do not be finished before". For an appliance without a duration the translation is
+completely neutral.
+
 ## 0.1.5
 
 A validation message that has nowhere to go, and two places it was going wrong.

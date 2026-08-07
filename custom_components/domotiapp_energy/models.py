@@ -74,6 +74,7 @@ from .const import (
     MIN_DAY_OF_WEEK,
     MIN_MAIN_FUSE_A,
     MIN_VAT_PERCENT,
+    MINUTES_PER_DAY,
     MINUTES_PER_HOUR,
     NOISY_BY_DEFAULT_DEVICE_TYPES,
     NOMINAL_VOLTAGE_PER_PHASE,
@@ -266,6 +267,55 @@ def minutes_since_midnight(value: str | None) -> int | None:
         return None
     hour, minute = normalised.split(":")
     return int(hour) * MINUTES_PER_HOUR + int(minute)
+
+
+def time_at_minutes(minutes: int) -> str:
+    """Return minutes past midnight as "HH:MM", wrapping past a full day.
+
+    The inverse of :func:`minutes_since_midnight`. Wrapping is not a rounding
+    convenience: a ready window that crosses midnight produces a start time on
+    the previous day, and 23:00 plus a three-hour programme really is 02:00.
+    """
+    wrapped = minutes % MINUTES_PER_DAY
+    return f"{wrapped // MINUTES_PER_HOUR:02d}:{wrapped % MINUTES_PER_HOUR:02d}"
+
+
+def migrate_time_window(data: Mapping[str, Any]) -> tuple[str | None, str | None]:
+    """Return the ready window for a device, translating an old start window.
+
+    The pre-0.2 fields were ``earliest_start`` and ``latest_finish``: when a
+    device *may run*. The ready window says when it must *be finished*, which is
+    what a resident actually means and the only way to express spoilage
+    (SPEC.md §32). The translation is faithful::
+
+        ready_from   = earliest_start + duration_minutes
+        ready_before = latest_finish
+
+    ``earliest_start`` meant "do not start before"; adding the duration makes
+    that exactly "do not be finished before". Without a duration there is
+    nothing to add and the old time carries over unchanged.
+
+    Nothing is translated when the new fields are already present, so a
+    configuration that has been migrated once is never touched again. This runs
+    on **reading**, in memory: `async_load` writes nothing (SPEC.md §13), and
+    the translated values reach the disk with the next save the installer makes.
+    """
+    if "ready_from" in data or "ready_before" in data:
+        return _as_time(data.get("ready_from")), _as_time(data.get("ready_before"))
+
+    earliest = _as_time(data.get("earliest_start"))
+    latest = _as_time(data.get("latest_finish"))
+    if earliest is None:
+        return None, latest
+
+    duration = _as_optional_int(data.get("duration_minutes"), minimum=0)
+    if duration is None:
+        return earliest, latest
+
+    start_minutes = minutes_since_midnight(earliest)
+    if start_minutes is None:
+        return None, latest
+    return time_at_minutes(start_minutes + duration), latest
 
 
 def _as_days_of_week(value: Any) -> list[int]:
@@ -783,8 +833,13 @@ class DeviceProfile:
     nominal_power_w: float | None = None
     energy_per_cycle_kwh: float | None = None
     duration_minutes: int | None = None
-    earliest_start: str | None = None
-    latest_finish: str | None = None
+    # The ready window (SPEC.md §32). These replaced `earliest_start` and
+    # `latest_finish`: a resident thinks in deadlines, not in start times, and
+    # the same start time is right or wrong depending on how long the programme
+    # runs. The start window is derived from these plus `duration_minutes`,
+    # which is what finally gives that field a job.
+    ready_from: str | None = None
+    ready_before: str | None = None
     days_of_week: list[int] = field(default_factory=lambda: list(ALL_DAYS_OF_WEEK))
     notes: str | None = None
     # Left as TYPE_DEFAULT unless the installer chose a value; __post_init__
@@ -826,8 +881,8 @@ class DeviceProfile:
             "nominal_power_w": self.nominal_power_w,
             "energy_per_cycle_kwh": self.energy_per_cycle_kwh,
             "duration_minutes": self.duration_minutes,
-            "earliest_start": self.earliest_start,
-            "latest_finish": self.latest_finish,
+            "ready_from": self.ready_from,
+            "ready_before": self.ready_before,
             "days_of_week": list(self.days_of_week),
             "notes": self.notes,
             "is_noisy": self.is_noisy,
@@ -848,6 +903,7 @@ class DeviceProfile:
         data = _as_mapping(data)
         device_type = _as_str(data.get("device_type"), "")
         known_type = device_type in DEVICE_TYPES
+        ready_from, ready_before = migrate_time_window(data)
         return cls(
             id=_as_str(data.get("id"), _new_id()),
             name=_as_str(data.get("name"), ""),
@@ -865,8 +921,10 @@ class DeviceProfile:
                 data.get("energy_per_cycle_kwh"), minimum=0.0
             ),
             duration_minutes=_as_optional_int(data.get("duration_minutes"), minimum=0),
-            earliest_start=_as_time(data.get("earliest_start")),
-            latest_finish=_as_time(data.get("latest_finish")),
+            # Translates a pre-0.2 start window on the way in; see
+            # migrate_time_window for why the arithmetic is what it is.
+            ready_from=ready_from,
+            ready_before=ready_before,
             days_of_week=_as_days_of_week(data.get("days_of_week")),
             notes=_as_optional_str(data.get("notes")),
             # Absent or unusable leaves the sentinel in place, so __post_init__
@@ -910,8 +968,39 @@ class DeviceProfile:
 
     @property
     def has_time_window(self) -> bool:
-        """Return whether both ends of the allowed time window are set."""
-        return self.earliest_start is not None and self.latest_finish is not None
+        """Return whether both ends of the ready window are set."""
+        return self.ready_from is not None and self.ready_before is not None
+
+    @property
+    def latest_start(self) -> str | None:
+        """Return the last moment this device can still start and be on time.
+
+        ``ready_before`` minus the duration. ``None`` when either is missing —
+        and the missing duration is the interesting case: without it there is no
+        deadline to compute, and the engine falls back to reading
+        ``ready_before`` as "may not run after", which is what the old start
+        window meant (SPEC.md §32). A duration is never guessed.
+        """
+        finish = minutes_since_midnight(self.ready_before)
+        if finish is None or self.duration_minutes is None:
+            return None
+        return time_at_minutes(finish - self.duration_minutes)
+
+    @property
+    def earliest_start(self) -> str | None:
+        """Return the first moment this device may start without finishing early.
+
+        ``ready_from`` minus the duration, on the same terms as
+        :attr:`latest_start`. Without a duration the ready time carries over
+        unchanged, which is the safe reading: it can only make the window
+        smaller, never larger.
+        """
+        start = minutes_since_midnight(self.ready_from)
+        if start is None:
+            return None
+        if self.duration_minutes is None:
+            return self.ready_from
+        return time_at_minutes(start - self.duration_minutes)
 
 
 @dataclass(slots=True)
