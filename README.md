@@ -242,6 +242,36 @@ the price source cannot be used. A price source needs an entity, a unit, and an 
 statement of whether it reports the all-in price or the bare market price. A market
 price additionally needs the energy tax and the supplier markup on the Woning tab.
 
+### What changes on 1 January 2027, when net metering ends
+
+Until that date a fed-in kWh is worth exactly what an imported one costs, so the
+savings formula cancels out to `energie × terugleverkosten`. Three things are stored,
+shown, and **not used** in the meantime:
+
+| Field | Used before 2027 | Used after |
+|---|---|---|
+| `Terugleververgoeding (all-in)` | no | yes |
+| A `feed_in_price` source | no | yes |
+| `Inhouding leverancier op teruglevering` | no | yes |
+| `Terugleverkosten` | **yes** | yes |
+
+The feed-in cost is the exception: under net metering it is the *only* term left in
+the formula, so it is the one that decides today's figure. The Woning tab says this
+next to the fields.
+
+**What will visibly change for a customer on the changeover:**
+
+- Savings amounts start moving with the feed-in tariff instead of only the feed-in
+  cost, and generally become larger.
+- The sentence "Zolang de salderingsregeling geldt levert dit geen extra besparing
+  op" disappears from the advice.
+- **A home that never filled in a feed-in tariff loses its savings amount**: the
+  calculation needs it from that date, and rather than guess, the coach says which
+  field would answer it. Filling it in beforehand avoids this entirely.
+
+The date is per home (`Saldering geldt tot`), so this can be tried early by setting it
+to a past date.
+
 ### Energiebelasting, opslag and btw are greyed out
 
 The linked price source already reports an all-in price, so there is nothing to

@@ -23,7 +23,11 @@ import {
   isRevisionConflict,
 } from '../core/api.js';
 import { button, card, el, notice, setVisible } from '../core/dom.js';
-import { createForm } from '../core/forms.js';
+import {
+  createForm,
+  describeOrphanedErrors,
+  splitFieldErrors,
+} from '../core/forms.js';
 import { onTap } from '../core/tap.js';
 
 /** The key this tab stores its unsaved edits under. */
@@ -193,6 +197,43 @@ function feedInPriceSource(config) {
   );
 }
 
+/**
+ * Whether net metering still applies, judged from the draft.
+ *
+ * Read from the draft rather than the backend so the notice follows the date
+ * the installer is typing: clearing the field has to change the explanation
+ * straight away, not after a save.
+ *
+ * Mirrors `HomeProfile.is_net_metering_active`: an empty date means this home
+ * does not net-meter at all.
+ */
+function netMeteringActive(draft) {
+  const until = draft?.net_metering_until;
+  if (!until) {
+    return false;
+  }
+  const ends = new Date(`${until}T00:00:00`);
+  if (Number.isNaN(ends.getTime())) {
+    return false;
+  }
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return today < ends;
+}
+
+/** A stored ISO date as Dutch day-month-year, for use inside a sentence. */
+function formatDate(value) {
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return date.toLocaleDateString('nl-NL', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+}
+
 /** Contract fields that are filled in but not in force right now. */
 function inactiveContractFields(draft, config) {
   const shown = new Set(contractSchema(draft, config).map((field) => field.name));
@@ -352,6 +393,19 @@ const EDITED_FIELDS = [
   ...ADVICE_SCHEMA.map((field) => field.name),
 ];
 
+/**
+ * The Dutch label of any field this tab knows, rendered or not.
+ *
+ * Needed precisely for the fields that are *not* rendered: a message about the
+ * energy tax has to name it, because the question itself is off screen.
+ */
+function labelForField(name) {
+  const field = [...CONNECTION_SCHEMA, ...CONTRACT_SCHEMA, ...ADVICE_SCHEMA].find(
+    (entry) => entry.name === name,
+  );
+  return field?.label ?? null;
+}
+
 /** Read the editable fields out of a stored home profile. */
 function formDataFrom(home) {
   const data = {};
@@ -489,9 +543,12 @@ export const homeTab = {
     // The feed-in side has its own conversion and therefore its own
     // explanation: saying "all-in" here would be exactly wrong.
     const feedInNotice = notice('mdi:transmission-tower-export');
+    // Why the feed-in amounts are inert until net metering ends.
+    const netMeteringNotice = notice('mdi:calendar-clock');
     contract.body.append(
       priceNotice.element,
       compositionNotice.element,
+      netMeteringNotice.element,
       feedInNotice.element,
       inactiveNotice.element,
     );
@@ -532,6 +589,10 @@ export const homeTab = {
     const saveButton = button('Opslaan', { primary: true });
     const resetButton = button('Wijzigingen verwerpen');
     const saveNotice = notice('mdi:content-save-outline');
+    // The catch-all for validation messages whose field is not on screen. It
+    // sits with the actions rather than in a card, because a hidden field
+    // belongs to no card the installer can see.
+    const orphanNotice = notice('mdi:alert-circle-outline');
     const leaveNotice = notice('mdi:alert-outline');
     const leaveDiscard = button('Verwerpen en verdergaan');
     const leaveStay = button('Hier blijven');
@@ -542,6 +603,7 @@ export const homeTab = {
     // Inside "Adviesinstellingen" they read as if they saved that card alone.
     const actions = el('div', { class: 'tab-actions' }, [
       el('div', { class: 'actions' }, [saveButton, resetButton]),
+      orphanNotice.element,
       saveNotice.element,
       leaveNotice.element,
       leaveActions,
@@ -573,6 +635,10 @@ export const homeTab = {
       }
       updateMaxPowerHint();
       refreshContractFields();
+      // After the schema, never before: which fields are rendered decides where
+      // each message lands. Switching the contract type re-runs this, so an
+      // error that becomes invisible moves to the notice at that moment.
+      showIssues(state.get().config);
     }
 
     /**
@@ -619,6 +685,22 @@ export const homeTab = {
               `alleen een kale marktprijs om. Zet de prijsbron op "kale ` +
               `marktprijs" als je ze wél wilt gebruiken, of verwijder de bron ` +
               `om alles zelf in te vullen.`
+          : '',
+        { tone: 'info' },
+      );
+
+      // Why none of the feed-in amounts move anything today. This surprised the
+      // installer who reported it: the tariff was filled in, correct, and had
+      // no effect anywhere — because under net metering a fed-in kWh is worth
+      // the retail price and the tariff is never consulted (SPEC.md §16).
+      netMeteringNotice.set(
+        netMeteringActive(draft)
+          ? `Zolang de salderingsregeling geldt — tot ${formatDate(
+              draft.net_metering_until,
+            )} — telt de terugleververgoeding niet mee in de berekening: een ` +
+              `teruggeleverde kWh is dan evenveel waard als een afgenomen kWh. ` +
+              `Vul hem nu al in, dan klopt de besparing zodra de saldering ` +
+              `stopt. De terugleverkosten tellen wél mee, ook vandaag.`
           : '',
         { tone: 'info' },
       );
@@ -673,8 +755,13 @@ export const homeTab = {
       for (const { form, names, conditional } of forms) {
         form.setData(only(draft, conditional ? visibleContractNames : names));
       }
-      showIssues(config);
       state.clearDraft(DRAFT);
+      // `refreshDirty` ends in `showIssues`, and the order matters: the errors
+      // can only be split into shown and orphaned once the contract card has
+      // the schema it is actually going to render. Calling it here, before
+      // `refreshContractFields`, judged them against the full schema and found
+      // nothing orphaned — which is how a hidden message stayed hidden even
+      // after the notice existed to carry it.
       refreshDirty();
     }
 
@@ -691,15 +778,27 @@ export const homeTab = {
      */
     function showIssues(config) {
       const errors = fieldErrors(config?.issues, 'home') || {};
+      // What is *rendered*, not what the schema could contain. The contract
+      // card drops fields per contract type, and an error against one of those
+      // used to be handed to `ha-form` and dropped on the floor.
+      const rendered = forms.flatMap(({ form }) =>
+        (form.element.schema || []).map((field) => field.name),
+      );
+      const { shown, orphaned } = splitFieldErrors(errors, rendered);
+
       for (const { form, names } of forms) {
         const mine = {};
         for (const name of names) {
-          if (name in errors) {
-            mine[name] = errors[name];
+          if (name in shown) {
+            mine[name] = shown[name];
           }
         }
         form.setErrors(Object.keys(mine).length ? mine : null);
       }
+
+      orphanNotice.set(describeOrphanedErrors(orphaned, labelForField), {
+        tone: 'warning',
+      });
     }
 
     /**

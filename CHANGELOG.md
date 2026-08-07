@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.1.5
+
+A validation message that has nowhere to go, and two places it was going wrong.
+
+### Fixed
+
+- **A validation message whose field is not on screen now appears as a notice.**
+  `ha-form` hangs each message on its field, so a message for a field the current
+  schema leaves out was handed over and silently dropped. Every form in the panel
+  filters its schema on something — the contract type, the source type, whether a
+  device is flexible — so this was a property of conditional forms rather than a
+  quirk of one card. All four tabs go through the same split, including the one that
+  renders every field today, so it stays covered when that changes.
+- A fixed contract is no longer asked for the energy tax and the supplier markup. It
+  never consults the live price — not in the savings formula, not in the price advice,
+  not in the score, not in the checklist — so the request went nowhere. This was the
+  case that surfaced the defect above: the panel hides both fields on a fixed contract
+  for exactly the reason the values are unused, so the installer saw nothing at all.
+- A feed-in price source without a stated basis is now reported. It shipped in 0.1.4
+  refused by the engine and reported nowhere, so the row did nothing and said nothing.
+  The message is worded for the feed-in side rather than the import side.
+
+### Added
+
+- An explanation on the Woning tab of why the feed-in amounts do nothing yet: while
+  net metering applies, a fed-in kWh is worth the same as one taken from the grid, so
+  the feed-in tariff is never consulted. It names the date from `Saldering geldt tot`
+  and points out that the **feed-in cost does** count today — that is the one term
+  that survives the cancellation.
+
 ## 0.1.4
 
 The feed-in tariff can now come from an entity, for homes on a dynamic feed-in

@@ -30,6 +30,7 @@ from homeassistant.util import dt as dt_util
 
 from .const import (
     ALLOWED_PHASES,
+    CONTRACT_TYPE_DYNAMIC,
     CONTRACT_TYPES,
     CONTROL_CAPABILITIES,
     CONTROL_MODES,
@@ -522,32 +523,44 @@ def validate_energy_source(source: EnergySource) -> list[ValidationIssue]:
                 "Koppel een entiteit aan deze bron.",
             )
         )
-    if source.type == SOURCE_TYPE_CURRENT_PRICE:
+    if source.type in PRICED_SOURCE_TYPES:
+        # Both priced types, not just the import one. A feed-in source without a
+        # basis was refused by the calculator and reported nowhere, so the row
+        # simply did nothing and said nothing — the omission this whole round is
+        # about, in the code that shipped it.
         issues.extend(_validate_price_source(source))
 
     return issues
 
 
 def _validate_price_source(source: EnergySource) -> list[ValidationIssue]:
-    """Check that a price source says what kind of price it reports.
+    """Check that a priced source says what kind of price it reports.
 
     As strict as the meter mode, and for the same reason: a bare market price
     and an all-in price differ by roughly a factor of three, so an unstated
     basis is not a gap to fill in with a default but a source that cannot be
     used at all (SPEC.md §16).
+
+    Both priced types land here, each with its own wording: what the two answers
+    mean differs, and so does the formula behind them.
     """
     if source.price_basis in PRICE_BASES:
         return []
 
-    return [
-        ValidationIssue(
-            "price_basis",
-            VALIDATION_REQUIRED,
+    if source.type == SOURCE_TYPE_FEED_IN_PRICE:
+        message = (
+            "Geef aan wat deze bron levert: de kale marktprijs of de vergoeding "
+            "die de klant werkelijk krijgt. Zonder die keuze wordt de "
+            "terugleververgoeding niet gebruikt."
+        )
+    else:
+        message = (
             "Geef aan wat deze bron levert: de kale marktprijs of de all-in "
             "prijs die de klant betaalt. Zonder die keuze wordt de prijs niet "
-            "gebruikt.",
+            "gebruikt."
         )
-    ]
+
+    return [ValidationIssue("price_basis", VALIDATION_REQUIRED, message)]
 
 
 def _validate_grid_meter(source: EnergySource) -> list[ValidationIssue]:
@@ -852,8 +865,16 @@ def _validate_price_components(
     and the supplier markup are needed depends entirely on what the price source
     reports. Without them the calculator refuses the price silently as far as
     the installer can see, and this is what makes it visible (SPEC.md §16).
+
+    **Only on a dynamic contract.** A fixed contract never consults
+    ``current_price_eur_kwh`` — not in the savings formula, not in
+    ``_advise_price``, not in the price component, not in the checklist — so
+    asking for the two fields that complete it was asking for input that goes
+    nowhere. Worse, the panel hides both fields on a fixed contract, so the
+    issue was reported against a field that is not on screen and the installer
+    saw nothing at all (production finding, 2026-08-07).
     """
-    if home.has_price_components:
+    if home.contract_type != CONTRACT_TYPE_DYNAMIC or home.has_price_components:
         return []
 
     needs_components = any(

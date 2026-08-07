@@ -31,7 +31,11 @@ import {
 } from '../core/api.js';
 import { createConfirmDialog, createDialog } from '../core/dialog.js';
 import { button, card, el, notice, section, setVisible } from '../core/dom.js';
-import { createForm } from '../core/forms.js';
+import {
+  createForm,
+  describeOrphanedErrors,
+  splitFieldErrors,
+} from '../core/forms.js';
 import { createRowList } from '../core/rows.js';
 import { onTap } from '../core/tap.js';
 
@@ -57,6 +61,38 @@ const TYPE_LABELS = {
  * are converted by different formulas (SPEC.md §16).
  */
 const PRICED_TYPES = ['current_price', 'feed_in_price'];
+
+/**
+ * The Dutch label of a field, including ones the current type does not render.
+ *
+ * A message about the meter mode has to name it even when the row is no longer
+ * a grid meter and the field is gone from the form — otherwise the notice reads
+ * as an error about nothing (core/forms.js).
+ */
+const FIELD_LABELS = {
+  name: 'Naam',
+  type: 'Soort bron',
+  enabled: 'Ingeschakeld',
+  entity_id: 'Entiteit',
+  import_entity_id: 'Entiteit voor afname',
+  export_entity_id: 'Entiteit voor teruglevering',
+  meter_mode: 'Hoe meet deze meter?',
+  positive_means: 'Wat betekent een positieve waarde?',
+  price_basis: 'Wat levert deze bron?',
+  value_source: 'Waarde uitlezen uit',
+  attribute_name: 'Naam van het attribuut',
+  unit: 'Eenheid',
+  scale_factor: 'Schaalfactor',
+  invert_value: 'Teken omdraaien',
+  capabilities: 'Wat kan deze bron?',
+  control_forbidden: 'Aansturing uitsluiten',
+  control_forbidden_reason: 'Reden',
+  notes: 'Notities',
+};
+
+function labelOf(name) {
+  return FIELD_LABELS[name] ?? null;
+}
 
 const TYPE_OPTIONS = Object.entries(TYPE_LABELS).map(([value, label]) => ({
   value,
@@ -507,6 +543,8 @@ export const sourcesTab = {
     const dialog = createDialog({ title: 'Energiebron', overlay });
     const batteryNotice = notice('mdi:battery-charging-outline');
     const warningNotice = notice('mdi:alert-outline');
+    // Validation messages whose field this source type does not render.
+    const orphanNotice = notice('mdi:alert-circle-outline');
     const dialogNotice = notice('mdi:content-save-outline');
 
     /**
@@ -538,6 +576,7 @@ export const sourcesTab = {
     dialog.body.append(
       batteryNotice.element,
       ...forms.map(({ host }) => host.element),
+      orphanNotice.element,
       warningNotice.element,
       dialogNotice.element,
     );
@@ -694,18 +733,33 @@ export const sourcesTab = {
       saveButton.disabled = !isDirty();
     }
 
-    /** Put every section's own errors on its own form. */
+    /**
+     * Put every section's own errors on its own form.
+     *
+     * A message for a field this source type does not render — a meter mode on
+     * something that is no longer a grid meter, say — would otherwise vanish,
+     * so it lands in a notice instead (core/forms.js).
+     */
     function showErrors() {
       const errors = editing ? fieldErrors(currentIssues(), editing.id) : null;
+      const rendered = forms.flatMap(({ form }) =>
+        (form.element.schema || []).map((field) => field.name),
+      );
+      const { shown, orphaned } = splitFieldErrors(errors, rendered);
+
       for (const { definition, form } of forms) {
         const mine = {};
         for (const name of definition.fields) {
-          if (errors && name in errors) {
-            mine[name] = errors[name];
+          if (name in shown) {
+            mine[name] = shown[name];
           }
         }
         form.setErrors(Object.keys(mine).length ? mine : null);
       }
+
+      orphanNotice.set(describeOrphanedErrors(orphaned, labelOf), {
+        tone: 'warning',
+      });
     }
 
     function isDirty() {
