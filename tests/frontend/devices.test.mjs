@@ -208,8 +208,8 @@ describe('the list of devices', () => {
         devices: [
           dishwasher({
             energy_per_cycle_kwh: null,
-            earliest_start: '22:00',
-            latest_finish: '06:00',
+            ready_from: '22:00',
+            ready_before: '06:00',
           }),
         ],
       }),
@@ -235,8 +235,8 @@ describe('the list of devices', () => {
       config: sampleConfig({
         devices: [
           dishwasher({
-            earliest_start: null,
-            latest_finish: null,
+            ready_from: null,
+            ready_before: null,
             nominal_power_w: 2000,
             energy_per_cycle_kwh: 1.2,
           }),
@@ -392,8 +392,8 @@ describe('saving a device', () => {
       name: 'Vaatwasser',
       nominal_power_w: 2000,
       energy_per_cycle_kwh: 1.2,
-      earliest_start: '22:00',
-      latest_finish: '06:00',
+      ready_from: '22:00',
+      ready_before: '06:00',
     });
     buttonIn(formDialog(panel), 'Opslaan').click();
     await settle();
@@ -403,8 +403,8 @@ describe('saving a device', () => {
     assert.equal(sent.device.device_type, 'dishwasher');
     assert.equal(sent.device.energy_per_cycle_kwh, 1.2);
     // A window that crosses midnight is the normal case, not an error.
-    assert.equal(sent.device.earliest_start, '22:00');
-    assert.equal(sent.device.latest_finish, '06:00');
+    assert.equal(sent.device.ready_from, '22:00');
+    assert.equal(sent.device.ready_before, '06:00');
     // The flags travel explicitly, so what the form showed is what is stored.
     assert.equal(sent.device.is_noisy, true);
   });
@@ -441,11 +441,11 @@ describe('saving a device', () => {
   it('places a backend validation issue on the field it is about', async () => {
     const hass = fakeHass({
       config: sampleConfig({
-        devices: [dishwasher({ latest_finish: '09:00', earliest_start: '09:00' })],
+        devices: [dishwasher({ ready_before: '09:00', ready_from: '09:00' })],
         issues: {
           d1: [
             {
-              field: 'latest_finish',
+              field: 'ready_before',
               code: 'invalid_time_window',
               message: 'De starttijd en eindtijd mogen niet gelijk zijn.',
               severity: 'error',
@@ -462,7 +462,7 @@ describe('saving a device', () => {
     await settle();
 
     assert.deepEqual(form(panel).error, {
-      latest_finish: 'De starttijd en eindtijd mogen niet gelijk zijn.',
+      ready_before: 'De starttijd en eindtijd mogen niet gelijk zijn.',
     });
   });
 });
@@ -719,13 +719,13 @@ describe('only the questions this type can answer', () => {
     buttonIn(tab, 'Apparaat toevoegen').click();
     await settle();
 
-    assert.ok(fieldNames(panel).includes('earliest_start'));
+    assert.ok(fieldNames(panel).includes('ready_from'));
 
     // Tied to is_flexible, not to the type: that is exactly what the data
     // quality checklist asks about.
     change(panel, { is_flexible: false });
 
-    assert.ok(!fieldNames(panel).includes('earliest_start'));
+    assert.ok(!fieldNames(panel).includes('ready_from'));
     assert.ok(!fieldNames(panel).includes('days_of_week'));
   });
 
@@ -817,7 +817,7 @@ describe('what the data quality checklist needs', () => {
       .map((field) => field.name);
 
     assert.deepEqual(marked.sort(), ['energy_per_cycle_kwh', 'nominal_power_w']);
-    assert.ok(!fieldNames(panel).includes('earliest_start'));
+    assert.ok(!fieldNames(panel).includes('ready_from'));
   });
 
   it('lists what is still missing, and shortens the list as it is filled', async () => {
@@ -847,8 +847,8 @@ describe('what the data quality checklist needs', () => {
     change(panel, {
       nominal_power_w: 2000,
       energy_per_cycle_kwh: 1.2,
-      earliest_start: '22:00',
-      latest_finish: '06:00',
+      ready_from: '22:00',
+      ready_before: '06:00',
     });
 
     assert.ok(
@@ -993,7 +993,7 @@ describe('the dialog folds into sections a phone can hold', () => {
     change(panel, { is_flexible: false, device_type: 'generic_monitor' });
 
     assert.ok(fieldNames(panel).includes('is_flexible'));
-    assert.ok(!fieldNames(panel).includes('earliest_start'));
+    assert.ok(!fieldNames(panel).includes('ready_from'));
   });
 });
 

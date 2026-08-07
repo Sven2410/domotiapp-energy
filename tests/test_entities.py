@@ -109,8 +109,8 @@ def _stored_configuration() -> dict[str, Any]:
                     "device_type": DEVICE_TYPE_DISHWASHER,
                     "nominal_power_w": 2000.0,
                     "energy_per_cycle_kwh": 1.0,
-                    "earliest_start": "00:00",
-                    "latest_finish": "23:59",
+                    "ready_from": "00:00",
+                    "ready_before": "23:59",
                 }
             )
         ],

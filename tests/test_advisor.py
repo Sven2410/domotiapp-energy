@@ -369,7 +369,83 @@ async def test_the_surplus_confidence_travels_with_the_advice(
     assert Advisor().generate(config, metrics)[0].confidence == "medium"
 
 
-# --- Time windows -----------------------------------------------------------
+# --- The ready window (SPEC.md §32) -----------------------------------------
+
+
+async def test_a_device_that_can_no_longer_finish_in_time_is_not_suggested(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """The defect the ready window exists to fix.
+
+    A 180-minute dishwasher that has to be finished by 06:00 must start by
+    03:00. The old model only asked whether *now* fell inside the window, so at
+    05:55 it happily advised a programme that would run until 08:55 — nearly
+    three hours past the time the resident gave. The validator did not catch it
+    either: it checked that the duration fitted the window, never that enough of
+    the window was left.
+    """
+    freezer.move_to(local(5, 55))
+    config = _config(min_solar_surplus_w=500.0)
+    config.devices.append(
+        _device(ready_from="22:00", ready_before="06:00", duration_minutes=180)
+    )
+    metrics = _metrics(solar_surplus_w=1500.0)
+
+    assert REASON_SOLAR_SURPLUS_AVAILABLE not in _codes(
+        Advisor().generate(config, metrics)
+    )
+
+
+async def test_the_same_device_is_suggested_while_it_can_still_finish(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """At 02:30 there is still time to run to completion before 06:00."""
+    freezer.move_to(local(2, 30))
+    config = _config(min_solar_surplus_w=500.0)
+    # A dishwasher is noisy by default and 02:30 is inside the quiet hours, so
+    # without this the test would pass or fail on the wrong rule.
+    config.preferences = UserPreferences(allow_advice_during_quiet_hours=True)
+    config.devices.append(
+        _device(ready_from="22:00", ready_before="06:00", duration_minutes=180)
+    )
+    metrics = _metrics(solar_surplus_w=1500.0)
+
+    assert REASON_SOLAR_SURPLUS_AVAILABLE in _codes(Advisor().generate(config, metrics))
+
+
+async def test_without_a_duration_the_deadline_degrades_to_the_old_meaning(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """No duration means no start to derive, and no guessed one either.
+
+    `ready_before` then means what `latest_finish` meant: may not run after. At
+    05:55 that still allows the device, which is the pre-0.2 behaviour and the
+    reason the migration is neutral for devices without a duration.
+    """
+    freezer.move_to(local(5, 55))
+    config = _config(min_solar_surplus_w=500.0)
+    config.preferences = UserPreferences(allow_advice_during_quiet_hours=True)
+    config.devices.append(_device(ready_from="22:00", ready_before="06:00"))
+    metrics = _metrics(solar_surplus_w=1500.0)
+
+    assert REASON_SOLAR_SURPLUS_AVAILABLE in _codes(Advisor().generate(config, metrics))
+
+
+async def test_half_a_ready_window_restricts_nothing_yet(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """A lone bound is not a window on a 24-hour clock.
+
+    "Finished by 06:00" with no lower bound would have to mean "in time for the
+    *next* 06:00", and which one that is depends on when you ask. Working that
+    out is the urgency advice's job; it is deliberately not half-answered here.
+    """
+    freezer.move_to(local(12, 0))
+    config = _config(min_solar_surplus_w=500.0)
+    config.devices.append(_device(ready_before="06:00", duration_minutes=180))
+    metrics = _metrics(solar_surplus_w=1500.0)
+
+    assert REASON_SOLAR_SURPLUS_AVAILABLE in _codes(Advisor().generate(config, metrics))
 
 
 async def test_a_device_outside_its_window_is_not_suggested(
@@ -377,7 +453,7 @@ async def test_a_device_outside_its_window_is_not_suggested(
 ) -> None:
     """At midday a device allowed only in the evening is not advised."""
     config = _config(min_solar_surplus_w=500.0)
-    config.devices.append(_device(earliest_start="18:00", latest_finish="23:00"))
+    config.devices.append(_device(ready_from="18:00", ready_before="23:00"))
     metrics = _metrics(solar_surplus_w=1500.0)
 
     assert REASON_SOLAR_SURPLUS_AVAILABLE not in _codes(
@@ -390,7 +466,7 @@ async def test_a_device_inside_its_window_is_suggested(
 ) -> None:
     """The same device inside its window is fair game."""
     config = _config(min_solar_surplus_w=500.0)
-    config.devices.append(_device(earliest_start="08:00", latest_finish="18:00"))
+    config.devices.append(_device(ready_from="08:00", ready_before="18:00"))
     metrics = _metrics(solar_surplus_w=1500.0)
 
     assert REASON_SOLAR_SURPLUS_AVAILABLE in _codes(Advisor().generate(config, metrics))
@@ -403,7 +479,7 @@ async def test_a_midnight_window_covers_the_evening(
     freezer.move_to(local(23, 30))
     config = _config(min_solar_surplus_w=500.0)
     config.preferences = UserPreferences(allow_advice_during_quiet_hours=True)
-    config.devices.append(_device(earliest_start="22:00", latest_finish="06:00"))
+    config.devices.append(_device(ready_from="22:00", ready_before="06:00"))
     metrics = _metrics(solar_surplus_w=1500.0)
 
     assert REASON_SOLAR_SURPLUS_AVAILABLE in _codes(Advisor().generate(config, metrics))
@@ -416,7 +492,7 @@ async def test_a_midnight_window_covers_the_small_hours(
     freezer.move_to(local(3, 0))
     config = _config(min_solar_surplus_w=500.0)
     config.preferences = UserPreferences(allow_advice_during_quiet_hours=True)
-    config.devices.append(_device(earliest_start="22:00", latest_finish="06:00"))
+    config.devices.append(_device(ready_from="22:00", ready_before="06:00"))
     metrics = _metrics(solar_surplus_w=1500.0)
 
     assert REASON_SOLAR_SURPLUS_AVAILABLE in _codes(Advisor().generate(config, metrics))
@@ -427,7 +503,7 @@ async def test_a_midnight_window_excludes_the_day(
 ) -> None:
     """At midday the 22:00-06:00 device is outside its window."""
     config = _config(min_solar_surplus_w=500.0)
-    config.devices.append(_device(earliest_start="22:00", latest_finish="06:00"))
+    config.devices.append(_device(ready_from="22:00", ready_before="06:00"))
     metrics = _metrics(solar_surplus_w=1500.0)
 
     assert REASON_SOLAR_SURPLUS_AVAILABLE not in _codes(
@@ -444,7 +520,7 @@ async def test_quiet_hours_still_silence_a_noisy_midnight_device(
     config.preferences = UserPreferences(
         quiet_hours_start="22:00", quiet_hours_end="07:00"
     )
-    config.devices.append(_device(earliest_start="22:00", latest_finish="06:00"))
+    config.devices.append(_device(ready_from="22:00", ready_before="06:00"))
     metrics = _metrics(solar_surplus_w=1500.0)
 
     assert REASON_SOLAR_SURPLUS_AVAILABLE not in _codes(
@@ -458,8 +534,8 @@ async def test_a_window_with_equal_ends_is_never_open(
     """An ambiguous window is refused rather than read as a full day."""
     config = _config(min_solar_surplus_w=500.0)
     device = _device()
-    device.earliest_start = "12:00"
-    device.latest_finish = "12:00"
+    device.ready_from = "12:00"
+    device.ready_before = "12:00"
     config.devices.append(device)
     metrics = _metrics(solar_surplus_w=1500.0)
 
@@ -667,8 +743,8 @@ async def test_a_device_with_a_broken_window_is_not_suggested(
     """An unparseable window is a reason to skip, never to ignore it."""
     config = _config(min_solar_surplus_w=500.0)
     device = _device()
-    device.earliest_start = "ochtend"
-    device.latest_finish = "23:00"
+    device.ready_from = "ochtend"
+    device.ready_before = "23:00"
     config.devices.append(device)
     metrics = _metrics(solar_surplus_w=1500.0)
 

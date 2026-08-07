@@ -571,17 +571,38 @@ def _priority_rank(device: DeviceProfile) -> int:
 
 
 def _within_window(device: DeviceProfile, now_minutes: int) -> bool:
-    """Return whether now falls inside the device's allowed time window.
+    """Return whether starting now still fits the device's ready window.
 
-    A window whose end precedes its start crosses midnight (22:00 to 06:00),
-    the same reading the quiet hours use.
+    **This asks about the start, derived from the deadline.** The old model
+    tested only whether the current moment fell inside the window, which let a
+    180-minute dishwasher begin at 05:55 against a 06:00 finish and run until
+    08:55 — nearly three hours past the time the resident gave. The validator
+    never caught it: it checked that the duration *fitted* the window, not that
+    there was still enough of the window left (SPEC.md §32).
+
+    A window whose end precedes its start crosses midnight (22:00 to 06:00), the
+    same reading the quiet hours use.
+
+    Without a duration there is no start to derive, and `ready_before` falls back
+    to its old meaning of "may not run after" — the safe reading, and never a
+    guessed duration.
+
+    **Only a complete ready window restricts anything here.** A single bound is
+    not expressible as a window on a 24-hour clock: "finished by 07:00" with no
+    lower bound would have to mean "in time for the *next* 07:00", and which
+    07:00 that is depends on the moment you ask. Working that out is what the
+    urgency advice does, and it is deliberately not smuggled in here as a
+    half-answer. A device with one bound is therefore unrestricted in this
+    check, exactly as one with no bounds is.
     """
     if not device.has_time_window:
-        # No window means no restriction, not "never".
+        # No window, or half a window: no restriction, and never "never".
         return True
 
     start = minutes_since_midnight(device.earliest_start)
-    finish = minutes_since_midnight(device.latest_finish)
+    # Falls back to the ready time itself when there is no duration to subtract,
+    # which is the documented degradation to "may not run after".
+    finish = minutes_since_midnight(device.latest_start or device.ready_before)
     if start is None or finish is None or start == finish:
         return False
     return is_within_window(now_minutes, start, finish)
