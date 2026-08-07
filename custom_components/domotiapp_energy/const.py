@@ -16,7 +16,7 @@ from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 
 DOMAIN: Final = "domotiapp_energy"
 INTEGRATION_NAME: Final = "DomotiApp Energy"
-VERSION: Final = "0.1.2"
+VERSION: Final = "0.1.3"
 
 MANUFACTURER: Final = "DomotiApp"
 DEVICE_MODEL: Final = "Energy Coach"
@@ -609,13 +609,19 @@ PEAK_COMPONENT_FULL_BELOW_PERCENT: Final = 50.0
 COMPONENT_MIN: Final = 0.0
 COMPONENT_MAX: Final = 100.0
 
+# Below this production the solar component does not apply: at night there is
+# nothing being wasted, so there is nothing to score. Not zero — a nightly zero
+# was twenty points off a home that had done nothing wrong (SPEC.md §16).
+SOLAR_COMPONENT_MIN_PRODUCTION_W: Final = 0.0
+
 # A component distinguishes "not applicable" from "unknown" (SPEC.md §16).
 #
 # Not applicable: the situation genuinely has no such signal, and no amount of
-# configuring would produce one. A fixed contract has no price to react to, so
-# the price component is neutral and the score is not dragged down by it.
-COMPONENT_NOT_APPLICABLE: Final = 50.0
-PRICE_COMPONENT_FIXED_CONTRACT: Final = COMPONENT_NOT_APPLICABLE
+# configuring would produce one. Such a component returns None and is left out
+# of both the sum and the divisor — there is no numeric value that expresses
+# "does not apply" on a 0-100 axis. A fixed contract used to score 50 here,
+# meant as neutral, which cost that home 7.5 points forever.
+#
 # Unknown: the signal exists but was not configured or could not be read. That
 # scores zero. Scoring it neutral would leave a half-configured installation
 # with a comfortable number, which would make the energy score mostly a measure
@@ -629,6 +635,17 @@ SCORE_COMPONENT_PEAK: Final = "peak_component"
 SCORE_COMPONENT_SOLAR: Final = "solar_component"
 SCORE_COMPONENT_PRICE: Final = "price_component"
 SCORE_COMPONENT_FLEXIBILITY: Final = "flexibility_component"
+
+# The weight per component, keyed the same way, so the score can divide by the
+# weight of whatever actually applies instead of assuming all five are present.
+# Iteration order is the order the panel and the coach list them in.
+SCORE_COMPONENT_WEIGHTS: Final[dict[str, float]] = {
+    SCORE_COMPONENT_DATA_QUALITY: SCORE_WEIGHT_DATA_QUALITY,
+    SCORE_COMPONENT_PEAK: SCORE_WEIGHT_PEAK,
+    SCORE_COMPONENT_SOLAR: SCORE_WEIGHT_SOLAR,
+    SCORE_COMPONENT_PRICE: SCORE_WEIGHT_PRICE,
+    SCORE_COMPONENT_FLEXIBILITY: SCORE_WEIGHT_FLEXIBILITY,
+}
 
 SCORE_MIN: Final = 0
 SCORE_MAX: Final = 100

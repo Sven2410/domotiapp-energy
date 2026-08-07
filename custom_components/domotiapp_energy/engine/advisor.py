@@ -89,6 +89,11 @@ class _Context:
     config: StoredConfiguration
     metrics: EnergyMetrics
     now_minutes: int
+    # Monday = 0 ... Sunday = 6, matching const.ALL_DAYS_OF_WEEK and therefore
+    # comparable to a device's stored day list without translation. Read from
+    # the same `now` as `now_minutes`, so a rule can never straddle midnight by
+    # asking the clock twice.
+    weekday: int
     quiet_hours: bool
     # Whether net metering still applies today. Read once here so every rule
     # sees the same answer, and so the date is evaluated in the Home Assistant
@@ -113,6 +118,7 @@ class Advisor:
             config=config,
             metrics=metrics,
             now_minutes=now.hour * MINUTES_PER_HOUR + now.minute,
+            weekday=now.weekday(),
             quiet_hours=_in_quiet_hours(config, now.hour, now.minute),
             net_metering=config.home.is_net_metering_active(now.date()),
         )
@@ -230,7 +236,7 @@ def _advise_solar_surplus(context: _Context) -> list[AdviceItem]:
     if not context.config.preferences.prefer_solar:
         return []
 
-    device = _best_device_for_now(context)
+    device = _best_device_for_now(context, surplus)
     if device is None:
         return []
 
@@ -439,25 +445,39 @@ def _neutral_advice() -> AdviceItem:
 # --- Device selection -------------------------------------------------------
 
 
-def _best_device_for_now(context: _Context) -> DeviceProfile | None:
+def _best_device_for_now(
+    context: _Context, surplus: float | None = None
+) -> DeviceProfile | None:
     """Return the device to suggest right now, or None when there is none.
 
-    A device qualifies when it is usable, flexible, inside its own time window
-    and not silenced by the quiet hours.
+    A device qualifies when it is usable, flexible, allowed on today's weekday,
+    inside its own time window, not silenced by the quiet hours, and — when a
+    surplus is given — small enough for that surplus to actually run it.
+
+    ``surplus`` is optional so a caller with no surplus in hand (a price rule,
+    say) still gets a sensible device. Passing it is what turns "the biggest
+    appliance" from the wrong answer into the right one; see
+    :func:`_fits_in_surplus`.
     """
     candidates = [
         device
         for device in context.config.devices
         if device.is_usable
         and device.is_flexible
+        and _allowed_today(device, context)
         and _within_window(device, context.now_minutes)
         and not _silenced_by_quiet_hours(device, context)
+        and _fits_in_surplus(device, surplus)
     ]
     if not candidates:
         return None
 
-    # Highest priority first, then the largest consumer: moving that one saves
-    # the most. Both keys are stable, so the same input picks the same device.
+    # Highest priority first, then the largest consumer. With the surplus filter
+    # in front of it that second key finally means what its comment always
+    # claimed: among the appliances this surplus can carry, the biggest one uses
+    # the most of it. Without the filter it picked the appliance that fitted
+    # *worst*, which is how "benut je zonneoverschot" ended up on a 2000 W
+    # dishwasher with 600 W of surplus.
     return max(
         candidates,
         key=lambda device: (
@@ -465,6 +485,38 @@ def _best_device_for_now(context: _Context) -> DeviceProfile | None:
             device.nominal_power_w or 0.0,
         ),
     )
+
+
+def _allowed_today(device: DeviceProfile, context: _Context) -> bool:
+    """Return whether this device may run on today's weekday.
+
+    The day list was stored, shown in the form, and then never read by anything
+    — a resident who unticked Sunday was still advised to run the dishwasher on
+    Sunday. An ignored instruction is worse than an absent field: the panel
+    asked, the resident answered, and the engine overruled them silently.
+
+    An empty list cannot occur: `_as_days_of_week` normalises it to every day,
+    because "no days at all" would mean an appliance that may never run, which
+    is what disabling it is for.
+    """
+    return context.weekday in device.days_of_week
+
+
+def _fits_in_surplus(device: DeviceProfile, surplus: float | None) -> bool:
+    """Return whether the surplus can actually carry this device.
+
+    Advising a 2000 W dishwasher on 600 W of surplus calls importing 1400 W from
+    the grid "using your own surplus". The saving underneath it is calculated as
+    though the whole cycle came from the roof, so the amount is wrong too.
+
+    A device whose power is unknown is **not** disqualified. We cannot show that
+    it does not fit, and refusing on a missing value would be a guess in the
+    other direction (SPEC.md §12). It sorts last anyway, so it only ever wins
+    when nothing else qualifies.
+    """
+    if surplus is None or device.nominal_power_w is None:
+        return True
+    return device.nominal_power_w <= surplus
 
 
 def _priority_rank(device: DeviceProfile) -> int:

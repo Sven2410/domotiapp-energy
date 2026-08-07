@@ -93,12 +93,23 @@ def _metrics(**overrides: Any) -> EnergyMetrics:
 
 
 def _device(**overrides: Any) -> DeviceProfile:
-    """Return a usable, flexible dishwasher built the way storage builds one."""
+    """Return a usable, flexible dishwasher built the way storage builds one.
+
+    **1200 W, against the 1500 W of surplus these tests use.** The figure used
+    to be 2000 W, which meant every surplus test in this file described a
+    dishwasher that the surplus could not actually run — 500 W short, imported
+    from the grid, while the advice said "benut je zonneoverschot" and the
+    saving was calculated as though the whole cycle came from the roof. The
+    fixtures had codified the defect, so the suite went green on it.
+
+    Tests that are *about* a device outgrowing the surplus set the power
+    explicitly; see the ones around `_fits_in_surplus`.
+    """
     data: dict[str, Any] = {
         "id": "d1",
         "name": "Vaatwasser",
         "device_type": DEVICE_TYPE_DISHWASHER,
-        "nominal_power_w": 2000.0,
+        "nominal_power_w": 1200.0,
         "energy_per_cycle_kwh": 1.0,
     }
     return DeviceProfile.from_dict(data | overrides)
@@ -1086,10 +1097,10 @@ async def test_the_highest_priority_device_is_chosen(hass: HomeAssistant) -> Non
     assert Advisor().generate(config, metrics)[0].related_device_ids == ["d2"]
 
 
-async def test_the_biggest_consumer_wins_at_equal_priority(
+async def test_the_biggest_consumer_that_fits_wins_at_equal_priority(
     hass: HomeAssistant,
 ) -> None:
-    """Moving the largest load saves the most, so it is suggested first."""
+    """Among the appliances the surplus can carry, the largest uses most of it."""
     config = _config(min_solar_surplus_w=500.0)
     config.devices.append(_device(id="d1", name="Vaatwasser", nominal_power_w=2000.0))
     config.devices.append(
@@ -1100,9 +1111,113 @@ async def test_the_biggest_consumer_wins_at_equal_priority(
             nominal_power_w=7400.0,
         )
     )
-    metrics = _metrics(solar_surplus_w=1500.0)
+    metrics = _metrics(solar_surplus_w=8000.0)
 
     assert Advisor().generate(config, metrics)[0].related_device_ids == ["d2"]
+
+
+async def test_a_device_the_surplus_cannot_run_is_not_suggested(
+    hass: HomeAssistant,
+) -> None:
+    """600 W of surplus does not "run" a 2000 W dishwasher.
+
+    It used to be advised anyway: the rule only checked the surplus against
+    `min_solar_surplus_w` and never against the appliance. The resident was told
+    to "benut je zonneoverschot" while 1400 W came off the grid, and the saving
+    underneath was calculated as though the whole cycle came from the roof
+    (production finding, 2026-08-07).
+    """
+    config = _config(min_solar_surplus_w=500.0)
+    config.devices.append(_device(id="d1", name="Vaatwasser", nominal_power_w=2000.0))
+    metrics = _metrics(solar_surplus_w=600.0)
+
+    assert _codes(Advisor().generate(config, metrics)) == [
+        REASON_NEUTRAL_ENERGY_SITUATION
+    ]
+
+
+async def test_the_surplus_picks_the_appliance_it_can_actually_run(
+    hass: HomeAssistant,
+) -> None:
+    """The sorting used to pick the appliance that fitted *worst*.
+
+    With 2500 W of surplus the charger is out of reach and the dishwasher is
+    not. The old code sorted on raw power and handed back the charger.
+    """
+    config = _config(min_solar_surplus_w=500.0)
+    config.devices.append(_device(id="d1", name="Vaatwasser", nominal_power_w=2000.0))
+    config.devices.append(
+        _device(
+            id="d2",
+            name="Laadpaal",
+            device_type=DEVICE_TYPE_EV_CHARGER,
+            nominal_power_w=7400.0,
+        )
+    )
+    metrics = _metrics(solar_surplus_w=2500.0)
+
+    assert Advisor().generate(config, metrics)[0].related_device_ids == ["d1"]
+
+
+async def test_an_unknown_power_is_not_disqualified_by_the_surplus(
+    hass: HomeAssistant,
+) -> None:
+    """We cannot show it does not fit, so refusing it would be a guess.
+
+    It sorts last, so it only ever wins when nothing else qualifies — which is
+    exactly this case.
+    """
+    config = _config(min_solar_surplus_w=500.0)
+    config.devices.append(_device(id="d1", nominal_power_w=None))
+    metrics = _metrics(solar_surplus_w=600.0)
+
+    assert Advisor().generate(config, metrics)[0].related_device_ids == ["d1"]
+
+
+async def test_a_day_the_resident_unticked_gets_no_advice(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """The day list was stored, shown, and then never read by anything.
+
+    A resident who untick Sunday was advised to run the dishwasher on Sunday
+    regardless — the panel asked, they answered, and the engine overruled them
+    silently. That is worse than not having the field
+    (production finding, 2026-08-07).
+    """
+    # Sunday, 9 August 2026, midday.
+    freezer.move_to(local_on(date(2026, 8, 9), 12))
+    config = _config(min_solar_surplus_w=500.0)
+    # Monday to Saturday, so today is out.
+    config.devices.append(_device(days_of_week=[0, 1, 2, 3, 4, 5]))
+    metrics = _metrics(solar_surplus_w=1500.0)
+
+    assert _codes(Advisor().generate(config, metrics)) == [
+        REASON_NEUTRAL_ENERGY_SITUATION
+    ]
+
+
+async def test_the_same_device_is_advised_on_a_day_that_is_ticked(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """The pair of the test above: Saturday is in the list, so it is advised."""
+    freezer.move_to(local_on(date(2026, 8, 8), 12))
+    config = _config(min_solar_surplus_w=500.0)
+    config.devices.append(_device(days_of_week=[0, 1, 2, 3, 4, 5]))
+    metrics = _metrics(solar_surplus_w=1500.0)
+
+    assert REASON_SOLAR_SURPLUS_AVAILABLE in _codes(Advisor().generate(config, metrics))
+
+
+async def test_the_default_day_list_allows_every_day(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """Nobody who left the days alone may notice this change at all."""
+    freezer.move_to(local_on(date(2026, 8, 9), 12))
+    config = _config(min_solar_surplus_w=500.0)
+    config.devices.append(_device())
+    metrics = _metrics(solar_surplus_w=1500.0)
+
+    assert REASON_SOLAR_SURPLUS_AVAILABLE in _codes(Advisor().generate(config, metrics))
 
 
 async def test_savings_below_the_threshold_are_filtered(

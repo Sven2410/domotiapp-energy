@@ -277,7 +277,13 @@ def _missing_data(metrics: EnergyMetrics) -> str:
 
 
 def _score_breakdown(metrics: EnergyMetrics) -> str:
-    """Show the components behind the energy score."""
+    """Show the components behind the energy score.
+
+    The score is a reading of **this moment**, not a report card, and the
+    sentence says so. It also names the components this home is not judged on,
+    for the reason the checklist names its own: a score built from three
+    components instead of five looks like it skipped something.
+    """
     if metrics.energy_score is None or not metrics.score_components:
         return "De energiescore is nog niet berekend."
 
@@ -288,4 +294,19 @@ def _score_breakdown(metrics: EnergyMetrics) -> str:
     )
     if not parts:
         return "De energiescore is nog niet berekend."
-    return f"De score is {metrics.energy_score}, opgebouwd uit: {parts}."
+
+    sentence = (
+        f"De score op dit moment is {metrics.energy_score}, opgebouwd uit: {parts}."
+    )
+
+    skipped = [
+        label
+        for key in metrics.not_applicable_components
+        if (label := _COMPONENT_LABELS.get(key)) is not None
+    ]
+    if skipped:
+        sentence += (
+            f" Niet van toepassing op deze woning, en dus niet meegewogen: "
+            f"{', '.join(skipped)}."
+        )
+    return sentence
