@@ -56,7 +56,6 @@ from .const import (
     DEFAULT_QUIET_HOURS_END,
     DEFAULT_QUIET_HOURS_START,
     DEFAULT_SCALE_FACTOR,
-    DEFAULT_STRATEGY,
     DEFAULT_VAT_PERCENT,
     DEVICE_ENTITY_BINDING_KEYS,
     DEVICE_TYPES,
@@ -88,7 +87,6 @@ from .const import (
     SEVERITIES,
     SEVERITY_INFO,
     SOURCE_TYPES,
-    STRATEGIES,
     UNIT_NONE,
     UNITS,
     VALUE_SOURCE_STATE,
@@ -498,7 +496,6 @@ class HomeProfile:
     # home has none at all (SPEC.md §16).
     net_metering_until: date | None = DEFAULT_NET_METERING_UNTIL
     min_solar_surplus_w: float = DEFAULT_MIN_SOLAR_SURPLUS_W
-    default_strategy: str = DEFAULT_STRATEGY
     # Fixed to advice_only in 0.1.0; the field exists so a later release can
     # widen it without a storage migration (SPEC.md §2.2).
     control_level: str = CONTROL_LEVEL_0_1_0
@@ -525,7 +522,6 @@ class HomeProfile:
                 self.net_metering_until.isoformat() if self.net_metering_until else None
             ),
             "min_solar_surplus_w": self.min_solar_surplus_w,
-            "default_strategy": self.default_strategy,
             "control_level": self.control_level,
         }
 
@@ -592,9 +588,9 @@ class HomeProfile:
                 DEFAULT_MIN_SOLAR_SURPLUS_W,
                 minimum=0.0,
             ),
-            default_strategy=_as_choice(
-                data.get("default_strategy"), STRATEGIES, DEFAULT_STRATEGY
-            ),
+            # A stored `default_strategy` is ignored: the field was removed in
+            # round 1 because nothing read it (SPEC.md §33.5), and from_dict
+            # drops unknown keys, so an existing store loads unchanged.
             # Whatever is stored, 0.1.0 only ever runs in advice_only.
             control_level=CONTROL_LEVEL_0_1_0,
         )
@@ -1038,7 +1034,6 @@ class UserPreferences:
     allow_advice_during_quiet_hours: bool = False
     prefer_solar: bool = True
     prefer_low_price: bool = True
-    respect_max_grid_load: bool = True
     # Filters only advice for which a saving was actually calculated; safety,
     # peak, missing-data and neutral advice is never filtered (SPEC.md §8).
     min_savings_eur: float = DEFAULT_MIN_SAVINGS_EUR
@@ -1055,7 +1050,6 @@ class UserPreferences:
             "allow_advice_during_quiet_hours": self.allow_advice_during_quiet_hours,
             "prefer_solar": self.prefer_solar,
             "prefer_low_price": self.prefer_low_price,
-            "respect_max_grid_load": self.respect_max_grid_load,
             "min_savings_eur": self.min_savings_eur,
             "max_advice_count": self.max_advice_count,
             "show_technical_explanation": self.show_technical_explanation,
@@ -1081,7 +1075,6 @@ class UserPreferences:
             ),
             prefer_solar=_as_bool(data.get("prefer_solar"), True),
             prefer_low_price=_as_bool(data.get("prefer_low_price"), True),
-            respect_max_grid_load=_as_bool(data.get("respect_max_grid_load"), True),
             min_savings_eur=_as_float(
                 data.get("min_savings_eur"), DEFAULT_MIN_SAVINGS_EUR, minimum=0.0
             ),
