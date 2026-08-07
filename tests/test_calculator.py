@@ -962,6 +962,69 @@ def test_each_checklist_item_is_worth_its_documented_points() -> None:
     assert result.score == 100
 
 
+def test_one_dishwasher_with_only_a_deadline_is_complete() -> None:
+    """The exact production configuration that reported this.
+
+    One dishwasher, "klaar uiterlijk om 20:15", 180 minutes, flexible. It scored
+    90 with "tijdvensters voor flexibele apparaten" listed as missing — for the
+    one configuration the ready window was built to make possible. A deadline
+    without a lower bound is a complete answer to "when must this be finished".
+    """
+    config = _config(contract_type=CONTRACT_TYPE_FIXED, fixed_import_price_eur_kwh=0.28)
+    config.devices.append(
+        DeviceProfile(
+            id="d1",
+            device_type=DEVICE_TYPE_DISHWASHER,
+            nominal_power_w=2000.0,
+            energy_per_cycle_kwh=1.2,
+            duration_minutes=180,
+            ready_before="20:15",
+        )
+    )
+    snapshot = EnergySnapshot(grid_power_w=1000.0)
+
+    result = evaluate_completeness(config, snapshot)
+
+    assert COMPLETENESS_ITEM_TIME_WINDOWS in result.completed_items
+    assert result.missing_items == []
+    assert result.score == 100
+
+
+def test_a_lower_bound_alone_also_counts() -> None:
+    """The mirror case: "not finished before 06:00" is equally an answer."""
+    config = _config(contract_type=CONTRACT_TYPE_FIXED, fixed_import_price_eur_kwh=0.28)
+    config.devices.append(
+        DeviceProfile(
+            id="d1",
+            device_type=DEVICE_TYPE_DISHWASHER,
+            nominal_power_w=2000.0,
+            energy_per_cycle_kwh=1.2,
+            ready_from="06:00",
+        )
+    )
+
+    result = evaluate_completeness(config, EnergySnapshot(grid_power_w=1000.0))
+
+    assert COMPLETENESS_ITEM_TIME_WINDOWS in result.completed_items
+
+
+def test_a_flexible_device_with_no_bounds_still_misses_the_item() -> None:
+    """Nothing stated is still nothing stated — the item keeps its meaning."""
+    config = _config(contract_type=CONTRACT_TYPE_FIXED, fixed_import_price_eur_kwh=0.28)
+    config.devices.append(
+        DeviceProfile(
+            id="d1",
+            device_type=DEVICE_TYPE_DISHWASHER,
+            nominal_power_w=2000.0,
+            energy_per_cycle_kwh=1.2,
+        )
+    )
+
+    result = evaluate_completeness(config, EnergySnapshot(grid_power_w=1000.0))
+
+    assert COMPLETENESS_ITEM_TIME_WINDOWS in result.missing_items
+
+
 def test_solar_panels_and_a_meter_but_no_appliances_can_reach_a_hundred() -> None:
     """The install that reported this: solar, a smart meter, no smart appliances.
 
@@ -1652,15 +1715,25 @@ def test_the_checklist_asks_a_device_for_exactly_these_fields() -> None:
     assert COMPLETENESS_ITEM_DEVICE_PROFILE in passed
     assert COMPLETENESS_ITEM_TIME_WINDOWS in passed
 
-    # Drop any one of the four and the item it belongs to fails.
-    for field_name, item in (
-        ("nominal_power_w", COMPLETENESS_ITEM_DEVICE_PROFILE),
-        ("energy_per_cycle_kwh", COMPLETENESS_ITEM_DEVICE_PROFILE),
-        ("ready_from", COMPLETENESS_ITEM_TIME_WINDOWS),
-        ("ready_before", COMPLETENESS_ITEM_TIME_WINDOWS),
-    ):
+    # Drop either power field and the device profile item fails.
+    for field_name in ("nominal_power_w", "energy_per_cycle_kwh"):
         without = _score(**{**complete, field_name: None})
-        assert item in without.missing_items, field_name
+        assert COMPLETENESS_ITEM_DEVICE_PROFILE in without.missing_items, field_name
+
+    # **Dropping one *bound* does not fail the window item, and this loop used
+    # to assert that it did.** That was true under the old start window, where
+    # half a window was undefined; it survived the rename to `ready_from` /
+    # `ready_before` because search-and-replace kept it compiling while the
+    # meaning underneath had changed. A production install with only a deadline
+    # then lost ten points for the configuration the ready window exists to
+    # allow (SPEC.md §32).
+    for field_name in ("ready_from", "ready_before"):
+        one_bound = _score(**{**complete, field_name: None})
+        assert COMPLETENESS_ITEM_TIME_WINDOWS in one_bound.completed_items, field_name
+
+    # Dropping both is what leaves nothing stated.
+    neither = _score(**{**complete, "ready_from": None, "ready_before": None})
+    assert COMPLETENESS_ITEM_TIME_WINDOWS in neither.missing_items
 
     # A device that is not flexible is never moved, so it needs no window — and
     # the item is therefore not asked at all rather than counted as missing. A

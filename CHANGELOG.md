@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.2.1
+
+### Fixed
+
+- **An appliance with only a deadline counted as having no time window at all.** A
+  dishwasher set to "klaar uiterlijk om 20:15" was reported under "tijdvensters voor
+  flexibele apparaten" as missing data, and the data quality dropped ten points — for
+  exactly the configuration the ready window was built to make possible.
+
+  One predicate served two different questions. The checklist asks *did you tell us when
+  this has to be finished*, where a deadline on its own is a complete answer. The advisor
+  asks *is there a window to test the current moment against*, which needs two edges. They
+  are now `has_ready_window` and `has_complete_ready_window`, and the checklist uses the
+  first.
+
+  This only affects appliances configured with a single bound, which 0.2.0 made possible.
+  Existing appliances are unaffected: the old start window required both ends too, so
+  nothing changed for them on upgrade.
+
+### Added
+
+- A release workflow that fails when a git tag does not match the version in
+  `manifest.json` and `const.py`. 0.2.0 was released under the tag 0.1.6, so HACS showed
+  one version and Home Assistant another, and nothing went red. It runs before the release
+  is published, so a mismatched tag can still be withdrawn.
+
 ## 0.2.0
 
 The time window on an appliance now asks when it must be **finished** instead of when

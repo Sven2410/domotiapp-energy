@@ -189,11 +189,17 @@ def _flexible_devices_have_windows(config: StoredConfiguration) -> bool:
     both times may be left empty, and no asterisk contradicts it any more. It is
     a quality item: leaving it out costs points because the advice gets vaguer,
     not because the device is incomplete.
+
+    **One bound is enough**, which is `has_ready_window` and not
+    `has_complete_ready_window`. A dishwasher with "klaar uiterlijk om 20:15"
+    has told us when it must be finished; demanding a lower bound as well would
+    punish the very configuration the ready window was built for. That is what
+    happened when both questions shared one predicate.
     """
     flexible = [
         device for device in config.devices if device.is_usable and device.is_flexible
     ]
-    return bool(flexible) and all(device.has_time_window for device in flexible)
+    return bool(flexible) and all(device.has_ready_window for device in flexible)
 
 
 def _invalid_items(config: StoredConfiguration, snapshot: EnergySnapshot) -> list[str]:
