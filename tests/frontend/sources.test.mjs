@@ -23,12 +23,19 @@ import {
   tabPanels,
 } from './harness.mjs';
 
-/** Open the Energiebronnen tab and hand back everything a test needs. */
+/**
+ * Open the Energiebronnen section and hand back everything a test needs.
+ *
+ * It is a section of the Installatie tab since round 1 (SPEC.md §33.6); the
+ * module itself is untouched.
+ */
 async function openSourcesTab(hass = fakeHass()) {
   const panel = await mountPanel(hass);
-  clickTab(panel, 'Energiebronnen');
+  clickTab(panel, 'Installatie');
   await settle();
-  const tab = tabPanels(panel).find((node) => node.id === 'panel-sources');
+  const tab = tabPanels(panel)
+    .find((node) => node.id === 'panel-installation')
+    .querySelector('#section-sources');
   return { panel, tab, hass };
 }
 
@@ -199,7 +206,7 @@ describe('the list of sources', () => {
 
     clickTab(panel, 'Overzicht');
     await settle();
-    clickTab(panel, 'Energiebronnen');
+    clickTab(panel, 'Installatie');
     await settle();
 
     // Rebuilding would throw away focus and scroll position on the very screen
@@ -609,7 +616,7 @@ describe('unsaved changes', () => {
     clickTab(panel, 'Overzicht');
     await settle();
 
-    assert.equal(tabPanels(panel).filter(isVisible)[0].id, 'panel-sources');
+    assert.equal(tabPanels(panel).filter(isVisible)[0].id, 'panel-installation');
     assert.equal(isVisible(confirmDialog(panel)), true);
   });
 

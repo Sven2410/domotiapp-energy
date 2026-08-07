@@ -2273,8 +2273,10 @@ domotiapp_energy/devices/set_operation
 - **Strikte allow-list.** Elke andere sleutel in `operation` levert `invalid_format` op.
   Niet negeren, niet stilzwijgend laten vallen: een verzoek dat meer wil dan het mag is
   een fout die de aanroeper hoort te zien.
-- **Geen `require_admin`**, om de reden in 33.9. Een admin mag hem ook gebruiken; het
-  paneel doet dat, zodat er een codepad is voor beide rollen.
+- **Geen `require_admin`**, om de reden in 33.9. Een admin mág hem gebruiken, maar het
+  paneel doet dat niet: een installateur bewerkt de hele rij en slaat die heel op via
+  `devices/update`, een bewoner bewerkt zijn zes velden en stuurt alleen die. Twee paden,
+  omdat het twee verschillende handelingen zijn.
 - **Verhoogt de revision met 1**, want dit *is* een configuratiewijziging uit een
   expliciete gebruikersactie (paragraaf 13). Dat wijkt bewust af van `set_ready`, dat in
   een eigen store zonder revision leeft omdat die vlag vanzelf uitgaat.

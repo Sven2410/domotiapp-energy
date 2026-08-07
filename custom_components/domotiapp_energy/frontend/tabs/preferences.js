@@ -66,11 +66,6 @@ const WEIGHING_SCHEMA = [
       'wordt er nooit op prijs geadviseerd.',
     selector: { boolean: {} },
   },
-  {
-    name: 'respect_max_grid_load',
-    label: 'Rekening houden met de maximale netbelasting',
-    selector: { boolean: {} },
-  },
 ];
 
 /**
@@ -169,9 +164,8 @@ function only(data, names) {
 
 export const preferencesTab = {
   id: 'preferences',
-  label: 'Voorkeuren',
+  label: 'Mijn voorkeuren',
   icon: 'mdi:tune',
-  adminOnly: true,
 
   create({ getHass, state }) {
     const element = el('div', { class: 'tab-content' });

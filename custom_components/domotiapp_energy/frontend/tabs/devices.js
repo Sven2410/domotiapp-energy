@@ -44,6 +44,12 @@ import {
   splitFieldErrors,
 } from '../core/forms.js';
 import { createRowList } from '../core/rows.js';
+import {
+  MANAGED_NOTICE,
+  applyRole,
+  messageForRole,
+  residentOwns,
+} from '../core/roles.js';
 import { onTap } from '../core/tap.js';
 
 /** The key this tab stores its unsaved edits under. */
@@ -717,7 +723,6 @@ export const devicesTab = {
   id: 'devices',
   label: 'Apparaten',
   icon: 'mdi:washing-machine',
-  adminOnly: true,
 
   create({ getHass, state, overlay }) {
     const element = el('div', { class: 'tab-content' });
@@ -740,6 +745,16 @@ export const devicesTab = {
     let touched = new Set();
     /** The schema currently on the form, so it is only replaced when it moves. */
     let schemaKey = '';
+    /**
+     * Whether this user owns the whole appliance or only how it should behave.
+     *
+     * This is the tab where the split runs *through* a row rather than around
+     * it (SPEC.md §33.4). A dishwasher carries the installer's work — power,
+     * energy per cycle, entity links — and the resident's at the same time:
+     * when it has to be finished, on which days, whether it may be noisy, and
+     * whether it may be steered at all.
+     */
+    let isAdmin = true;
 
     const rowList = createRowList({
       emptyText:
@@ -748,9 +763,13 @@ export const devicesTab = {
       createRow: () => createDeviceRow(),
     });
 
+    const addActions = el('div', { class: 'actions' }, [addButton]);
+    const managedNotice = notice('mdi:shield-account-outline');
+
     devices.body.append(
       rowList.element,
-      el('div', { class: 'actions' }, [addButton]),
+      addActions,
+      managedNotice.element,
       listNotice.element,
     );
     element.appendChild(devices.element);
@@ -858,6 +877,11 @@ export const devicesTab = {
           current = device;
           name.textContent = device.name || 'Naamloos apparaat';
           meta.textContent = describeDevice(device);
+          // A resident opens the same dialog and can change six fields in it,
+          // so "Instellen" rather than "Bewerken" or "Bekijken": he is not
+          // editing the appliance, and he is not only looking either.
+          editButton.textContent = isAdmin ? 'Bewerken' : 'Instellen';
+          setVisible(deleteButton, isAdmin);
 
           const shown = statusOf(device);
           statusIcon.setAttribute('icon', shown.icon);
@@ -966,7 +990,7 @@ export const devicesTab = {
     }
 
     function refreshDialog() {
-      const schema = schemaFor(draft);
+      const schema = applyRole(schemaFor(draft), DRAFT, isAdmin);
       // Only when the questions actually changed. Handing `ha-form` a fresh
       // schema on every keystroke makes it rebuild every field, which throws
       // away whatever control the installer had open — a multi-select loses the
@@ -1039,7 +1063,7 @@ export const devicesTab = {
         const mine = {};
         for (const name of definition.fields) {
           if (name in shown) {
-            mine[name] = shown[name];
+            mine[name] = messageForRole(DRAFT, name, shown[name], isAdmin);
           }
         }
         form.setErrors(Object.keys(mine).length ? mine : null);
@@ -1050,9 +1074,37 @@ export const devicesTab = {
       });
     }
 
+    /** Push the current role into the list and the dialog. */
+    function applyRoleToTab() {
+      setVisible(addActions, isAdmin);
+      managedNotice.set(isAdmin ? '' : MANAGED_NOTICE, { tone: 'info' });
+      rowList.sync(state.get().config?.devices || []);
+      if (dialog.isOpen()) {
+        schemaKey = '';
+        refreshDialog();
+      }
+    }
+
     function isDirty() {
       const names = new Set([...Object.keys(draft), ...Object.keys(saved)]);
       return [...names].some((name) => differs(draft[name], saved[name]));
+    }
+
+    /**
+     * What a resident changed, as the allow-list of `devices/set_operation`.
+     *
+     * Built from what actually differs rather than from everything he owns, so
+     * an untouched field is not resent — and never from `touched`, which also
+     * collects the type defaults a change of device type writes.
+     */
+    function operationFrom() {
+      const operation = {};
+      for (const name of Object.keys(draft)) {
+        if (residentOwns(DRAFT, name) && differs(draft[name], saved[name])) {
+          operation[name] = draft[name] ?? null;
+        }
+      }
+      return operation;
     }
 
     function setBusy(busy) {
@@ -1072,9 +1124,23 @@ export const devicesTab = {
       const payload = payloadFrom(draft, schemaFor(draft));
 
       try {
-        const result = editing
-          ? await api.updateDevice(revision, { ...payload, id: editing.id })
-          : await api.createDevice(revision, payload);
+        // Two paths, because they are two different acts. An installer edits
+        // the whole appliance and saves it whole; a resident changes how it
+        // should behave and sends only the fields he owns. Sending his edit
+        // through `devices/update` would be sending the whole row — and that
+        // command has no field filter, on purpose (SPEC.md §33.10).
+        let result;
+        if (!isAdmin && editing) {
+          result = await api.setDeviceOperation(
+            revision,
+            editing.id,
+            operationFrom(),
+          );
+        } else if (editing) {
+          result = await api.updateDevice(revision, { ...payload, id: editing.id });
+        } else {
+          result = await api.createDevice(revision, payload);
+        }
         applyWrite(result, editing ? 'update' : 'create');
         const name = result.item?.name || 'zonder naam';
         state.clearDraft(DRAFT);
@@ -1230,6 +1296,10 @@ export const devicesTab = {
       const config = panelState.config;
       if (!config) {
         return;
+      }
+      if (panelState.isAdmin !== isAdmin) {
+        isAdmin = panelState.isAdmin;
+        applyRoleToTab();
       }
       rowList.sync(config.devices || []);
       for (const { form } of forms) {

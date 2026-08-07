@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "domotiapp-energy"
-version = "0.2.1"
+version = "0.3.0"
 description = "DomotiApp Energy - a manually configured energy coach for Home Assistant"
 requires-python = ">=3.13"
 license = "MIT"

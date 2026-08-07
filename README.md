@@ -86,11 +86,11 @@ the integration configures nothing by itself. Only one instance can be added.
 
 The panel appears in the sidebar as **DomotiApp Energy**. Work through it in this order:
 
-1. **Woning** — the number of phases, the main fuse per phase, the maximum grid power
+1. **Installatie → Woning** — the number of phases, the main fuse per phase, the maximum grid power
    the integration should warn about, and the contract. On a dynamic contract you also
    fill in the energy tax, the supplier markup and the VAT rate, because a price source
    that reports a bare market price is completed with those three.
-2. **Energiebronnen** — add your grid meter. Say explicitly how it measures: one signed
+2. **Installatie → Energiebronnen** — add your grid meter. Say explicitly how it measures: one signed
    value (and what a positive value means) or separate import and export entities. Add
    solar, a price source, a battery or general consumption as you have them. A price
    source must state whether it reports the all-in price or the bare market price.
@@ -98,22 +98,39 @@ The panel appears in the sidebar as **DomotiApp Energy**. Work through it in thi
    asterisk are what the data completeness score asks for: a nominal power and an energy
    per cycle, plus both ends of a time window for anything you marked as flexible.
    A half-filled appliance can be saved; it simply does not count as complete yet.
-4. **Voorkeuren** — quiet hours, what may weigh in the advice, the savings threshold and
-   how much detail you want to see.
+4. **Mijn voorkeuren** — quiet hours, what may weigh in the advice, the savings threshold
+   and how much detail you want to see. This tab belongs to the resident, not to you.
 5. **Energiecoach** — the advice, and five fixed questions you can ask about it.
 6. **Logboek** — what the integration has signalled.
 
 ## The tabs
 
+Six tabs, and **the same six for everybody**. Nothing is hidden from a resident; what he
+does not own is shown greyed out, with a line saying who manages it.
+
 | Tab | What it is for |
 |---|---|
 | Overzicht | Status, data quality, energy score, current grid power, solar production and surplus, percentage of the configured maximum, the current all-in price, the primary advice and any warnings. |
-| Woning | The home: phases, fuse, maximum grid power, contract and prices, net metering, the minimum solar surplus and the default strategy. |
-| Energiebronnen | Add, edit and remove energy sources. Only the questions a source type can answer are asked. |
-| Apparaten | Add, edit and remove appliances, with their power, energy per cycle, time window, behaviour flags and optional entity links. |
-| Voorkeuren | Quiet hours, what weighs in the advice, the savings threshold and what is displayed. |
 | Energiecoach | The primary advice, further advice with their reasons and measurements, what data is still missing, and the five fixed questions. |
+| Apparaten | Add, edit and remove appliances, with their power, energy per cycle, ready window, behaviour flags and optional entity links. A resident sets how each appliance should behave; the rest is the installer's. |
+| Mijn voorkeuren | Quiet hours, what weighs in the advice, the savings threshold and what is displayed. Entirely the resident's. |
+| Installatie | Two sections. **Woning**: phases, fuse, maximum grid power, contract and prices, net metering and the minimum solar surplus. **Energiebronnen**: add, edit and remove energy sources; only the questions a source type can answer are asked. Read-only for a resident. |
 | Logboek | The last 200 events. Read-only for everyone; only an administrator can empty it. |
+
+## Who may change what
+
+The integration is installed by an installer and lived in by a resident, and they own
+different things: the installer owns what the home **is**, the resident owns what it must
+**do**. A mistake in the first kind is something a resident should be able to *report* —
+which is why he can see the main fuse rather than being shown nothing at all.
+
+| | Installer (Home Assistant administrator) | Resident (any logged-in user) |
+|---|---|---|
+| Installatie | everything | nothing |
+| Apparaten | the appliance itself: type, power, energy per cycle, duration, entity links, capabilities, the agreement not to control it | how it behaves: control mode, ready window, days of the week, whether it may be noisy, priority |
+| Mijn voorkeuren | — | everything |
+
+An administrator may do everything a resident may.
 
 ## Supported source types
 
@@ -319,9 +336,18 @@ solely for the frontend test layer.
 
 ## Security notes
 
-- Every write command requires an administrator (`@websocket_api.require_admin`). The
-  panel hides the configuration tabs from other users, but the backend is what enforces
-  it — a hidden tab is not a permission check.
+- **`require_admin` guards installer fields, not every write.** The commands that change
+  the home profile, the sources, a whole appliance row or the logbook require an
+  administrator. `preferences/update` and `devices/set_operation` do not, because every
+  field they can reach belongs to the resident — see "Who may change what" above. Both do
+  change the configuration and do raise the revision; the line is drawn by whose data
+  changes, not by whether something changes.
+- **`devices/set_operation` carries a strict allow-list**, and it is the only schema in
+  the API that refuses unknown keys instead of ignoring them: it is open to every
+  logged-in user, so the absence of a key *is* the boundary. `devices/update` has no field
+  filter and stays administrator-only for exactly that reason.
+- The panel greys out what a resident does not own, but the backend is what enforces it —
+  a disabled field is not a permission check.
 - Recalculating is open to every logged-in user: it produces a result, never a
   configuration change.
 - Every write carries the revision it was based on. A write based on stale data is

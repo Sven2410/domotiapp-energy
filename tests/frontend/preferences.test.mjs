@@ -67,7 +67,7 @@ function lastSent(hass, type) {
 
 describe('the Voorkeuren tab', () => {
   it('carries every preference SPEC.md §8 lists', async () => {
-    const { tab } = await openTab('Voorkeuren', 'preferences');
+    const { tab } = await openTab('Mijn voorkeuren', 'preferences');
 
     const names = forms(tab).flatMap((form) =>
       form.schema.map((field) => field.name),
@@ -81,7 +81,6 @@ describe('the Voorkeuren tab', () => {
       'prefer_solar',
       'quiet_hours_end',
       'quiet_hours_start',
-      'respect_max_grid_load',
       'show_confidence',
       'show_estimated_savings',
       'show_technical_explanation',
@@ -89,7 +88,7 @@ describe('the Voorkeuren tab', () => {
   });
 
   it('says which advice the savings threshold does not filter', async () => {
-    const { tab } = await openTab('Voorkeuren', 'preferences');
+    const { tab } = await openTab('Mijn voorkeuren', 'preferences');
     const field = forms(tab)
       .flatMap((form) => form.schema)
       .find((entry) => entry.name === 'min_savings_eur');
@@ -101,7 +100,7 @@ describe('the Voorkeuren tab', () => {
   });
 
   it('sends the whole profile with the revision it was filled in against', async () => {
-    const { tab, hass } = await openTab('Voorkeuren', 'preferences');
+    const { tab, hass } = await openTab('Mijn voorkeuren', 'preferences');
 
     change(tab, { quiet_hours_start: '23:00' });
     buttonIn(tab, 'Opslaan').click();
@@ -115,7 +114,7 @@ describe('the Voorkeuren tab', () => {
   });
 
   it('keeps the save button disabled until something changed', async () => {
-    const { tab } = await openTab('Voorkeuren', 'preferences');
+    const { tab } = await openTab('Mijn voorkeuren', 'preferences');
 
     assert.equal(buttonIn(tab, 'Opslaan').disabled, true);
 
@@ -139,7 +138,7 @@ describe('the Voorkeuren tab', () => {
         },
       }),
     });
-    const { tab } = await openTab('Voorkeuren', 'preferences', hass);
+    const { tab } = await openTab('Mijn voorkeuren', 'preferences', hass);
 
     // The display card is the fourth: quiet hours, weighing, threshold, display.
     assert.deepEqual(forms(tab)[3].error, {
@@ -149,7 +148,7 @@ describe('the Voorkeuren tab', () => {
   });
 
   it('refuses to leave with unsaved changes', async () => {
-    const { panel, tab } = await openTab('Voorkeuren', 'preferences');
+    const { panel, tab } = await openTab('Mijn voorkeuren', 'preferences');
     change(tab, { quiet_hours_start: '23:00' });
 
     clickTab(panel, 'Overzicht');

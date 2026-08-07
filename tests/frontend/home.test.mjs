@@ -25,12 +25,20 @@ import {
   tabPanels,
 } from './harness.mjs';
 
-/** The Woning tab, built by opening it. */
+/**
+ * The Woning section, built by opening the tab it now lives in.
+ *
+ * Woning and Energiebronnen became two sections of one Installatie tab in
+ * round 1 (SPEC.md §33.6). Nothing about the form itself changed — it is a
+ * mount, not a merge — so everything below still tests the same module.
+ */
 async function openHomeTab(hass = fakeHass()) {
   const panel = await mountPanel(hass);
-  clickTab(panel, 'Woning');
+  clickTab(panel, 'Installatie');
   await settle();
-  const tab = tabPanels(panel).find((node) => node.id === 'panel-home');
+  const tab = tabPanels(panel)
+    .find((node) => node.id === 'panel-installation')
+    .querySelector('#section-home');
   return { panel, tab };
 }
 
@@ -242,7 +250,7 @@ describe('the form itself', () => {
 
     clickTab(panel, 'Overzicht');
     await settle();
-    clickTab(panel, 'Woning');
+    clickTab(panel, 'Installatie');
     await settle();
 
     // The same element: re-creating it mid-edit would throw away whatever was
@@ -472,8 +480,8 @@ describe('unsaved changes', () => {
     clickTab(panel, 'Overzicht');
     await settle();
 
-    // Still on Woning, with the question next to the changes it is about.
-    assert.equal(tabPanels(panel).filter(isVisible)[0].id, 'panel-home');
+    // Still on Installatie, with the question next to the changes it is about.
+    assert.equal(tabPanels(panel).filter(isVisible)[0].id, 'panel-installation');
     assert.ok(
       noticeTexts(tab).some((text) => text.includes('nog niet zijn opgeslagen')),
     );
@@ -501,7 +509,7 @@ describe('unsaved changes', () => {
     findButton(tab, 'Hier blijven').click();
     await settle();
 
-    assert.equal(tabPanels(panel).filter(isVisible)[0].id, 'panel-home');
+    assert.equal(tabPanels(panel).filter(isVisible)[0].id, 'panel-installation');
     assert.equal(forms(tab)[0].data.home_name, 'Woning Noord');
   });
 

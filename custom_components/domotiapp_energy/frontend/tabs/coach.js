@@ -81,7 +81,6 @@ export const coachTab = {
   id: 'coach',
   label: 'Energiecoach',
   icon: 'mdi:lightbulb-on-outline',
-  adminOnly: false,
 
   create({ getHass, state, overlay }) {
     const element = el('div', { class: 'tab-content' });

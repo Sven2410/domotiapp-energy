@@ -59,7 +59,6 @@ export const logbookTab = {
   id: 'logbook',
   label: 'Logboek',
   icon: 'mdi:format-list-bulleted',
-  adminOnly: false,
 
   create({ getHass, state, overlay }) {
     const element = el('div', { class: 'tab-content' });

@@ -1,5 +1,59 @@
 # Changelog
 
+## 0.3.0
+
+The panel now knows the difference between the installer and the resident. Round 1 of
+SPEC.md §33; nothing has to be re-entered.
+
+### Fixed
+
+- **A resident could not set his own quiet hours.** The Voorkeuren tab is made entirely
+  of statements about what *he* wants from the advice — when to be left alone, how many
+  pieces of advice to show, whether to show the estimated saving — and it sat behind the
+  admin lock with three other tabs. So did the ready window, which had just been built
+  for him.
+
+  Both of those are now his, and `preferences/update` no longer requires an admin.
+
+- **A resident could not see a mistake in his own installation.** Four tabs disappeared
+  entirely for a non-admin, so a main fuse entered as 25 A with a 40 in the meter cupboard
+  stayed invisibly wrong until something went wrong with it.
+
+### Changed
+
+- **Six tabs instead of seven, and the same six for everybody.** `Woning` and
+  `Energiebronnen` became two sections of one **`Installatie`** tab, and `Voorkeuren` is
+  now **`Mijn voorkeuren`**. No tab is hidden from anyone; what a resident does not own is
+  shown greyed out, with "Deze gegevens worden beheerd door DomotiTech." next to it.
+
+  One tab set rather than one per role, so that a resident on the phone and the installer
+  are looking at the same screen.
+
+- **An appliance is split down the middle.** The resident sets how it should behave —
+  `Klaar uiterlijk om`, `Niet eerder klaar dan`, the days, whether it may be noisy, its
+  priority, and whether it may be steered at all. Everything else stays with the
+  installer: the power, the energy per cycle, the entity links, and the agreement not to
+  control it.
+
+  His off switch is `Alleen meekijken`, not the enable toggle: that is what the control
+  mode is for.
+
+- **An agreement not to control an appliance now actually holds something back.** Until a
+  resident could pick a control mode, the check could not fire in practice — only an admin
+  could set the mode, and an admin also records the agreement.
+
+- A validation message about a field a resident cannot touch now reads as something to
+  pass on rather than as an instruction he cannot carry out.
+
+### Removed
+
+- **`Standaardstrategie` and `Rekening houden met de maximale netbelasting`.** Both were
+  stored, validated and rendered, and read by nothing. Both sat on the border of resident
+  territory, so without a decision they would have moved to a tab where a resident clicks
+  them and nothing happens — which is worse than not offering them.
+
+  No migration: unknown keys in an existing store are ignored, so nothing else is touched.
+
 ## 0.2.1
 
 ### Fixed

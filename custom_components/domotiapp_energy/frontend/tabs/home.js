@@ -28,6 +28,11 @@ import {
   describeOrphanedErrors,
   splitFieldErrors,
 } from '../core/forms.js';
+import {
+  MANAGED_NOTICE,
+  applyRole,
+  messageForRole,
+} from '../core/roles.js';
 import { onTap } from '../core/tap.js';
 
 /** The key this tab stores its unsaved edits under. */
@@ -437,7 +442,6 @@ export const homeTab = {
   id: 'home',
   label: 'Woning',
   icon: 'mdi:home-outline',
-  adminOnly: true,
 
   create({ getHass, state }) {
     const element = el('div', { class: 'tab-content' });
@@ -601,8 +605,17 @@ export const homeTab = {
 
     // The actions belong to the tab, not to the card they happen to sit under.
     // Inside "Adviesinstellingen" they read as if they saved that card alone.
+    // The save row is hidden for a resident, but the notices below it are not:
+    // he has to be able to read what is wrong even though the fix is a phone
+    // call (SPEC.md §33.8).
+    const saveActions = el('div', { class: 'actions' }, [saveButton, resetButton]);
+    // Who manages these fields, for a resident looking at a form full of
+    // greyed-out inputs with no explanation (SPEC.md §33.7).
+    const managedNotice = notice('mdi:shield-account-outline');
+
     const actions = el('div', { class: 'tab-actions' }, [
-      el('div', { class: 'actions' }, [saveButton, resetButton]),
+      saveActions,
+      managedNotice.element,
       orphanNotice.element,
       saveNotice.element,
       leaveNotice.element,
@@ -618,6 +631,29 @@ export const homeTab = {
     );
 
     // --- Behaviour ----------------------------------------------------------
+
+    /**
+     * Whether this user may edit anything here.
+     *
+     * The whole tab is installer territory (SPEC.md §33.4): this describes what
+     * the home *is*, and a resident who spots a wrong main fuse rings us rather
+     * than correcting it himself. Starting at `true` and being corrected on the
+     * first `update()` is safe because nothing can be saved before the backend
+     * has answered anyway, and the backend refuses regardless.
+     */
+    let isAdmin = true;
+
+    /** Push the current role into every form, the schema included. */
+    function applyRoleToForms() {
+      forms[0].form.setSchema(applyRole(CONNECTION_SCHEMA, DRAFT, isAdmin));
+      forms[2].form.setSchema(applyRole(ADVICE_SCHEMA, DRAFT, isAdmin));
+      // The contract card builds its own schema per contract type, so it is
+      // rebuilt rather than assigned here; clearing the key forces that.
+      contractKey = '';
+      refreshContractFields();
+      setVisible(saveActions, isAdmin);
+      managedNotice.set(isAdmin ? '' : MANAGED_NOTICE, { tone: 'info' });
+    }
 
     function isDirty() {
       return EDITED_FIELDS.some(
@@ -650,7 +686,7 @@ export const homeTab = {
      */
     function refreshContractFields() {
       const config = state.get().config;
-      const schema = contractSchema(draft, config);
+      const schema = applyRole(contractSchema(draft, config), DRAFT, isAdmin);
       const names = schema.map((field) => field.name);
       // The disabled flags belong in the key as well: linking an all-in price
       // source changes no field name, only whether three of them accept input,
@@ -790,7 +826,9 @@ export const homeTab = {
         const mine = {};
         for (const name of names) {
           if (name in shown) {
-            mine[name] = shown[name];
+            // "Vul de energiebelasting aan" is not an instruction a resident
+            // can carry out; for him it becomes something to pass on.
+            mine[name] = messageForRole(DRAFT, name, shown[name], isAdmin);
           }
         }
         form.setErrors(Object.keys(mine).length ? mine : null);
@@ -896,6 +934,10 @@ export const homeTab = {
       // edit in progress: an unrelated update must not wipe the form.
       if (config.revision !== loadedRevision && !isDirty()) {
         loadFrom(config);
+      }
+      if (panelState.isAdmin !== isAdmin) {
+        isAdmin = panelState.isAdmin;
+        applyRoleToForms();
       }
       for (const { form } of forms) {
         form.setHass(getHass());
