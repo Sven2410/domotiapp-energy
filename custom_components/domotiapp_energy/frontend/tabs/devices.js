@@ -217,7 +217,16 @@ function flexibleByDefault(deviceType) {
  * The fields the data quality checklist actually asks of a device.
  *
  * This mirrors `engine/completeness.py`, which is the real source of truth:
- * `_has_complete_device_profile` wants a power **and** an energy per cycle.
+ * `_has_complete_device_profile` wants a power **and** an energy per cycle —
+ * **of an appliance the coach can advise about**.
+ *
+ * Nothing is asked of an appliance that will never be advised about, because
+ * both fields exist to produce advice: the energy per cycle becomes the saving,
+ * the power decides whether a surplus can carry it. A `generic_monitor` says
+ * "measure this, do not move it", and a resident who set "alleen meekijken"
+ * said the same thing on the other axis. Marking those fields required there
+ * is a requirement that does not apply, shown as a shortcoming — the tablet
+ * charger that was told its cycle was missing (production, 2026-08-09).
  *
  * **The time window is deliberately not marked.** It used to be, on a flexible
  * device, and the asterisk then sat directly above a helper reading "laat beide
@@ -227,8 +236,23 @@ function flexibleByDefault(deviceType) {
  * points on the quality checklist because it sharpens the advice, and that is a
  * different claim from "this field must be filled in".
  */
-function requiredFields() {
-  return ['nominal_power_w', 'energy_per_cycle_kwh'];
+function requiredFields(draft) {
+  return isAdvisable(draft) ? ['nominal_power_w', 'energy_per_cycle_kwh'] : [];
+}
+
+/**
+ * Whether the coach can ever say anything about this appliance.
+ *
+ * The panel's copy of `engine/completeness.py:is_advisable`. Both axes matter:
+ * the type decides the default flexibility, the resident's control mode is his
+ * own off switch.
+ */
+function isAdvisable(draft) {
+  const flexible =
+    draft.is_flexible === undefined || draft.is_flexible === null
+      ? flexibleByDefault(draft.device_type)
+      : draft.is_flexible;
+  return Boolean(flexible) && draft.control_mode !== 'monitor_only';
 }
 
 /**
@@ -261,7 +285,7 @@ const REQUIRED_LABELS = {
 
 /** Which of the checklist's fields this draft has not filled in yet. */
 function missingRequired(draft) {
-  return requiredFields().filter((name) => {
+  return requiredFields(draft).filter((name) => {
     const value = draft[name];
     return value === undefined || value === null || value === '';
   });
@@ -275,7 +299,7 @@ function missingRequired(draft) {
  * nothing is asked that could not.
  */
 function schemaFor(draft) {
-  const required = requiredFields();
+  const required = requiredFields(draft);
   const fields = [
     { name: 'name', label: 'Naam', selector: { text: {} } },
     {
@@ -963,6 +987,20 @@ export const devicesTab = {
             device.control_forbidden_reason || 'geen reden genoteerd'
           }`
         : '';
+
+      // An appliance that only measures owes exactly one thing: the sensor to
+      // measure with. Said as a plain line and never as an incompleteness —
+      // it carries no weight in the data quality, so the resident's number
+      // does not move (Sven, 2026-08-09).
+      if (!isAdvisable(draftFrom(device)) && !device.power_entity) {
+        return {
+          icon: 'mdi:gauge-empty',
+          tone: 'info',
+          text:
+            'Nog geen vermogenssensor gekoppeld — dit apparaat wordt alleen ' +
+            'gemeten, en er valt nu niets te meten.' + agreement,
+        };
+      }
 
       if (missing.length) {
         return {

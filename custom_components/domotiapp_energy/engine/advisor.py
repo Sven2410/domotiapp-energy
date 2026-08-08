@@ -47,6 +47,7 @@ from custom_components.domotiapp_energy.models import (
 )
 from custom_components.domotiapp_energy.validators import is_within_window
 
+from .completeness import is_advisable
 from .reason_codes import (
     REASON_HIGH_ENERGY_PRICE,
     REASON_HIGH_GRID_EXPORT,
@@ -505,9 +506,15 @@ def _best_device_for_now(
 ) -> DeviceProfile | None:
     """Return the device to suggest right now, or None when there is none.
 
-    A device qualifies when it is usable, flexible, allowed on today's weekday,
+    A device qualifies when it is **advisable**, allowed on today's weekday,
     inside its own time window, not silenced by the quiet hours, and — when a
     surplus is given — small enough for that surplus to actually run it.
+
+    **`is_advisable` replaced "usable and flexible" in 0.6.1**, and the third
+    condition inside it is the fix: `control_mode = monitor_only` had no reader
+    anywhere in the engine, so a dishwasher the resident had set to "alleen
+    meekijken" was still advised on. That is his own off switch (SPEC.md §33),
+    and the product ignored it.
 
     ``surplus`` is optional so a caller with no surplus in hand (a price rule,
     say) still gets a sensible device. Passing it is what turns "the biggest
@@ -517,8 +524,7 @@ def _best_device_for_now(
     candidates = [
         device
         for device in context.config.devices
-        if device.is_usable
-        and device.is_flexible
+        if is_advisable(device)
         and _allowed_today(device, context)
         and _within_window(device, context.now_minutes)
         and not _silenced_by_quiet_hours(device, context)

@@ -26,6 +26,7 @@ from custom_components.domotiapp_energy.const import (
     CONFIDENCE_MEDIUM,
     CONTRACT_TYPE_DYNAMIC,
     CONTRACT_TYPE_FIXED,
+    CONTROL_MONITOR_ONLY,
     DEVICE_TYPE_DISHWASHER,
     DEVICE_TYPE_GENERIC_MONITOR,
     HOME_CONSUMPTION_BATTERY_UNREADABLE,
@@ -1275,6 +1276,53 @@ def test_an_inflexible_device_needs_no_window() -> None:
     assert COMPLETENESS_ITEM_TIME_WINDOWS in result.completed_items
 
 
+def test_a_measured_appliance_is_not_asked_for_a_cycle() -> None:
+    """The production finding of 2026-08-09, as a home rather than a device.
+
+    A tablet charger on a smart plug, added as `generic_monitor`. The checklist
+    said "een compleet apparaatprofiel" was missing — of a type whose whole
+    meaning is that there is no cycle. Both appliance items now leave the
+    numerator *and* the denominator, so the score goes up rather than down.
+    """
+    config = _config(fixed_import_price_eur_kwh=0.30)
+    config.sources.append(_grid_meter())
+    config.devices.append(
+        DeviceProfile(
+            id="d1", name="Tabletlader", device_type=DEVICE_TYPE_GENERIC_MONITOR
+        )
+    )
+    snapshot = EnergySnapshot(grid_power_w=500.0)
+
+    result = evaluate_completeness(config, snapshot)
+
+    assert COMPLETENESS_ITEM_DEVICE_PROFILE in result.not_applicable_items
+    assert COMPLETENESS_ITEM_TIME_WINDOWS in result.not_applicable_items
+    assert result.missing_items == []
+    assert result.score == 100
+
+
+def test_one_advisable_appliance_brings_both_questions_back() -> None:
+    """The other half: a dishwasher beside the monitor is asked as before.
+
+    Without this the suite would stay green if the two items were dropped for
+    every home, which is the mirror of the defect being fixed.
+    """
+    config = _config(fixed_import_price_eur_kwh=0.30)
+    config.sources.append(_grid_meter())
+    config.devices.append(
+        DeviceProfile(
+            id="d1", name="Tabletlader", device_type=DEVICE_TYPE_GENERIC_MONITOR
+        )
+    )
+    config.devices.append(DeviceProfile(id="d2", device_type=DEVICE_TYPE_DISHWASHER))
+    snapshot = EnergySnapshot(grid_power_w=500.0)
+
+    result = evaluate_completeness(config, snapshot)
+
+    assert COMPLETENESS_ITEM_DEVICE_PROFILE in result.missing_items
+    assert COMPLETENESS_ITEM_TIME_WINDOWS in result.missing_items
+
+
 def test_quarantined_rows_are_counted_as_invalid_items() -> None:
     """SPEC.md §12: a row with an unrecognised type counts as invalid."""
     config = _config()
@@ -2471,10 +2519,14 @@ def test_the_checklist_asks_a_device_for_exactly_these_fields() -> None:
 
     The rule, in full:
 
-    * ``device_profile_complete`` wants one usable device with **both** a
-      nominal power and an energy per cycle;
-    * ``flexible_devices_have_time_window`` wants **both** ends of a window on
-      every usable flexible device.
+    * ``device_profile_complete`` wants one **advisable** device with a nominal
+      power and an energy per cycle;
+    * ``flexible_devices_have_time_window`` wants a window on every advisable
+      device, and one bound is a window.
+
+    Both are asked only of an appliance the coach can advise about. An
+    appliance that is only measured needs neither, because both fields exist to
+    produce advice.
     """
     snapshot = EnergySnapshot()
 
@@ -2514,13 +2566,22 @@ def test_the_checklist_asks_a_device_for_exactly_these_fields() -> None:
     neither = _score(**{**complete, "ready_from": None, "ready_before": None})
     assert COMPLETENESS_ITEM_TIME_WINDOWS in neither.missing_items
 
-    # A device that is not flexible is never moved, so it needs no window — and
-    # the item is therefore not asked at all rather than counted as missing. A
-    # home whose only appliance cannot be moved has nothing to fix here, so
-    # holding ten points back from it would be a penalty with no remedy.
-    inflexible = _score(
-        nominal_power_w=2000.0, energy_per_cycle_kwh=1.2, is_flexible=False
-    )
-    assert COMPLETENESS_ITEM_DEVICE_PROFILE in inflexible.completed_items
+    # **An appliance nobody will be advised about is asked neither question**
+    # (0.6.1). Both items exist to sharpen advice, so for an appliance the
+    # coach will never mention they are not asked at all rather than counted as
+    # missing — a penalty with no remedy. This assertion used to demand the
+    # profile item of an inflexible device, which is how a tablet charger on a
+    # smart plug was told its energy per cycle was missing.
+    inflexible = _score(is_flexible=False)
+    assert COMPLETENESS_ITEM_DEVICE_PROFILE in inflexible.not_applicable_items
     assert COMPLETENESS_ITEM_TIME_WINDOWS in inflexible.not_applicable_items
+    # Neither is reported as a gap. The three unconditional items are missing
+    # here because this configuration has no home profile, grid or price; they
+    # are not what this test is about.
+    assert COMPLETENESS_ITEM_DEVICE_PROFILE not in inflexible.missing_items
     assert COMPLETENESS_ITEM_TIME_WINDOWS not in inflexible.missing_items
+
+    # The resident's own off switch does the same thing on the other axis.
+    monitored = _score(control_mode=CONTROL_MONITOR_ONLY)
+    assert COMPLETENESS_ITEM_DEVICE_PROFILE in monitored.not_applicable_items
+    assert COMPLETENESS_ITEM_TIME_WINDOWS in monitored.not_applicable_items

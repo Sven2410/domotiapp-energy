@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.6.1
+
+### Fixed
+
+- **An appliance that is only measured was told its energy per cycle was missing.** A
+  tablet charger on a smart plug, added as `generic_monitor` — a type whose whole meaning
+  is that there is no cycle. Both appliance items on the checklist now apply only to an
+  appliance the coach can advise about, so they leave the numerator *and* the denominator
+  and the score goes **up** rather than down. The same held for a `heat_pump`.
+
+- **"Alleen meekijken" did nothing at all.** `control_mode = monitor_only` is the
+  resident's own off switch (SPEC.md §33) and the advisor never read it: a dishwasher he
+  had switched off was still advised on. It now stops the advice, and it stops the
+  checklist asking for a time window for that appliance — the fifth case of a requirement
+  that does not apply, found by auditing all six items rather than by a customer.
+
+- **The asterisk in the appliance form follows the same rule.** No field is marked
+  required on an appliance that will never be advised about.
+
+### Changed
+
+- **An appliance that only measures says what it still needs.** *"Nog geen
+  vermogenssensor gekoppeld — dit apparaat wordt alleen gemeten, en er valt nu niets te
+  meten."* A plain line, with no weight in the data quality: the resident's number does
+  not move.
+
 ## 0.6.0
 
 ### Added

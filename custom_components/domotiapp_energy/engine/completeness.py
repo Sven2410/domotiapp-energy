@@ -40,6 +40,7 @@ from custom_components.domotiapp_energy.const import (
     COMPLETENESS_UNCONDITIONAL_ITEMS,
     CONTRACT_TYPE_DYNAMIC,
     CONTRACT_TYPES,
+    CONTROL_MONITOR_ONLY,
     DEVICE_TYPE_HOME_BATTERY,
     SOURCE_TYPE_HOME_BATTERY,
     SOURCE_TYPE_SOLAR,
@@ -91,6 +92,13 @@ def _applicable_items(config: StoredConfiguration) -> set[str]:
     The three unconditional items are the integration's own subject matter; the
     other three each depend on the installer having said the home owns the
     thing. See the module docstring for why that is a statement and not a guess.
+
+    **The two appliance items hang on `is_advisable`, not on "has a row"**
+    (0.6.1). Both ask for something that only means anything when advice will
+    follow: a complete profile so a saving can be named, a time window so the
+    advice can be timed. An appliance the coach will never mention needs
+    neither, and asking anyway is a requirement that does not apply, presented
+    as a shortcoming — the fourth and fifth time this checklist did that.
     """
     applicable = set(COMPLETENESS_UNCONDITIONAL_ITEMS)
 
@@ -100,10 +108,11 @@ def _applicable_items(config: StoredConfiguration) -> set[str]:
     if any(source.type == SOURCE_TYPE_SOLAR for source in config.sources):
         applicable.add(COMPLETENESS_ITEM_SOLAR)
 
-    usable = [device for device in config.devices if device.is_usable]
-    if usable:
+    if any(is_advisable(device) for device in config.devices):
         applicable.add(COMPLETENESS_ITEM_DEVICE_PROFILE)
-    if any(device.is_flexible for device in usable):
+        # The same condition on purpose. The window sharpens advice, so it is
+        # asked of exactly the appliances advice can be about — no longer of a
+        # flexible appliance the resident switched to "alleen meekijken".
         applicable.add(COMPLETENESS_ITEM_TIME_WINDOWS)
 
     return applicable
@@ -167,6 +176,38 @@ def is_complete_device_profile(device: DeviceProfile) -> bool:
     )
 
 
+def is_advisable(device: DeviceProfile) -> bool:
+    """Return whether the coach can ever say anything about this appliance.
+
+    **The one question the completeness of an appliance hangs on**, because the
+    two fields the checklist asks for exist only to produce advice: the energy
+    per cycle becomes the estimated saving, the nominal power decides whether a
+    surplus can carry it. For an appliance nobody will be advised about,
+    neither has a consumer, and demanding them is asking for a number that will
+    never be read.
+
+    Three conditions, on two different axes on purpose:
+
+    - **usable** — enabled, and not quarantined for an unknown type.
+    - **flexible** — a `generic_monitor` or a `heat_pump` says "measure this,
+      do not move it" (`INFLEXIBLE_BY_DEFAULT_DEVICE_TYPES`). The installer can
+      override it per appliance, which is why this reads the flag and not the
+      type.
+    - **not monitor_only** — the resident's own off switch (SPEC.md §33). It
+      had no reader at all until 0.6.1: a dishwasher set to "alleen meekijken"
+      was still advised on, so the product ignored an explicit instruction.
+
+    Production finding, 2026-08-09: a tablet charger on a smart plug, added as
+    `generic_monitor`, was told its energy per cycle was missing — a cycle
+    being exactly what that type says it does not have.
+    """
+    return (
+        device.is_usable
+        and device.is_flexible
+        and device.effective_control_mode != CONTROL_MONITOR_ONLY
+    )
+
+
 def has_movable_load(config: StoredConfiguration) -> bool:
     """Return whether this home can move consumption to another moment.
 
@@ -202,11 +243,11 @@ def has_movable_load(config: StoredConfiguration) -> bool:
 
 
 def _has_complete_device_profile(config: StoredConfiguration) -> bool:
-    """Return whether one usable device has both power and energy per cycle."""
+    """Return whether one advisable device has both power and energy per cycle."""
     return any(
         is_complete_device_profile(device)
         for device in config.devices
-        if device.is_usable
+        if is_advisable(device)
     )
 
 
@@ -229,10 +270,8 @@ def _flexible_devices_have_windows(config: StoredConfiguration) -> bool:
     punish the very configuration the ready window was built for. That is what
     happened when both questions shared one predicate.
     """
-    flexible = [
-        device for device in config.devices if device.is_usable and device.is_flexible
-    ]
-    return bool(flexible) and all(device.has_ready_window for device in flexible)
+    advisable = [device for device in config.devices if is_advisable(device)]
+    return bool(advisable) and all(device.has_ready_window for device in advisable)
 
 
 def _invalid_items(config: StoredConfiguration, snapshot: EnergySnapshot) -> list[str]:

@@ -407,6 +407,37 @@ stappen iets moeten doen.
 met een docstring die zegt dat de coordinator hem niet gebruikt. Wat daar bijkomt is
 zichtbaar fout in plaats van stil dood.
 
+### Een eis die niet van toepassing is, gepresenteerd als een gebrek
+
+**Vijf keer voorgekomen, allemaal in de datakwaliteit**, en elke keer opnieuw ontdekt door
+een klant in plaats van door ons:
+
+1. tijdvensters bij een woning zonder apparaten;
+2. de zonnebron bij een woning zonder panelen;
+3. de prijscomponent bij een vast contract (de energiescore, zelfde vorm);
+4. een cyclus bij een `generic_monitor` — die per definitie geen cyclus heeft;
+5. een tijdvenster bij een apparaat dat de bewoner op *Alleen meekijken* had gezet.
+
+**De vorm is altijd dezelfde:** een item wordt gesteld op grond van *bestaan* — er is een
+rij, er is een apparaat — terwijl het iets vraagt dat alleen betekenis heeft bij een
+*eigenschap* van dat ding. De klant ziet dan een tekortkoming die hij niet kan opheffen,
+en zijn cijfer zakt voor iets waar hij niets aan kan doen.
+
+**De vraag die het vangt, te stellen bij elk nieuw item en bij elke wijziging aan een
+bestaand item:**
+
+> Kan een woning die het betreffende ding niet heeft, of niet op die manier gebruikt, dit
+> item ooit afvinken? Zo nee, dan hoort het niet gesteld te worden.
+
+Niet "kan hij het invullen" maar "kan hij het afvinken" — dat is het verschil tussen een
+gat en een eis die niet van toepassing is.
+
+Praktisch: de toepasselijkheid hoort te hangen aan **waar de gevraagde waarde voor
+gebruikt wordt**, niet aan het bestaan van de rij. Zo vragen het apparaatprofiel en het
+tijdvenster allebei om iets dat alleen advies dient, en hangen ze daarom allebei aan
+`is_advisable` (SPEC.md §16). Toen die vraag over de zes items werd gesteld kwam er
+onmiddellijk een vijfde geval uit dat nog niemand had gemeld.
+
 ### Versieverschil tussen tests en de draaiende HA (bewuste keuze, niet oplossen)
 
 | | Python | Home Assistant |

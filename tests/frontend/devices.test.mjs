@@ -804,9 +804,11 @@ describe('what the data quality checklist needs', () => {
     assert.equal(buttonIn(formDialog(panel), 'Opslaan').disabled, false);
   });
 
-  it('marks the same two fields whether or not the device is flexible', async () => {
-    // Flexibility moves which fields are *asked*, never which are marked: the
-    // two the checklist needs are the same either way.
+  it('marks nothing on an appliance that will never be advised about', async () => {
+    // Both fields exist to produce advice: the energy per cycle becomes the
+    // saving, the power decides whether a surplus can carry it. Marking them
+    // required on an appliance that is only measured is a requirement that
+    // does not apply, shown as a shortcoming (0.6.1).
     const { panel, tab } = await openDevicesTab();
     buttonIn(tab, 'Apparaat toevoegen').click();
     await settle();
@@ -817,8 +819,39 @@ describe('what the data quality checklist needs', () => {
       .schema.filter((field) => field.required)
       .map((field) => field.name);
 
-    assert.deepEqual(marked.sort(), ['energy_per_cycle_kwh', 'nominal_power_w']);
+    assert.deepEqual(marked, []);
     assert.ok(!fieldNames(panel).includes('ready_from'));
+  });
+
+  it('marks both fields again once the appliance can be advised about', async () => {
+    // The other half: without this the suite would stay green if the marking
+    // disappeared altogether.
+    const { panel, tab } = await openDevicesTab();
+    buttonIn(tab, 'Apparaat toevoegen').click();
+    await settle();
+
+    change(panel, { is_flexible: true });
+
+    const marked = form(panel)
+      .schema.filter((field) => field.required)
+      .map((field) => field.name);
+
+    assert.deepEqual(marked.sort(), ['energy_per_cycle_kwh', 'nominal_power_w']);
+  });
+
+  it('drops the marking when the resident switches to alleen meekijken', async () => {
+    // His own off switch, on the other axis from the type (SPEC.md §33).
+    const { panel, tab } = await openDevicesTab();
+    buttonIn(tab, 'Apparaat toevoegen').click();
+    await settle();
+
+    change(panel, { is_flexible: true, control_mode: 'monitor_only' });
+
+    const marked = form(panel)
+      .schema.filter((field) => field.required)
+      .map((field) => field.name);
+
+    assert.deepEqual(marked, []);
   });
 
   it('lists what is still missing, and shortens the list as it is filled', async () => {

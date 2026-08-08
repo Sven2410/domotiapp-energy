@@ -19,6 +19,7 @@ from custom_components.domotiapp_energy.const import (
     CONFIDENCE_MEDIUM,
     CONTRACT_TYPE_DYNAMIC,
     CONTRACT_TYPE_FIXED,
+    CONTROL_MONITOR_ONLY,
     DEVICE_TYPE_DISHWASHER,
     DEVICE_TYPE_EV_CHARGER,
     DEVICE_TYPE_GENERIC_MONITOR,
@@ -1363,6 +1364,55 @@ async def test_the_same_surplus_is_advised_on_once_the_battery_is_readable(
     advice = Advisor().generate(config, metrics)
 
     assert any(item.reason_code == REASON_SOLAR_SURPLUS_AVAILABLE for item in advice)
+
+
+async def test_alleen_meekijken_stops_the_advice(hass: HomeAssistant) -> None:
+    """The resident's own off switch, which had no reader at all until 0.6.1.
+
+    `control_mode = monitor_only` is what SPEC.md §33 calls his off switch, and
+    the advisor filtered on `is_usable and is_flexible` only — so a dishwasher
+    he had set to "alleen meekijken" was still advised on. The product ignored
+    an explicit instruction.
+    """
+    config = _config(min_solar_surplus_w=500.0)
+    config.devices.append(
+        _device(id="d1", name="Vaatwasser", control_mode=CONTROL_MONITOR_ONLY)
+    )
+    metrics = _metrics(solar_surplus_w=1500.0)
+
+    advice = Advisor().generate(config, metrics)
+
+    assert not any(
+        item.reason_code == REASON_SOLAR_SURPLUS_AVAILABLE for item in advice
+    )
+
+
+async def test_the_same_appliance_is_advised_on_when_it_may_be(
+    hass: HomeAssistant,
+) -> None:
+    """The other half: the suppression is about the switch, not the appliance."""
+    config = _config(min_solar_surplus_w=500.0)
+    config.devices.append(_device(id="d1", name="Vaatwasser"))
+    metrics = _metrics(solar_surplus_w=1500.0)
+
+    advice = Advisor().generate(config, metrics)
+
+    assert any(item.reason_code == REASON_SOLAR_SURPLUS_AVAILABLE for item in advice)
+
+
+async def test_a_monitor_only_type_is_never_advised_on(hass: HomeAssistant) -> None:
+    """The other axis: the type says "measure this, do not move it"."""
+    config = _config(min_solar_surplus_w=500.0)
+    config.devices.append(
+        _device(id="d1", name="Tabletlader", device_type=DEVICE_TYPE_GENERIC_MONITOR)
+    )
+    metrics = _metrics(solar_surplus_w=1500.0)
+
+    advice = Advisor().generate(config, metrics)
+
+    assert not any(
+        item.reason_code == REASON_SOLAR_SURPLUS_AVAILABLE for item in advice
+    )
 
 
 async def test_the_surplus_picks_the_appliance_it_can_actually_run(

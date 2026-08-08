@@ -1081,6 +1081,34 @@ Een item dat niet geldt telt niet mee in teller én noemer, en komt terug in
 `not_applicable_items[]` — niet in `missing_items[]`. Bij een woning die alle zes
 dingen heeft sommeren de gewichten tot 100 en verandert er niets.
 
+#### De zes items, één voor één getoetst (0.6.1)
+
+Nagelopen op verzoek van Sven, nadat de checklist voor de **vierde** keer klaagde over
+iets wat niet van toepassing was. De vraag per item: geldt dit voor élke woning, of alleen
+voor een woning die het betreffende ding daadwerkelijk heeft?
+
+| # | Item | Geldt wanneer | Oordeel |
+|---|---|---|---|
+| 1 | Woninggegevens | altijd | terecht — elke woning heeft fasen, een zekering en een contract |
+| 2 | Netbron | altijd | terecht — zonder netmeting meet de integratie niets |
+| 3 | Prijsinformatie | altijd | terecht — elke woning betaalt een tarief, vast of dynamisch |
+| 4 | Zonnebron | er bestaat een zonnerij | terecht, gerepareerd in ronde B |
+| 5 | Apparaatprofiel | ~~≥1 bruikbaar apparaat~~ → **≥1 *advisable* apparaat** | **fout, gerepareerd** |
+| 6 | Tijdvensters | ~~≥1 bruikbaar *flexibel* apparaat~~ → **≥1 *advisable* apparaat** | **het vijfde geval** |
+
+**Item 6 was het geval dat nog niemand had gevonden.** Het keek al naar `is_flexible`,
+maar niet naar het bedieningsniveau: een vaatwasser die de bewoner op *"Alleen
+meekijken"* had gezet leverde nog steeds de eis van een tijdvenster op, voor een apparaat
+waarover niets geadviseerd wordt.
+
+Beide items hangen nu aan hetzelfde predicaat, en dat is geen toeval: ze vragen allebei om
+iets dat alleen betekenis heeft wanneer er advies uit volgt. Een compleet profiel zodat er
+een besparing te noemen valt, een venster zodat het advies te timen is.
+
+```text
+is_advisable(apparaat) = is_usable ∧ is_flexible ∧ control_mode ≠ monitor_only
+```
+
 **Waarom voorwaardelijk** (bevinding productie-installatie, ronde B): een woning met
 zonnepanelen en een slimme meter maar zonder slimme apparaten kreeg permanent "2 van
 de 6 onderdelen is nog niet compleet", en geen enkele handeling van de bewoner kon
