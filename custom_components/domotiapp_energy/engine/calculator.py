@@ -36,6 +36,9 @@ from custom_components.domotiapp_energy.const import (
     CONFIDENCE_LOW,
     CONFIDENCE_MEDIUM,
     CONTRACT_TYPE_DYNAMIC,
+    HOME_CONSUMPTION_BATTERY_UNREADABLE,
+    HOME_CONSUMPTION_NO_GRID_READING,
+    HOME_CONSUMPTION_SOLAR_UNREADABLE,
     METER_MODE_SEPARATE,
     METER_MODE_SINGLE_SIGNED,
     PERCENT_MAX,
@@ -150,6 +153,8 @@ class Calculator:
         if load_reason is not None and load_reason not in reason_codes:
             reason_codes.append(load_reason)
 
+        consumption, consumption_reason = _home_consumption(config, snapshot)
+
         data_quality = evaluate_completeness(config, snapshot)
         components = _score_components(config, snapshot)
         score = _energy_score(components, data_quality)
@@ -158,6 +163,8 @@ class Calculator:
             timestamp=snapshot.timestamp,
             grid_power_w=snapshot.grid_power_w,
             solar_power_w=snapshot.solar_power_w,
+            home_consumption_w=consumption,
+            home_consumption_unavailable_reason=consumption_reason,
             solar_surplus_w=surplus,
             solar_surplus_confidence=confidence,
             grid_load_percent=load_percent,
@@ -514,6 +521,80 @@ def _production_now(snapshot: EnergySnapshot) -> float | None:
     if production is None or production <= SOLAR_COMPONENT_MIN_PRODUCTION_W:
         return None
     return production
+
+
+def _has_row(config: StoredConfiguration, source_type: str) -> bool:
+    """Return whether the installer said this home has such a source.
+
+    A disabled row still counts. The hardware is there; somebody switched the
+    reading off, which means we cannot see it — the same reading the solar
+    checklist item uses (SPEC.md §16).
+    """
+    return any(source.type == source_type for source in config.sources)
+
+
+def _balance_term(
+    config: StoredConfiguration, source_type: str, value: float | None
+) -> float | None:
+    """Return a term of the energy balance, or None when it is unknowable.
+
+    Three outcomes, and the middle one is the whole point (SPEC.md §36.3):
+
+    - **no row** — the home does not have the thing, so the term is a true 0.
+    - **a row we cannot read** — we do not know the term, and treating it as 0
+      would be the invisible guess this project keeps banning.
+    - **a readable row** — the value.
+    """
+    if value is not None:
+        return value
+    return None if _has_row(config, source_type) else 0.0
+
+
+def _home_consumption(
+    config: StoredConfiguration, snapshot: EnergySnapshot
+) -> tuple[float | None, str | None]:
+    """Return what the house itself is using, and why it is unknown if it is.
+
+    ::
+
+        thuisverbruik = netvermogen + zonneproductie - batterijvermogen
+
+    with the conventions of SPEC.md §16: grid positive means import, battery
+    positive means charging. A charging battery is consumption the household
+    is not doing, so it comes off; a discharging battery feeds the house and
+    adds through its negative value.
+
+    **A measured source wins.** With a usable `general_consumption` row that
+    reading *is* the answer: a measurement beats the difference of two other
+    measurements, and linking it was the installer saying so.
+
+    **The result is clamped at zero.** Negative household consumption does not
+    exist. Two sensors that do not sample on the same second produce -40 W now
+    and then, and putting that on screen raises a question with no answer. This
+    is a physical floor, not an assumption.
+
+    **A battery we cannot read withholds the figure**, where the solar surplus
+    keeps it with a caveat. That difference is deliberate and argued in
+    SPEC.md §36.3: there a charging battery shifts the number, here it is
+    attributed to the household in full.
+    """
+    measured = snapshot.household_consumption_w
+    if measured is not None:
+        return without_negative_zero(max(measured, 0.0)), None
+
+    if snapshot.grid_power_w is None:
+        return None, HOME_CONSUMPTION_NO_GRID_READING
+
+    solar = _balance_term(config, SOURCE_TYPE_SOLAR, snapshot.solar_power_w)
+    if solar is None:
+        return None, HOME_CONSUMPTION_SOLAR_UNREADABLE
+
+    battery = _balance_term(config, SOURCE_TYPE_HOME_BATTERY, snapshot.battery_power_w)
+    if battery is None:
+        return None, HOME_CONSUMPTION_BATTERY_UNREADABLE
+
+    consumption = snapshot.grid_power_w + solar - battery
+    return without_negative_zero(max(consumption, 0.0)), None
 
 
 def _price_thresholds_usable(config: StoredConfiguration) -> bool:

@@ -36,6 +36,9 @@
       "grid_power": {
         "name": "Grid power"
       },
+      "home_consumption": {
+        "name": "Home consumption"
+      },
       "solar_surplus": {
         "name": "Solar surplus"
       },
