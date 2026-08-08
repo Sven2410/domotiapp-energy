@@ -3114,12 +3114,28 @@ niets levert, is een gat.** Geen panelen betekent geen opwek en dat is een feit.
 die we niet kunnen uitlezen betekent dat we het verbruik niet kennen, en dan hoort er
 niets te staan.
 
-**De onleesbare batterij krijgt hier géén getal, anders dan bij het zonneoverschot.** Dat
-is een bewuste afwijking en de reden is de foutgrootte. Bij het overschot verschuift een
-onleesbare batterij het getal en klopt het de rest van de dag gewoon; bij het thuisverbruik
-wordt het laadvermogen vólledig aan het huishouden toegeschreven — 3.500 W op het scherm
-waar het huis er 500 gebruikt. Dat is geen onzeker getal maar een verkeerd getal, en er is
-geen richting bij te geven omdat laden en ontladen tegengesteld werken.
+#### De onleesbare batterij wijkt hier bewust af van het zonneoverschot
+
+**Dit is geen slordigheid en hoort niet gelijkgetrokken te worden** (besluit Sven,
+2026-08-08). Bij een batterijrij waarvan het vermogen niet leesbaar is doen de twee
+getallen expliciet iets anders:
+
+| | Zonneoverschot (§16) | Thuisverbruik |
+|---|---|---|
+| Wat er gebeurt | het getal **verschuift** | het getal is **volledig verkeerd** |
+| Uitkomst | getal blijft staan, met een zin erbij | geen getal |
+
+Bij het overschot schuift een ladende batterij de waarde op en klopt hij de rest van de
+dag gewoon; de zin ernaast dekt dat af, en het advies dat erop rustte is onderdrukt. Bij
+het thuisverbruik wordt het laadvermogen **volledig aan het huishouden toegeschreven** —
+3.500 W op het scherm waar het huis er 500 gebruikt. Dat is geen onzeker getal maar een
+verkeerd getal, en er valt geen richting bij te geven omdat laden en ontladen tegengesteld
+werken.
+
+De regel achter beide is dus dezelfde en de uitkomst verschilt daarom: **toon een getal
+met een voorbehoud zolang het bruikbaar blijft, en toon niets zodra het dat niet meer
+is.** Wie deze twee ooit gelijk wil trekken, moet die regel weerleggen en niet de
+inconsistentie.
 
 ### 36.4 Een gemeten bron wint van de afleiding
 
