@@ -797,6 +797,66 @@ async def test_solar_surplus_from_production_and_consumption(
     assert metrics.solar_surplus_confidence == CONFIDENCE_MEDIUM
 
 
+async def test_a_readable_surplus_is_never_flagged_as_overstated(
+    hass: HomeAssistant,
+) -> None:
+    """Variant 2 with everything readable is a fine number, not a doubtful one.
+
+    The other half of the test below. Without this one the suite would stay
+    green if the flag were simply always true, which would silence the surplus
+    advice for every home that has no grid meter.
+    """
+    hass.states.async_set("sensor.pv", "3000")
+    hass.states.async_set("sensor.house", "1100")
+    config = _config()
+    config.sources.append(_source(SOURCE_TYPE_SOLAR, "sensor.pv"))
+    config.sources.append(_source(SOURCE_TYPE_GENERAL_CONSUMPTION, "sensor.house"))
+
+    metrics = Calculator(hass).calculate(config)
+
+    assert metrics.solar_surplus_may_be_overstated is False
+
+
+async def test_an_unreadable_battery_marks_the_surplus_as_overstated(
+    hass: HomeAssistant,
+) -> None:
+    """A battery we cannot read could be the whole surplus (0.4.1).
+
+    This is the one case the old three-level label was really about, and it is
+    a blind spot rather than a shade of doubt: the 1900 W below could be the
+    battery charging, in which case there is nothing spare at all.
+    """
+    hass.states.async_set("sensor.pv", "3000")
+    hass.states.async_set("sensor.house", "1100")
+    # The battery source exists and its entity has no readable value.
+    config = _config()
+    config.sources.append(_source(SOURCE_TYPE_SOLAR, "sensor.pv"))
+    config.sources.append(_source(SOURCE_TYPE_GENERAL_CONSUMPTION, "sensor.house"))
+    config.sources.append(_source(SOURCE_TYPE_HOME_BATTERY, "sensor.accu"))
+
+    metrics = Calculator(hass).calculate(config)
+
+    assert metrics.solar_surplus_w == 1900.0
+    assert metrics.solar_surplus_may_be_overstated is True
+    # It travels to the panel as a conclusion, not as a rule to re-apply.
+    assert metrics.to_dict()["solar_surplus_may_be_overstated"] is True
+
+
+async def test_no_surplus_at_all_is_not_an_overstatement(
+    hass: HomeAssistant,
+) -> None:
+    """Without a number there is nothing to overstate.
+
+    `solar_surplus_confidence` is `low` here too — variant 3 returns it with no
+    surplus — so a predicate that only read the level would raise the battery
+    sentence on a home with no solar configuration whatsoever.
+    """
+    metrics = Calculator(hass).calculate(_config())
+
+    assert metrics.solar_surplus_w is None
+    assert metrics.solar_surplus_may_be_overstated is False
+
+
 async def test_a_charging_battery_eats_into_the_surplus(
     hass: HomeAssistant,
 ) -> None:

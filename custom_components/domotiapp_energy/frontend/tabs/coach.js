@@ -11,9 +11,9 @@
  * (SPEC.md §8 and §17). There is no free chat and no reasoning of our own —
  * this file arranges text, it does not produce it.
  *
- * Three preferences decide how much of it is shown at all
- * (`show_technical_explanation`, `show_estimated_savings`, `show_confidence`),
- * so a customer who does not want the machinery does not get it.
+ * Two preferences decide how much of it is shown at all
+ * (`show_technical_explanation`, `show_estimated_savings`), so a customer who
+ * does not want the machinery does not get it.
  */
 
 import { createApi, describeError } from '../core/api.js';
@@ -31,7 +31,6 @@ import {
 } from '../core/dom.js';
 import {
   checklistLabel,
-  confidenceLabel,
   measurementLabel,
   reasonLabel,
 } from '../core/labels.js';
@@ -90,7 +89,6 @@ export const coachTab = {
     const adviceTitle = el('p', { class: 'advice-title' });
     const adviceMessage = el('p', { class: 'advice-message' });
     const savingRow = statRow('Geschatte besparing', { empty: 'Niet te berekenen' });
-    const confidenceRow = statRow('Betrouwbaarheid', { empty: 'Onbekend' });
     const reasonRow = statRow('Reden', { empty: 'Onbekend' });
     const calculatedRow = statRow('Laatste berekening', { empty: 'Nog niet berekend' });
 
@@ -101,7 +99,6 @@ export const coachTab = {
       adviceTitle,
       adviceMessage,
       savingRow.element,
-      confidenceRow.element,
       reasonRow.element,
       calculatedRow.element,
       el('div', { class: 'actions' }, [recalculateButton]),
@@ -186,7 +183,7 @@ export const coachTab = {
     }
 
     /**
-     * The line under one advice: measurements, saving and confidence.
+     * The line under one advice: its measurements and the saving.
      *
      * Each of the three is a preference, because a customer who does not want
      * the machinery should not be shown it (SPEC.md §8). Nothing is invented
@@ -217,10 +214,6 @@ export const coachTab = {
             decimals: 2,
           })}`,
         );
-      }
-      const confidence = confidenceLabel(item.confidence);
-      if (prefs.show_confidence !== false && confidence) {
-        parts.push(`betrouwbaarheid ${confidence}`);
       }
       return parts.join(' · ');
     }
@@ -286,9 +279,6 @@ export const coachTab = {
           ? null
           : `€ ${formatNumber(primary.estimated_savings_eur, { decimals: 2 })}`,
       );
-
-      setVisible(confidenceRow.element, prefs.show_confidence !== false);
-      confidenceRow.set(confidenceLabel(primary?.confidence));
 
       // The reason is a machine identifier. Showing it was the defect: the
       // customer read "missing_required_data" where a sentence belonged. A code

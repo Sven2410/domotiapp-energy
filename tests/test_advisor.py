@@ -15,6 +15,7 @@ from homeassistant.core import HomeAssistant
 
 from custom_components.domotiapp_energy.const import (
     CONFIDENCE_HIGH,
+    CONFIDENCE_LOW,
     CONFIDENCE_MEDIUM,
     CONTRACT_TYPE_DYNAMIC,
     CONTRACT_TYPE_FIXED,
@@ -84,12 +85,26 @@ def _config(**home_overrides: Any) -> StoredConfiguration:
 
 
 def _metrics(**overrides: Any) -> EnergyMetrics:
-    """Return metrics with a complete checklist and no problems."""
+    """Return metrics with a complete checklist and no problems.
+
+    **`solar_surplus_confidence` is stated here on purpose.** The model default
+    is `low`, which is right for metrics that carry no surplus at all, and
+    wrong for the home these tests describe: a grid meter reporting export,
+    which is the exact measurement (variant 1, SPEC.md §16).
+
+    Leaving it at the default would make every surplus test in this file
+    describe a home with an unreadable battery — the one case where the advice
+    is deliberately suppressed (0.4.1) — so they would assert the absence of
+    advice while claiming to test its content. Thirty-eight tests went red on
+    exactly that when the suppression was added, which is the fixture doing its
+    job for once.
+    """
     defaults: dict[str, Any] = {
         "data_quality": _COMPLETE,
         "grid_power_w": 500.0,
         "grid_load_percent": 8.7,
         "energy_score": 80,
+        "solar_surplus_confidence": CONFIDENCE_HIGH,
     }
     return EnergyMetrics(**(defaults | overrides))
 
@@ -1308,6 +1323,48 @@ async def test_a_device_the_surplus_cannot_run_is_not_suggested(
     ]
 
 
+async def test_no_surplus_advice_when_the_surplus_may_be_overstated(
+    hass: HomeAssistant,
+) -> None:
+    """The real defect the confidence label was papering over (0.4.1).
+
+    A home battery that cannot be read may be consuming exactly the 2500 W
+    shown as spare. The coach used to advise starting the dishwasher on it,
+    with a euro amount underneath, and labelled the whole thing
+    "betrouwbaarheid: laag" — which suppressed nothing and which no resident
+    can act on. Now it says nothing about the surplus, and the panel says what
+    to link.
+    """
+    config = _config(min_solar_surplus_w=500.0)
+    config.devices.append(_device(id="d1", name="Vaatwasser", nominal_power_w=1200.0))
+    metrics = _metrics(solar_surplus_w=2500.0, solar_surplus_confidence=CONFIDENCE_LOW)
+
+    advice = Advisor().generate(config, metrics)
+
+    assert not any(
+        item.reason_code == REASON_SOLAR_SURPLUS_AVAILABLE for item in advice
+    )
+
+
+async def test_the_same_surplus_is_advised_on_once_the_battery_is_readable(
+    hass: HomeAssistant,
+) -> None:
+    """The other half: the suppression is about the blind spot, not the number.
+
+    Identical readings, identical appliance. Without this test the suite would
+    stay green if surplus advice stopped working altogether.
+    """
+    config = _config(min_solar_surplus_w=500.0)
+    config.devices.append(_device(id="d1", name="Vaatwasser", nominal_power_w=1200.0))
+    metrics = _metrics(
+        solar_surplus_w=2500.0, solar_surplus_confidence=CONFIDENCE_MEDIUM
+    )
+
+    advice = Advisor().generate(config, metrics)
+
+    assert any(item.reason_code == REASON_SOLAR_SURPLUS_AVAILABLE for item in advice)
+
+
 async def test_the_surplus_picks_the_appliance_it_can_actually_run(
     hass: HomeAssistant,
 ) -> None:
@@ -1723,6 +1780,55 @@ async def test_the_provider_explains_the_score(hass: HomeAssistant) -> None:
 
     assert "96" in generated.explanations["score_breakdown"]
     assert "zonnebenutting" in generated.explanations["score_breakdown"]
+
+
+async def test_the_provider_names_the_unreadable_battery(hass: HomeAssistant) -> None:
+    """The answer to "welke gegevens ontbreken nog?" carries the cause and fix.
+
+    Not a checklist item — the battery row exists, so nothing is missing and
+    the percentage does not move — but it is the one gap that silently changes
+    what the coach does, so it belongs in that answer (0.4.1).
+    """
+    result = CoachResult(
+        metrics=_metrics(
+            solar_surplus_w=1900.0, solar_surplus_confidence=CONFIDENCE_LOW
+        )
+    )
+
+    generated = await RuleBasedCoachProvider().async_generate(result)
+
+    answer = generated.explanations["missing_data"]
+    assert "thuisbatterij" in answer
+    assert "Koppel de vermogenssensor" in answer
+
+
+async def test_the_provider_stays_quiet_about_a_readable_battery(
+    hass: HomeAssistant,
+) -> None:
+    """No sentence when there is no blind spot to report."""
+    result = CoachResult(metrics=_metrics(solar_surplus_w=1900.0))
+
+    generated = await RuleBasedCoachProvider().async_generate(result)
+
+    assert "thuisbatterij" not in generated.explanations["missing_data"]
+
+
+async def test_no_answer_carries_a_confidence_sentence(hass: HomeAssistant) -> None:
+    """The trailing "Betrouwbaarheid: hoog." is gone from every answer (0.4.1)."""
+    advice = AdviceItem(
+        id="a1",
+        title="Zonneoverschot beschikbaar",
+        message="Dit is een gunstig moment om Vaatwasser te gebruiken.",
+        severity=SEVERITY_INFO,
+        reason_code=REASON_SOLAR_SURPLUS_AVAILABLE,
+        confidence=CONFIDENCE_HIGH,
+    )
+    result = CoachResult(primary_advice=advice, advice=[advice], metrics=_metrics())
+
+    generated = await RuleBasedCoachProvider().async_generate(result)
+
+    for answer in generated.explanations.values():
+        assert "etrouwbaarheid" not in answer
 
 
 async def test_the_provider_says_why_there_is_no_score(hass: HomeAssistant) -> None:

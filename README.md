@@ -27,7 +27,9 @@ The user interface is in Dutch; the code, entity IDs and this README are in Engl
   measure, and says why.
 - **Advises.** Missing data, grid peak load in either direction, solar surplus, and a
   high or low dynamic price — each with a stable reason code, the measurements behind
-  it, an estimated saving where one can be calculated, and a confidence level.
+  it, and an estimated saving where one can be calculated. No advice is given on a
+  measurement known to be unreliable: a home battery whose power cannot be read could be
+  consuming the whole solar surplus, so the panel names that gap instead of advising on it.
 - **Warns about peaks.** Import *and* export: the main fuse limits both directions.
 - **Keeps a logbook.** The last 200 events, with identical consecutive events collapsed
   into a counter rather than repeated.

@@ -1,7 +1,7 @@
 /**
  * The Dutch words for every code the backend sends (SPEC.md §12 and §26).
  *
- * A reason code, a confidence level and a checklist key are machine identifiers.
+ * A reason code and a checklist key are machine identifiers.
  * They belong in the sensor attributes, where an automation reads them, and
  * nowhere a customer can see. The panel used to print them anyway — "REDEN:
  * missing_required_data" under the headline advice, "Betrouwbaarheid: high"
@@ -35,13 +35,6 @@ const REASON_LABELS = {
   quiet_hours_active: 'Het is nu stille uren',
   insufficient_savings: 'De besparing is te klein om te melden',
   neutral_energy_situation: 'De situatie vraagt niet om een aanpassing',
-};
-
-/** How much the engine trusts the measurement behind an answer. */
-const CONFIDENCE_LABELS = {
-  low: 'laag',
-  medium: 'gemiddeld',
-  high: 'hoog',
 };
 
 /** The six items of the data quality checklist (engine/completeness.py). */
@@ -81,10 +74,6 @@ export function reasonLabel(code) {
   return lookup(REASON_LABELS, code);
 }
 
-export function confidenceLabel(level) {
-  return lookup(CONFIDENCE_LABELS, level);
-}
-
 export function checklistLabel(key) {
   return lookup(CHECKLIST_LABELS, key);
 }
@@ -96,7 +85,6 @@ export function measurementLabel(key) {
 /** The tables themselves, for the test that checks them against const.py. */
 export const LABEL_TABLES = {
   reason: REASON_LABELS,
-  confidence: CONFIDENCE_LABELS,
   checklist: CHECKLIST_LABELS,
   measurement: MEASUREMENT_LABELS,
 };
