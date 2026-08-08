@@ -1,5 +1,74 @@
 # Changelog
 
+## 0.4.0
+
+The energy score measures one thing now: how much of what this home *could* use well, it
+actually used. Full redesign, SPEC.md §35. Nothing has to be re-entered and no stored
+configuration changes.
+
+### Changed
+
+- **Two components instead of five: solar utilisation and price.** Both answer the same
+  question about the same moment — did movable consumption fall where it should — and
+  they weigh the same, because there is no honest ground to split them.
+
+  Three components were removed for failing one of the two rules the score now has. A
+  component is left out when the home **cannot influence it in this situation** — not
+  when the signal happens to be zero — and **following the coach's advice may never
+  lower the score.**
+
+- **The peak component is gone from the score, and only from the score.** It fell exactly
+  when the resident did what the coach had just asked: on a 1x25 A connection, plugging
+  in the car at a low price took that axis from 100 to 57, costing 10 to 16 points in the
+  same minute the advice appeared. The peak warning, the hysteresis, the binary sensor and
+  the two advice rules are untouched.
+
+- **The data quality is a gate rather than a term.** It no longer weighs 0.30 in the
+  resident's number, which made that number mostly a report on the installer's paperwork.
+  Instead there is no score at all until the three unconditional checklist items are
+  answered — the home profile, a usable grid source and a price. A fresh install still
+  cannot score 100: it scores nothing.
+
+- **The flexibility component is gone.** It measured whether a complete appliance
+  *existed*, which nothing the resident does today changes, and it charged for the same
+  appliance the data quality checklist already counts.
+
+- **The price component measures the house, not the market.** It used to score the hour
+  alone, so every dynamic home scored 0 at 18:00 and 100 at 03:00 whatever it did, and two
+  identical houses — one asleep, one running the dryer — scored the same. It is now the
+  price position multiplied by the share of the connection actually being drawn, and it
+  does not apply at all below the low threshold, where there is nothing to avoid.
+
+- **Solar utilisation only counts when there is something to shift.** A home with panels,
+  no battery and no complete flexible appliance cannot raise its self-consumption by any
+  action, so scoring it was a discount and not a measurement. Adding a battery or
+  completing an appliance switches the axis on.
+
+- **A missing reading no longer scores zero.** An unreadable price or an unset threshold
+  drops the component instead of deducting for it. The omission is reported by the data
+  quality checklist and by the gate, where the person who can fix it will see it.
+
+### Added
+
+- **The panel says why there is no score, in a sentence.** A tile with a dash reads as a
+  fault, and three of the four reasons are not faults at all: no variable signal, nothing
+  movable, or nothing to improve at this moment. Only an incomplete installation is a
+  shortcoming, and only that one carries a warning tone. The coach answers the same way
+  under "Hoe is mijn energiescore berekend?".
+
+### Known limitations
+
+- **A home with a fixed contract and no solar panels never receives a number.** It has no
+  moment that is better than another, so there is nothing to measure — an accepted
+  consequence of the principle rather than a gap. All advice keeps working; the score is
+  an extra, not a precondition. SPEC.md §35.9 lists what such a home would need.
+
+- **`sensor.domotiapp_energy_score` is `unknown` more often**, which shows up as gaps in
+  the long-term statistics. A daily average over this sensor is not meaningful.
+
+- **The score still jumps when a component steps in or out**, because it is a reading of
+  one moment. A score over a window is the real answer and needs its own design.
+
 ## 0.3.0
 
 The panel now knows the difference between the installer and the resident. Round 1 of

@@ -16,7 +16,7 @@ from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 
 DOMAIN: Final = "domotiapp_energy"
 INTEGRATION_NAME: Final = "DomotiApp Energy"
-VERSION: Final = "0.3.0"
+VERSION: Final = "0.4.0"
 
 MANUFACTURER: Final = "DomotiApp"
 DEVICE_MODEL: Final = "Energy Coach"
@@ -655,56 +655,73 @@ COMPLETENESS_POINTS: Final[dict[str, int]] = {
     COMPLETENESS_ITEM_TIME_WINDOWS: 10,
 }
 
-# --- Energy score weights (SPEC.md §16 "Energiescore") ----------------------
+# The three items every home is asked, because they are what the integration is
+# for: without a home profile, a grid source and a price it measures nothing.
+# The other three depend on the installer having said the home owns the thing.
+#
+# The energy score reuses this exact tuple as its gate (SPEC.md §35.7), so the
+# two cannot drift apart: "the score needs a complete installation" and "these
+# are the questions every installation must answer" are one statement.
+COMPLETENESS_UNCONDITIONAL_ITEMS: Final = (
+    COMPLETENESS_ITEM_HOME,
+    COMPLETENESS_ITEM_GRID,
+    COMPLETENESS_ITEM_PRICE,
+)
 
-SCORE_WEIGHT_DATA_QUALITY: Final = 0.30
-SCORE_WEIGHT_PEAK: Final = 0.25
-SCORE_WEIGHT_SOLAR: Final = 0.20
-SCORE_WEIGHT_PRICE: Final = 0.15
-SCORE_WEIGHT_FLEXIBILITY: Final = 0.10
+# --- Energy score weights (SPEC.md §35) -------------------------------------
 
-# Peak component is 100 below this load percentage and drops linearly to 0 at 100%.
-PEAK_COMPONENT_FULL_BELOW_PERCENT: Final = 50.0
-COMPONENT_MIN: Final = 0.0
+# Equal, and deliberately not split (SPEC.md §35.8). Both components answer the
+# same question about the same moment — did movable consumption fall where it
+# should — and the ratio only matters when both apply, which is sun plus an
+# expensive hour, where they agree anyway: using your own surplus is not
+# importing. Any other split would be a number nobody could defend.
+SCORE_WEIGHT_SOLAR: Final = 0.50
+SCORE_WEIGHT_PRICE: Final = 0.50
+
 COMPONENT_MAX: Final = 100.0
 
 # Below this production the solar component does not apply: at night there is
 # nothing being wasted, so there is nothing to score. Not zero — a nightly zero
-# was twenty points off a home that had done nothing wrong (SPEC.md §16).
+# was twenty points off a home that had done nothing wrong (SPEC.md §35.1).
 SOLAR_COMPONENT_MIN_PRODUCTION_W: Final = 0.0
-
-# A component distinguishes "not applicable" from "unknown" (SPEC.md §16).
-#
-# Not applicable: the situation genuinely has no such signal, and no amount of
-# configuring would produce one. Such a component returns None and is left out
-# of both the sum and the divisor — there is no numeric value that expresses
-# "does not apply" on a 0-100 axis. A fixed contract used to score 50 here,
-# meant as neutral, which cost that home 7.5 points forever.
-#
-# Unknown: the signal exists but was not configured or could not be read. That
-# scores zero. Scoring it neutral would leave a half-configured installation
-# with a comfortable number, which would make the energy score mostly a measure
-# of how little has been filled in.
-COMPONENT_UNKNOWN: Final = COMPONENT_MIN
 
 # Keys under EnergyMetrics.score_components, so the coach can show the
 # breakdown behind "Hoe is mijn energiescore berekend?".
-SCORE_COMPONENT_DATA_QUALITY: Final = "data_quality_component"
-SCORE_COMPONENT_PEAK: Final = "peak_component"
+#
+# **Three keys were removed in 0.4.0** and must not come back without going
+# through the two rules in SPEC.md §35.1 first. `data_quality_component` and
+# `flexibility_component` measured what the installer had filled in, which no
+# resident can move; `peak_component` fell when the resident did what the coach
+# had just advised, which is the one thing a component may never do.
 SCORE_COMPONENT_SOLAR: Final = "solar_component"
 SCORE_COMPONENT_PRICE: Final = "price_component"
-SCORE_COMPONENT_FLEXIBILITY: Final = "flexibility_component"
 
 # The weight per component, keyed the same way, so the score can divide by the
-# weight of whatever actually applies instead of assuming all five are present.
+# weight of whatever actually applies instead of assuming both are present.
 # Iteration order is the order the panel and the coach list them in.
 SCORE_COMPONENT_WEIGHTS: Final[dict[str, float]] = {
-    SCORE_COMPONENT_DATA_QUALITY: SCORE_WEIGHT_DATA_QUALITY,
-    SCORE_COMPONENT_PEAK: SCORE_WEIGHT_PEAK,
     SCORE_COMPONENT_SOLAR: SCORE_WEIGHT_SOLAR,
     SCORE_COMPONENT_PRICE: SCORE_WEIGHT_PRICE,
-    SCORE_COMPONENT_FLEXIBILITY: SCORE_WEIGHT_FLEXIBILITY,
 }
+
+# Why there is no score, so the panel can say *why* rather than showing a dash
+# (SPEC.md §35.9). A dash reads as a fault; three of these four are not faults
+# at all but descriptions of a home doing nothing wrong.
+#
+# Only the first is a shortcoming: the installation is incomplete and somebody
+# can close it. The other three say there is nothing to optimise, which is a
+# true and useful answer.
+SCORE_UNAVAILABLE_INCOMPLETE_SETUP: Final = "incomplete_setup"
+SCORE_UNAVAILABLE_NO_VARIABLE_SIGNAL: Final = "no_variable_signal"
+SCORE_UNAVAILABLE_NOTHING_MOVABLE: Final = "nothing_movable"
+SCORE_UNAVAILABLE_NOTHING_RIGHT_NOW: Final = "nothing_right_now"
+
+SCORE_UNAVAILABLE_REASONS: Final = (
+    SCORE_UNAVAILABLE_INCOMPLETE_SETUP,
+    SCORE_UNAVAILABLE_NO_VARIABLE_SIGNAL,
+    SCORE_UNAVAILABLE_NOTHING_MOVABLE,
+    SCORE_UNAVAILABLE_NOTHING_RIGHT_NOW,
+)
 
 SCORE_MIN: Final = 0
 SCORE_MAX: Final = 100

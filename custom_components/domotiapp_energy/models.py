@@ -84,6 +84,7 @@ from .const import (
     PRICE_BASIS_MARKET,
     PRIORITIES,
     SCHEMA_VERSION,
+    SCORE_UNAVAILABLE_REASONS,
     SEVERITIES,
     SEVERITY_INFO,
     SOURCE_TYPES,
@@ -1429,9 +1430,14 @@ class EnergyMetrics:
     # Only the ones that apply to this home are present.
     score_components: dict[str, float] = field(default_factory=dict)
     # The component keys left out, and therefore out of the divisor too. Named
-    # rather than silently absent: a score built from three components instead
-    # of five looks like it skipped something unless it says which two.
+    # rather than silently absent: a score built from one component instead of
+    # two looks like it skipped something unless it says which one.
     not_applicable_components: list[str] = field(default_factory=list)
+    # Why there is no score, when there is none (SPEC.md §35.9). Set exactly
+    # when energy_score is None, so the panel can print a sentence instead of a
+    # dash — a dash reads as a fault, and three of the four reasons describe a
+    # home that is doing nothing wrong.
+    score_unavailable_reason: str | None = None
     reason_codes: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -1453,6 +1459,7 @@ class EnergyMetrics:
             "energy_score": self.energy_score,
             "score_components": dict(self.score_components),
             "not_applicable_components": list(self.not_applicable_components),
+            "score_unavailable_reason": self.score_unavailable_reason,
             "reason_codes": list(self.reason_codes),
         }
 
@@ -1490,6 +1497,9 @@ class EnergyMetrics:
             score_components=_as_number_mapping(data.get("score_components")),
             not_applicable_components=_as_str_list(
                 data.get("not_applicable_components")
+            ),
+            score_unavailable_reason=_as_choice(
+                data.get("score_unavailable_reason"), SCORE_UNAVAILABLE_REASONS, None
             ),
             reason_codes=_as_str_list(data.get("reason_codes")),
         )

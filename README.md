@@ -21,8 +21,10 @@ The user interface is in Dutch; the code, entity IDs and this README are in Engl
   means charging", a bare market price to an all-in price. One convention per quantity,
   applied once, on reading.
 - **Scores two things.** A data completeness score (how much of the picture is
-  configured) and an energy score (how well this moment lends itself to using energy
-  smartly). Both are transparent weighted sums, documented in `SPEC.md` §16.
+  configured, `SPEC.md` §16) and an energy score (how much of what this home could have
+  used well at this moment, it actually used — `SPEC.md` §35). Both are transparent and
+  documented; the energy score deliberately shows no number when there is nothing to
+  measure, and says why.
 - **Advises.** Missing data, grid peak load in either direction, solar surplus, and a
   high or low dynamic price — each with a stable reason code, the measurements behind
   it, an estimated saving where one can be calculated, and a confidence level.
@@ -158,6 +160,35 @@ Two flags follow from the type unless you say otherwise: `is_noisy` (true for a
 dishwasher, washing machine, dryer and pool pump) and `is_flexible` (false for a heat
 pump and a generic monitor).
 
+## When the energy score shows a number
+
+The energy score answers one question: **of what this home could have used well at this
+moment, how much did it use?** It is not a measure of frugality, not a judgement of the
+installation, and not a report card on the household. Switching on the oven at 18:00 is
+not a mistake.
+
+That means it needs a signal to measure against, and not every home has one. Rather than
+print a number that claims something untrue, the panel shows a sentence saying why there
+is nothing to measure.
+
+| What the home has | Which axis applies | When there is a number |
+|---|---|---|
+| A dynamic contract | price | whenever the price is above the low threshold |
+| Panels **and** at least one usable, flexible appliance with a power and an energy per cycle | solar | whenever there is production |
+| Panels **and** a home battery | solar | whenever there is production |
+| Panels without anything movable | none | never, until something movable is added |
+| A fixed contract and no panels | none | never |
+
+**The cheapest route to a score is usually not to buy anything.** A dynamic contract
+switches the price axis on without changing a thing in the house. Completing an appliance
+that is already there — its power, its energy per cycle, marked flexible — switches the
+solar axis on for a home with panels, and that is configuration work rather than a
+purchase. Hardware comes after that, and for what it does rather than for what it does to
+the number.
+
+All advice keeps working in every one of these cases. The score is an extra, not a
+precondition.
+
 ## Generated entity IDs
 
 These six are fixed. They do **not** change with the language your Home Assistant runs
@@ -196,6 +227,14 @@ script — is allowed.
   configured, but the engine does not read them.
 - **No history.** Every calculation looks at the present moment only. There are no
   trends, no daily totals and no "what did yesterday cost".
+- **The energy score jumps, and is often absent.** It reads one moment, so a component
+  stepping in or out moves the number without anybody doing anything: a home whose solar
+  axis reads 30 in the afternoon can read 90 in the evening on the price axis alone. A
+  score over a window is the real answer and needs its own design. Absence is deliberate
+  and explained in the panel — see "When the energy score shows a number".
+- **`sensor.domotiapp_energy_score` is `unknown` whenever there is no number**, which
+  leaves gaps in the long-term statistics. A daily average over this sensor is not
+  meaningful; use the data quality sensor for "is this installation complete".
 - **Peak risk is measured across the whole connection, not per phase.** The maximum grid
   power is one figure for the house and the grid reading is the sum over the phases. On a
   three-phase connection the real overload is almost always on a single phase — 25 A on L2
