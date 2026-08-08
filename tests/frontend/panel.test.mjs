@@ -324,6 +324,40 @@ describe('empty and populated configurations', () => {
   // SPEC.md §16 and the 0.4.1 decision: the surplus figure no longer carries a
   // confidence grade. The one level that meant something became this sentence,
   // which names the cause and the fix instead of grading the customer's data.
+  it('counts the running appliances without listing them', async () => {
+    // A count is a fact about the home; the appliances live on Apparaten.
+    const panel = await mountPanel(
+      fakeHass({
+        coach: sampleCoach({
+          metrics: { device_power_w: { d1: 1150, d2: 3 }, running_device_count: 1 },
+        }),
+      }),
+    );
+
+    const rows = [...panel.shadowRoot.querySelectorAll('.stat-row')];
+    const running = rows.find((node) =>
+      node.querySelector('.stat-label').textContent.includes('nu draaien'),
+    );
+
+    assert.ok(running, 'expected a running-appliances row');
+    assert.equal(running.querySelector('.stat-value').textContent, '1');
+  });
+
+  it('leaves the running count absent when nothing links a power entity', async () => {
+    // "0 draaien" would claim a measurement of every appliance in the house.
+    const panel = await mountPanel(
+      fakeHass({ coach: sampleCoach({ metrics: { device_power_w: {} } }) }),
+    );
+
+    const running = [...panel.shadowRoot.querySelectorAll('.stat-row')].find((node) =>
+      node.querySelector('.stat-label').textContent.includes('nu draaien'),
+    );
+
+    const value = running.querySelector('.stat-value');
+    assert.ok(value.classList.contains('is-empty'));
+    assert.equal(value.textContent, 'Niet beschikbaar');
+  });
+
   it('puts the home consumption above the grid power', async () => {
     // SPEC.md §36.5: the grid power is a consequence of consumption minus
     // production, so it used to sit above its own causes.

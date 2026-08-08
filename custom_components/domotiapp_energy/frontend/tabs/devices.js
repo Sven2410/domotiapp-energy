@@ -37,7 +37,15 @@ import {
   warningMessages,
 } from '../core/api.js';
 import { createConfirmDialog, createDialog } from '../core/dialog.js';
-import { button, card, el, notice, section, setVisible } from '../core/dom.js';
+import {
+  button,
+  card,
+  el,
+  formatNumber,
+  notice,
+  section,
+  setVisible,
+} from '../core/dom.js';
 import {
   createForm,
   describeOrphanedErrors,
@@ -755,6 +763,10 @@ export const devicesTab = {
      * whether it may be steered at all.
      */
     let isAdmin = true;
+    // Live power per appliance id, refreshed before every sync. Only the
+    // appliances that link a power entity appear in it, which is what keeps an
+    // unlinked one from getting an empty line (SPEC.md §37).
+    let devicePower = {};
 
     const rowList = createRowList({
       emptyText:
@@ -853,6 +865,7 @@ export const devicesTab = {
     function createDeviceRow() {
       const name = el('p', { class: 'row-name' });
       const meta = el('p', { class: 'row-meta' });
+      const power = el('p', { class: 'row-meta' });
       const status = el('div', { class: 'row-status' });
       const statusIcon = el('ha-icon', { attrs: { 'aria-hidden': 'true' } });
       const statusText = el('span');
@@ -863,7 +876,7 @@ export const devicesTab = {
       deleteButton.classList.add('button-danger');
 
       const row = el('div', { class: 'row-item' }, [
-        el('div', { class: 'row-main' }, [name, meta, status]),
+        el('div', { class: 'row-main' }, [name, meta, power, status]),
         el('div', { class: 'row-buttons' }, [editButton, deleteButton]),
       ]);
 
@@ -877,6 +890,16 @@ export const devicesTab = {
           current = device;
           name.textContent = device.name || 'Naamloos apparaat';
           meta.textContent = describeDevice(device);
+
+          // No line at all without a reading. An appliance nobody linked is
+          // not a gap, so "onbekend" next to every one of them would report a
+          // fault where there is none — the same rule the tile texts follow.
+          const watts = devicePower[device.id];
+          const hasReading = typeof watts === 'number';
+          power.textContent = hasReading
+            ? `Nu: ${formatNumber(watts)} W`
+            : '';
+          setVisible(power, hasReading);
           // A resident opens the same dialog and can change six fields in it,
           // so "Instellen" rather than "Bewerken" or "Bekijken": he is not
           // editing the appliance, and he is not only looking either.
@@ -1301,6 +1324,7 @@ export const devicesTab = {
         isAdmin = panelState.isAdmin;
         applyRoleToTab();
       }
+      devicePower = panelState.live?.metrics?.device_power_w || {};
       rowList.sync(config.devices || []);
       for (const { form } of forms) {
         form.setHass(getHass());

@@ -58,6 +58,7 @@ from .const import (
     DEFAULT_SCALE_FACTOR,
     DEFAULT_VAT_PERCENT,
     DEVICE_ENTITY_BINDING_KEYS,
+    DEVICE_RUNNING_MIN_POWER_W,
     DEVICE_TYPES,
     EXCLUSIVE_SOURCE_TYPES,
     HOME_CONSUMPTION_UNAVAILABLE_REASONS,
@@ -1293,6 +1294,10 @@ class EnergySnapshot:
     solar_power_w: float | None = None
     household_consumption_w: float | None = None
     battery_power_w: float | None = None
+    # Live power per appliance id. A reading, so it belongs in the snapshot
+    # with the others rather than being attached afterwards — see the note on
+    # `Calculator.calculate` for the bug that taught us the difference.
+    device_power_w: dict[str, float] = field(default_factory=dict)
     # Always the all-in price: the calculator normalises on reading (SPEC.md
     # §16), so nothing downstream has to know what the source reported.
     current_price_eur_kwh: float | None = None
@@ -1450,7 +1455,26 @@ class EnergyMetrics:
     # dash — a dash reads as a fault, and three of the four reasons describe a
     # home that is doing nothing wrong.
     score_unavailable_reason: str | None = None
+    # Live power per appliance id, for the ones that link a power entity. Only
+    # the ones that do: an appliance without a link gets no row at all rather
+    # than an empty one, because a column of blanks reads as a fault where
+    # nothing is wrong (SPEC.md §37).
+    device_power_w: dict[str, float] = field(default_factory=dict)
     reason_codes: list[str] = field(default_factory=list)
+
+    @property
+    def running_device_count(self) -> int:
+        """How many linked appliances are drawing more than standby.
+
+        A count is a fact about the home and belongs on the Overzicht; the
+        appliances themselves belong on Apparaten, where they are described.
+        Listing them on both turns the overview into a dashboard.
+        """
+        return sum(
+            1
+            for power in self.device_power_w.values()
+            if power >= DEVICE_RUNNING_MIN_POWER_W
+        )
 
     @property
     def solar_surplus_may_be_overstated(self) -> bool:
@@ -1500,6 +1524,8 @@ class EnergyMetrics:
             "energy_score": self.energy_score,
             "score_components": dict(self.score_components),
             "not_applicable_components": list(self.not_applicable_components),
+            "device_power_w": dict(self.device_power_w),
+            "running_device_count": self.running_device_count,
             "score_unavailable_reason": self.score_unavailable_reason,
             "reason_codes": list(self.reason_codes),
         }
@@ -1545,6 +1571,7 @@ class EnergyMetrics:
             not_applicable_components=_as_str_list(
                 data.get("not_applicable_components")
             ),
+            device_power_w=_as_number_mapping(data.get("device_power_w")),
             score_unavailable_reason=_as_choice(
                 data.get("score_unavailable_reason"), SCORE_UNAVAILABLE_REASONS, None
             ),

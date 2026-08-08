@@ -1497,6 +1497,146 @@ async def test_home_consumption_changes_neither_score_nor_checklist(
     assert SCORE_COMPONENT_SOLAR not in metrics.score_components
 
 
+# --- Power per appliance (SPEC.md §37) --------------------------------------
+
+
+def _linked_device(hass: HomeAssistant, entity_id: str, unit: str, value: str, **kw):
+    """Return a device linked to a power entity that reports `value` in `unit`."""
+    hass.states.async_set(entity_id, value, {"unit_of_measurement": unit})
+    defaults: dict[str, Any] = {
+        "id": "d1",
+        "device_type": DEVICE_TYPE_DISHWASHER,
+        "nominal_power_w": 2000.0,
+        "energy_per_cycle_kwh": 1.2,
+        "power_entity": entity_id,
+    }
+    return DeviceProfile.from_dict(defaults | kw)
+
+
+async def test_a_linked_appliance_reports_its_power(hass: HomeAssistant) -> None:
+    """`power_entity` finally has a reader (SPEC.md §37).
+
+    Until 0.6.0 this field was asked of the installer, stored, and watched by
+    the coordinator — so filling it in made the integration recalculate more
+    often and nothing else.
+    """
+    config = _config()
+    config.devices.append(_linked_device(hass, "sensor.vaatwasser", UNIT_W, "1150"))
+
+    metrics = Calculator(hass).calculate(config)
+
+    assert metrics.device_power_w == {"d1": 1150.0}
+
+
+async def test_kilowatts_are_converted_and_not_taken_at_face_value(
+    hass: HomeAssistant,
+) -> None:
+    """A kW sensor read as watts would be off by a thousand."""
+    config = _config()
+    config.devices.append(_linked_device(hass, "sensor.laadpaal", UNIT_KW, "7.4"))
+
+    metrics = Calculator(hass).calculate(config)
+
+    assert metrics.device_power_w == {"d1": 7400.0}
+
+
+async def test_an_appliance_without_a_link_is_simply_absent(
+    hass: HomeAssistant,
+) -> None:
+    """Not zero and not unknown: absent, so the panel gives it no line.
+
+    An appliance nobody linked is not a gap, and a column of "onbekend" would
+    report a fault where there is none.
+    """
+    config = _config()
+    config.devices.append(_movable_device())
+
+    metrics = Calculator(hass).calculate(config)
+
+    assert metrics.device_power_w == {}
+
+
+async def test_a_power_entity_without_a_unit_is_refused(hass: HomeAssistant) -> None:
+    """No unit is no reading. Assuming watts is the guess §15 forbids."""
+    config = _config()
+    config.devices.append(_linked_device(hass, "sensor.stekker", "", "1150"))
+
+    metrics = Calculator(hass).calculate(config)
+
+    assert metrics.device_power_w == {}
+
+
+async def test_a_disabled_appliance_is_not_read(hass: HomeAssistant) -> None:
+    """Disabled means the engine leaves it alone, readings included."""
+    config = _config()
+    config.devices.append(
+        _linked_device(hass, "sensor.vaatwasser", UNIT_W, "1150", enabled=False)
+    )
+
+    metrics = Calculator(hass).calculate(config)
+
+    assert metrics.device_power_w == {}
+
+
+async def test_standby_does_not_count_as_running(hass: HomeAssistant) -> None:
+    """Two watts is an appliance being off, not an appliance running."""
+    config = _config()
+    config.devices.append(_linked_device(hass, "sensor.vaatwasser", UNIT_W, "2"))
+
+    metrics = Calculator(hass).calculate(config)
+
+    assert metrics.device_power_w == {"d1": 2.0}
+    assert metrics.running_device_count == 0
+
+
+async def test_the_running_count_counts_only_what_draws_power(
+    hass: HomeAssistant,
+) -> None:
+    """Three linked appliances, two of them actually doing something."""
+    config = _config()
+    config.devices.append(_linked_device(hass, "sensor.a", UNIT_W, "1150"))
+    config.devices.append(_linked_device(hass, "sensor.b", UNIT_KW, "2.2", id="d2"))
+    config.devices.append(_linked_device(hass, "sensor.c", UNIT_W, "1", id="d3"))
+
+    metrics = Calculator(hass).calculate(config)
+
+    assert metrics.running_device_count == 2
+
+
+async def test_device_power_reaches_the_path_the_coordinator_uses(
+    hass: HomeAssistant,
+) -> None:
+    """The production path is `build_snapshot` + `derive_metrics`, not `calculate`.
+
+    The first version attached the reading in `calculate()`, which the
+    coordinator never calls — the latch sits between the two halves. Every test
+    here used `calculate`, so 588 of them passed while the panel showed nothing
+    at all. Found by driving the real instance.
+    """
+    config = _config()
+    config.devices.append(_linked_device(hass, "sensor.vaatwasser", UNIT_W, "1150"))
+
+    calculator = Calculator(hass)
+    snapshot = calculator.build_snapshot(config)
+    metrics = calculator.derive_metrics(config, snapshot)
+
+    assert metrics.device_power_w == {"d1": 1150.0}
+
+
+async def test_device_power_survives_the_trip_to_the_panel(
+    hass: HomeAssistant,
+) -> None:
+    """Both the mapping and the count reach the frontend."""
+    config = _config()
+    config.devices.append(_linked_device(hass, "sensor.vaatwasser", UNIT_W, "1150"))
+
+    metrics = Calculator(hass).calculate(config)
+    restored = type(metrics).from_dict(metrics.to_dict())
+
+    assert restored.device_power_w == metrics.device_power_w
+    assert metrics.to_dict()["running_device_count"] == 1
+
+
 # --- Energy score -----------------------------------------------------------
 
 

@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.6.0
+
+### Added
+
+- **`power_entity` finally does something.** It was asked of the installer on every
+  appliance form, stored, and watched by the coordinator — so filling it in made the
+  integration recalculate more often and changed nothing else. Each appliance that links
+  one now shows its live power on Apparaten, and the Overzicht carries a count of how many
+  are running. SPEC.md §37.
+
+  An appliance without a link gets no line at all: not "onbekend", not "0 W". The unit
+  comes from the entity and only `W` and `kW` are accepted — a kilowatt read as a watt is
+  off by a thousand.
+
+### Fixed
+
+- **The reader sat in the one method the coordinator never calls.** `read_device_power`
+  hung off `Calculator.calculate()`, and the coordinator uses `build_snapshot` and
+  `derive_metrics` separately because the hysteresis latch sits between them. Every test
+  used `calculate()`, so 588 of them passed while the panel showed nothing at all. Found
+  by driving the running instance.
+
+  The power is now a reading in the snapshot, where the other readings are.
+
+### Known limitations
+
+- **Five more device links still ask for a binding and read nothing**: `status_entity`,
+  `energy_entity`, `remaining_time_entity`, `temperature_entity` and
+  `battery_level_entity`. They are watched by the coordinator, so linking one causes
+  recalculations that do nothing with the value. Listed in SPEC.md §37.2 with the rest of
+  the audit.
+
+- **The `price_forecast` and `solar_forecast` source types are offered and never read.**
+  Not a field you can skip but a whole source type in the list, with helper text inviting
+  you to link an entity. Forecasting is out of scope (§28); the choice should not have
+  been on the menu.
+
 ## 0.5.0
 
 ### Added
