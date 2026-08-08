@@ -14,6 +14,16 @@
   comes from the entity and only `W` and `kW` are accepted — a kilowatt read as a watt is
   off by a thousand.
 
+### Fixed
+
+- **The reader sat in the one method the coordinator never calls.** `read_device_power`
+  hung off `Calculator.calculate()`, and the coordinator uses `build_snapshot` and
+  `derive_metrics` separately because the hysteresis latch sits between them. Every test
+  used `calculate()`, so 588 of them passed while the panel showed nothing at all. Found
+  by driving the running instance.
+
+  The power is now a reading in the snapshot, where the other readings are.
+
 ### Known limitations
 
 - **Five more device links still ask for a binding and read nothing**: `status_entity`,

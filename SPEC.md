@@ -3336,6 +3336,30 @@ Twee die tijdens de inventarisatie voor dood werden aangezien:
   `value_source`, `attribute_name`** worden alle gelezen via een property of via
   `read_entity_value`. Een zoekopdracht die alleen de motor doorzoekt mist ze.
 
+### 37.2b Code die alleen door tests bereikt wordt
+
+Naar aanleiding van het defect in deze ronde — de lezer zat in `Calculator.calculate()`,
+dat de coordinator nooit aanroept — is de hele package nagelopen op functies die
+productiecode nergens aanroept. Op verzoek van Sven (2026-08-09), met het argument dat dit
+waarschijnlijk niet het enige geval was.
+
+**Resultaat: één echte vondst.**
+
+| Functie | Oordeel |
+|---|---|
+| `validators.has_errors` | **dood.** Bestaat, wordt getest, en wordt door niets gebruikt — noch door de motor, noch door de WebSocket-API, noch door het paneel. Kan weg. |
+| `Calculator.calculate` | alleen tests, en dat mag: hij is sinds deze ronde één regel die de twee helften samenstelt, met een docstring die zegt dat de coordinator hem niet gebruikt. Er kan zich niets meer in verstoppen. |
+| `Store._async_migrate_func` | geen vondst: een haak die Home Assistant zelf aanroept bij een schemawijziging. |
+
+De overige ~55 treffers zijn vals alarm van dezelfde soort als bij de veldaudit
+(§37.2): properties worden als attribuut gelezen en niet aangeroepen,
+WebSocket-handlers worden door een decorator geregistreerd, en callbacks gaan als
+referentie mee. **Een zoekopdracht op `naam(` vindt die niet**, precies zoals een
+zoekopdracht over `engine/` de velden achter een property miste.
+
+De frontend heeft dit gat niet: `mountPanel` in de testlaag start het paneel langs dezelfde
+weg als Home Assistant zelf.
+
 ### 37.3 Wat deze ronde niet raakt
 
 - **De adviesregels.** Het vermogen per apparaat wordt getoond, niet geïnterpreteerd. Of

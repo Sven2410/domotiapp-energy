@@ -381,6 +381,32 @@ Praktisch gevolg voor elke zin die door een voorwaarde gekozen wordt: **de voorw
 toetsen wat de zin beweert.** Zegt de zin "nu", dan mag de voorwaarde niet uit de
 configuratie komen.
 
+#### Zevende variant: de toets klopt, maar de code draait niet
+
+**Ernstiger dan de zes ervoor**, want daar toetste een test de verkeerde uitkomst — hier
+was de toets correct en werd de code in productie nooit uitgevoerd.
+
+Het vermogen per apparaat werd gelezen in `Calculator.calculate()`. **De coordinator roept
+die methode nooit aan**: hij gebruikt `build_snapshot` en `derive_metrics` apart, omdat de
+hysterese-latch daartussen zit. Elke test gebruikte `calculate()`, dus 588 tests waren
+groen terwijl het paneel niets toonde. Het viel alleen op doordat Sven het in de browser
+wilde zien.
+
+**De vraag die hem vangt:** *roept het product deze functie werkelijk aan, of alleen mijn
+test?* Stel hem bij elk nieuw stuk logica dat je aan een bestaande functie hangt, en
+beantwoord hem door het aanroeppad terug te lopen tot aan de coordinator, een
+WebSocket-handler of een entiteit — niet tot aan de test.
+
+**Waar hij het vaakst opgaat:** een klasse met meerdere instapmethoden waarvan er één een
+gemakkelijke samenstelling is. Die samenstelling is aantrekkelijk in een test (één
+aanroep, alles klaar) en juist daarom bypassen de echte aanroepers hem, omdat zij tussen de
+stappen iets moeten doen.
+
+**Structurele tegenmaatregel:** houd zo'n samenstellende methode leeg. `calculate()` is nu
+één regel die `derive_metrics(config, build_snapshot(config))` teruggeeft en verder niets,
+met een docstring die zegt dat de coordinator hem niet gebruikt. Wat daar bijkomt is
+zichtbaar fout in plaats van stil dood.
+
 ### Versieverschil tussen tests en de draaiende HA (bewuste keuze, niet oplossen)
 
 | | Python | Home Assistant |
