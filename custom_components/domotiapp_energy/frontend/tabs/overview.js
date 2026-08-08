@@ -179,6 +179,12 @@ export const overviewTab = {
     const priceRow = statRow('Actuele energieprijs', {
       empty: EMPTY_NOT_AVAILABLE,
     });
+    // A count is a fact about the home; the appliances themselves live on
+    // Apparaten, where they are described. Listing them here too would turn
+    // the overview into a dashboard (SPEC.md §37).
+    const runningRow = statRow('Apparaten die nu draaien', {
+      empty: EMPTY_NOT_AVAILABLE,
+    });
     const peakNotice = notice('mdi:flash-alert-outline');
     // The one thing the old confidence label was about, next to the figure it
     // qualifies rather than as a grade on it.
@@ -194,6 +200,7 @@ export const overviewTab = {
       surplusRow.element,
       loadRow.element,
       priceRow.element,
+      runningRow.element,
       consumptionNotice.element,
       surplusNotice.element,
       peakNotice.element,
@@ -371,6 +378,10 @@ export const overviewTab = {
       // on either. The one level that did carry information is the notice below.
       surplusRow.set(formatNumber(metrics.solar_surplus_w));
       loadRow.set(formatNumber(metrics.grid_load_percent, { decimals: 1 }));
+      // Absent, not zero, when no appliance links a power entity: "0 draaien"
+      // would claim a measurement of every appliance in the house.
+      const linked = Object.keys(metrics.device_power_w || {}).length;
+      runningRow.set(linked ? String(metrics.running_device_count ?? 0) : null);
       updatePrice(config, metrics);
 
       // Cause and fix, not a grade. One sentence covers both figures the

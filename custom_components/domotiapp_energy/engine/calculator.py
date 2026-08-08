@@ -36,6 +36,7 @@ from custom_components.domotiapp_energy.const import (
     CONFIDENCE_LOW,
     CONFIDENCE_MEDIUM,
     CONTRACT_TYPE_DYNAMIC,
+    DEVICE_LINK_POWER,
     HOME_CONSUMPTION_BATTERY_UNREADABLE,
     HOME_CONSUMPTION_NO_GRID_READING,
     HOME_CONSUMPTION_SOLAR_UNREADABLE,
@@ -63,12 +64,15 @@ from custom_components.domotiapp_energy.const import (
     SOURCE_TYPE_GRID_METER,
     SOURCE_TYPE_HOME_BATTERY,
     SOURCE_TYPE_SOLAR,
+    UNIT_KW,
+    UNIT_W,
 )
 from custom_components.domotiapp_energy.models import (
     DataQualityResult,
     EnergyMetrics,
     EnergySnapshot,
     EnergySource,
+    EntityBinding,
     HomeProfile,
     SourceFailure,
     StoredConfiguration,
@@ -131,9 +135,43 @@ class Calculator:
             reason_codes=readings.reason_codes,
         )
 
+    def read_device_power(self, config: StoredConfiguration) -> dict[str, float]:
+        """Return the live power per appliance, for the ones that link one.
+
+        **`power_entity` had no reader until 0.6.0.** It was asked of the
+        installer on every appliance form, stored, and watched by the
+        coordinator — so linking it made the integration recalculate more often
+        and changed nothing else. A field that asks for attention and does
+        nothing costs trust at every installation (Sven, 2026-08-09).
+
+        The unit comes from the entity itself, and only ``W`` and ``kW`` are
+        accepted. A power sensor that declares neither is left out rather than
+        assumed to be watts: a kilowatt read as a watt is off by a thousand,
+        and that is exactly the sort of silent guess SPEC.md §15 forbids.
+        """
+        powers: dict[str, float] = {}
+        for device in config.devices:
+            entity_id = device.entity_links.get(DEVICE_LINK_POWER)
+            if not device.is_usable or not entity_id:
+                continue
+
+            state = self._hass.states.get(entity_id)
+            unit = state.attributes.get("unit_of_measurement") if state else None
+            if unit not in (UNIT_W, UNIT_KW):
+                continue
+
+            result = read_entity_value(
+                self._hass, EntityBinding(entity_id=entity_id, unit=unit)
+            )
+            if result.ok and result.value is not None:
+                powers[device.id] = result.value
+        return powers
+
     def calculate(self, config: StoredConfiguration) -> EnergyMetrics:
         """Read the sources and derive everything the advisor needs."""
-        return self.derive_metrics(config, self.build_snapshot(config))
+        metrics = self.derive_metrics(config, self.build_snapshot(config))
+        metrics.device_power_w = self.read_device_power(config)
+        return metrics
 
     def derive_metrics(
         self, config: StoredConfiguration, snapshot: EnergySnapshot

@@ -16,6 +16,7 @@ import {
   fakeHass,
   isVisible,
   mountPanel,
+  sampleCoach,
   sampleConfig,
   settle,
   tabPanels,
@@ -1045,4 +1046,31 @@ describe('what a charger is actually asked', () => {
     assert.equal(dishwasher.energy_per_cycle_kwh.label, 'Energie per cyclus');
     assert.equal(dishwasher.duration_minutes.label, 'Duur van een cyclus');
   });
+})
+
+describe('the live power per appliance', () => {
+  it('shows a reading for a linked appliance', async () => {
+    const { tab } = await openDevicesTab(
+      fakeHass({
+        config: sampleConfig({ devices: [dishwasher()] }),
+        coach: sampleCoach({ metrics: { device_power_w: { d1: 1150 } } }),
+      }),
+    );
+
+    assert.match(tab.textContent, /Nu: 1\.150 W/);
+  });
+
+  it('gives an unlinked appliance no line at all', async () => {
+    // Not "onbekend" and not "0 W": an appliance nobody linked is not a gap,
+    // and a column of blanks reports a fault where there is none.
+    const { tab } = await openDevicesTab(
+      fakeHass({
+        config: sampleConfig({ devices: [dishwasher()] }),
+        coach: sampleCoach({ metrics: { device_power_w: {} } }),
+      }),
+    );
+
+    assert.doesNotMatch(tab.textContent, /Nu:/);
+  });
 });
+;

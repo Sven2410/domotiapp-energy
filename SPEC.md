@@ -3248,3 +3248,110 @@ sensor.domotiapp_energy_home_consumption
   de zes bestaande ID's zijn ongewijzigd;
 - de datakwaliteit en de energiescore geven op elke bestaande testconfiguratie exact
   dezelfde uitkomst als ervoor.
+
+## 37. Verbruik per apparaat, en de velden die om aandacht vroegen zonder iets te doen
+
+### 37.1 Wat er gebouwd is
+
+**`power_entity` heeft eindelijk een lezer.** Het veld werd op elk apparaatformulier
+gevraagd, opgeslagen, én door de coordinator bewaakt — dus invullen zorgde ervoor dat de
+integratie vaker herrekende en verder niets. Nu levert het per apparaat het actuele
+vermogen.
+
+- **Op Apparaten**, als regel onder het apparaat waar het over gaat: *Nu: 1.150 W*.
+- **Op het Overzicht** alleen een telling: *Apparaten die nu draaien*. Een telling is een
+  feit over de woning; de apparaten zelf horen op Apparaten, waar ze beschreven staan. Ze
+  op beide schermen zetten maakt van het Overzicht een dashboard, en dat is precies wat de
+  indeling niet wilde zijn.
+
+**Een apparaat zonder koppeling krijgt geen regel.** Niet "onbekend", niet "0 W". Zo'n
+apparaat is geen gat, en een kolom lege waarden meldt een storing waar niets aan de hand
+is — dezelfde regel als bij de tegelteksten.
+
+**De eenheid komt van de entiteit zelf, en alleen `W` en `kW` worden geaccepteerd.** Een
+vermogenssensor die geen van beide meldt wordt overgeslagen in plaats van als watt gelezen:
+een kilowatt die als watt binnenkomt zit er duizend keer naast, en dat is precies de stille
+gok die §15 verbiedt.
+
+**`DEVICE_RUNNING_MIN_POWER_W = 10`** bepaalt wanneer een apparaat "draait". Sluimerverbruik
+is bij de meeste huishoudelijke apparaten een paar watt, dus dit is een vloer onder de ruis
+en geen oordeel over het apparaat. Een vaste constante en geen voorkeur, om dezelfde reden
+als de hysterese-constanten (§16): het beschrijft hoe de motor een meter leest.
+
+De telling is **afwezig** wanneer geen enkel apparaat een vermogensentiteit koppelt. "0
+draaien" zou een meting beweren over elk apparaat in huis.
+
+### 37.2 Velden die om invoer of een koppeling vragen zonder lezer
+
+**Volledige inventarisatie, gemaakt op verzoek van Sven (2026-08-09)**, omdat een veld dat
+om aandacht vraagt en niets doet vertrouwen kost bij elke installatie. Niet alles hieronder
+wordt in deze ronde opgelost; de lijst staat hier zodat er niets opnieuw ontdekt hoeft te
+worden.
+
+#### Nog open — vragen om een koppeling en doen niets
+
+| Veld | Waar gevraagd | Gevolg vandaag |
+|---|---|---|
+| `status_entity` | elk apparaatformulier | bewaakt, nooit gelezen |
+| `energy_entity` | elk apparaatformulier | bewaakt, nooit gelezen |
+| `remaining_time_entity` | elk apparaatformulier | bewaakt, nooit gelezen |
+| `temperature_entity` | elk apparaatformulier | bewaakt, nooit gelezen |
+| `battery_level_entity` | apparaatformulier bij `ev_charger` | bewaakt, nooit gelezen — §34 geeft het een lezer |
+| brontype `price_forecast` | keuzelijst Energiebronnen | een volledig brontype dat niets doet |
+| brontype `solar_forecast` | keuzelijst Energiebronnen | idem |
+
+**De twee brontypen zijn het ernstigst.** Dit is geen veld dat je kunt overslaan: het staat
+als keuze in de lijst, met een hulptekst die uitnodigt een entiteit te koppelen (*"De
+entiteit met de verwachte opbrengst"*). Wie hem invult krijgt een bron die nergens in
+meetelt. §28 zegt al dat prognose niet gebouwd wordt; de keuze had dan niet aangeboden
+moeten worden.
+
+**De vijf koppelingen kosten meer dan niets.** De coordinator zet ze in de lijst van
+bewaakte entiteiten, dus elke statuswijziging veroorzaakt een herberekening die met
+diezelfde waarde niets doet. Invullen maakt de integratie drukker zonder enig effect.
+
+#### Bewust leeg tot de aansturingsrelease
+
+Deze zijn vroeg toegevoegd omdat ze anders bij elke klant opnieuw uitgevraagd moeten
+worden (§12), en ze vragen de installateur niet om iets in te vullen:
+
+- `capabilities` op bron en apparaat — alleen gevalideerd, nooit gebruikt;
+- `control_forbidden_reason` — wordt getoond in de lijst, maar door de motor niet gelezen;
+- `control_level` op de woning — staat uitgeschakeld in het formulier met uitleg erbij.
+
+#### Geen lezer, en dat is goed
+
+- `notes` op bron en apparaat, en `location` op een apparaat. Documentatie voor de
+  installateur; teruggetoond worden ís hun functie.
+
+#### Wat wél een lezer heeft, tegen de verwachting in
+
+Twee die tijdens de inventarisatie voor dood werden aangezien:
+
+- **`duration_minutes`** wordt gelezen, via `DeviceProfile.latest_start` in de
+  venstertoets van de advisor. Het rekent terug wanneer een apparaat uiterlijk moet
+  starten.
+- **`energy_tax_eur_kwh`, `supplier_markup_eur_kwh`, `vat_percent`,
+  `feed_in_markup_eur_kwh`, `net_metering_until`, `scale_factor`, `invert_value`,
+  `value_source`, `attribute_name`** worden alle gelezen via een property of via
+  `read_entity_value`. Een zoekopdracht die alleen de motor doorzoekt mist ze.
+
+### 37.3 Wat deze ronde niet raakt
+
+- **De adviesregels.** Het vermogen per apparaat wordt getoond, niet geïnterpreteerd. Of
+  een apparaat draait terwijl de coach het afraadt is een adviesvraag en hoort bij fase 2.
+- **De datakwaliteit en de energiescore.** Geen nieuw checklistitem, geen component. Een
+  gekoppelde vermogenssensor mag het cijfer van de bewoner niet bewegen.
+- **De vijf overige koppelingen.** Zie §37.2; ze krijgen een lezer of ze verdwijnen, maar
+  niet in deze ronde.
+
+### 37.4 Klaar wanneer
+
+- een apparaat met een gekoppelde vermogenssensor toont zijn actuele vermogen op Apparaten,
+  en een apparaat zonder koppeling toont daar niets;
+- een sensor in kW wordt omgerekend, en een sensor zonder eenheid wordt overgeslagen;
+- het Overzicht toont het aantal draaiende apparaten, en niets wanneer geen enkel apparaat
+  een vermogensentiteit koppelt;
+- sluimerverbruik telt niet als draaiend;
+- datakwaliteit en energiescore geven op elke bestaande testconfiguratie exact dezelfde
+  uitkomst als ervoor.

@@ -16,7 +16,7 @@ from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 
 DOMAIN: Final = "domotiapp_energy"
 INTEGRATION_NAME: Final = "DomotiApp Energy"
-VERSION: Final = "0.5.0"
+VERSION: Final = "0.6.0"
 
 MANUFACTURER: Final = "DomotiApp"
 DEVICE_MODEL: Final = "Energy Coach"
@@ -516,9 +516,21 @@ DEVICE_OPERATION_FIELDS: Final[tuple[str, ...]] = (
 
 # Optional entity bindings on a device profile. Missing means null or absent,
 # never an empty string.
+# The one with a reader since 0.6.0; the other five are still watched and never
+# read, which is recorded as open work rather than left to be discovered again.
+DEVICE_LINK_POWER: Final = "power_entity"
+
+# How much an appliance has to draw before it counts as running. Standby is a
+# few watts for most household appliances, so this is a floor under the noise
+# rather than a judgement about the appliance. A fixed constant and not a
+# preference: it describes how the engine reads a meter, and a setting here
+# would be one that can be switched off (same reasoning as the hysteresis
+# constants in SPEC.md §16).
+DEVICE_RUNNING_MIN_POWER_W: Final = 10.0
+
 DEVICE_ENTITY_BINDING_KEYS: Final[tuple[str, ...]] = (
     "status_entity",
-    "power_entity",
+    DEVICE_LINK_POWER,
     "energy_entity",
     "remaining_time_entity",
     "temperature_entity",
