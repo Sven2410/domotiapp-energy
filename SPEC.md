@@ -3053,3 +3053,182 @@ geschreven is.
 - elk van de vier gevallen uit de tabel in §35.9 levert de bijbehorende zin op, en niet een
   streepje;
 - de zaagtand is niet opgelost en staat als beperking in de README.
+
+## 36. Thuisverbruik: het getal dat er als eerste hoort te staan
+
+**Status: ontwerp, nog niet gebouwd.** Bevinding 3 uit de eerste productie-installatie.
+
+### 36.1 Waarom dit ontbreekt en waarom dat opvalt
+
+Het Overzicht toont het **netvermogen**, en dat is een saldo — geen verbruik. Een woning
+met panelen die om 13:00 "−2.400 W" ziet staan, leest daar niet in dat haar huis op dat
+moment 600 W trekt. Er staat geen enkel getal op het scherm dat de vraag "wat gebruikt
+mijn huis nu" beantwoordt.
+
+Dat is niet één ontbrekend getal tussen andere. Het is het getal waar de rest aan
+opgehangen wordt: zonder thuisverbruik is "benut je zonneoverschot" een advies waarvan
+de bewoner de aanleiding niet ziet.
+
+**Wat er al bestaat en waarom het niet volstaat.** `household_consumption_w` staat al in
+`EnergySnapshot`, maar alleen als *gemeten* waarde uit een `general_consumption`-bron, en
+hij haalt `EnergyMetrics` niet — het paneel ziet hem dus nooit. Hij wordt op precies één
+plek gebruikt: als invoer voor variant 2 van het zonneoverschot (§16). Vrijwel geen
+woning heeft zo'n bron; wél heeft vrijwel elke woning een netmeter en een omvormer, en
+daaruit is het verbruik af te leiden.
+
+### 36.2 De energiebalans
+
+```text
+thuisverbruik = netvermogen + zonneproductie − batterijvermogen
+```
+
+met de conventies die er al staan (§16): netvermogen positief = import, batterijvermogen
+positief = laden. Een ladende batterij is een verbruiker die geen huishoudelijke last is,
+dus hij gaat eraf; een ontladende batterij levert vermogen aan het huis en telt er via
+zijn negatieve waarde bij op.
+
+Bij de meest voorkomende installatie — P1-meter en omvormer, geen batterij — is dat
+`netvermogen + zonneproductie`, en verder niets.
+
+**De uitkomst wordt geklemd op nul.** Negatief thuisverbruik bestaat niet. Meetruis en
+twee sensoren die niet op dezelfde seconde bemonsteren kunnen kortstondig −40 W opleveren,
+en dat op het scherm zetten roept een vraag op waar geen antwoord op is. Klemmen is hier
+geen gok maar een natuurkundige ondergrens.
+
+### 36.3 Wanneer er geen getal is
+
+Dezelfde structuur als het zonneoverschot, en om dezelfde reden: **een ontbrekende term
+wordt niet als nul gelezen.**
+
+| Situatie | Uitkomst |
+|---|---|
+| Netvermogen onleesbaar | geen getal |
+| Zonnerij bestaat, waarde onleesbaar | geen getal |
+| Geen zonnerij geconfigureerd | opwek telt als 0 — de woning heeft geen panelen |
+| Batterijrij bestaat, vermogen onleesbaar | geen getal |
+| Geen batterijrij geconfigureerd | batterij telt als 0 |
+
+Het onderscheid in de tabel is dat van §35.1 regel 1: **een rij die er niet is, is een
+uitspraak van de installateur dat de woning het ding niet heeft; een rij die er wel is en
+niets levert, is een gat.** Geen panelen betekent geen opwek en dat is een feit. Panelen
+die we niet kunnen uitlezen betekent dat we het verbruik niet kennen, en dan hoort er
+niets te staan.
+
+**De onleesbare batterij krijgt hier géén getal, anders dan bij het zonneoverschot.** Dat
+is een bewuste afwijking en de reden is de foutgrootte. Bij het overschot verschuift een
+onleesbare batterij het getal en klopt het de rest van de dag gewoon; bij het thuisverbruik
+wordt het laadvermogen vólledig aan het huishouden toegeschreven — 3.500 W op het scherm
+waar het huis er 500 gebruikt. Dat is geen onzeker getal maar een verkeerd getal, en er is
+geen richting bij te geven omdat laden en ontladen tegengesteld werken.
+
+### 36.4 Een gemeten bron wint van de afleiding
+
+Is er een bruikbare `general_consumption`-bron, dan is dát het thuisverbruik. De afleiding
+vult alleen in wat niet gemeten wordt.
+
+Een meting is nauwkeuriger dan een verschil van twee andere metingen, en de installateur
+die zo'n bron heeft gekoppeld heeft daarmee gezegd dat dit de waarheid is. Het paneel
+vermeldt niet welke van de twee routes het was: voor de bewoner is het één getal, en de
+installateur ziet de bron staan bij Energiebronnen.
+
+### 36.5 Waar het op het Overzicht komt
+
+**Boven het netvermogen, als eerste regel van `Actuele situatie`.** Sven's neiging, en
+ik onderschrijf hem met een sterker argument dan volgorde van zoeken.
+
+De regels in die kaart lezen nu als een verzameling *meterstanden*. Thuisverbruik is de
+enige die de vraag "wat doet mijn huis" beantwoordt; de rest beschrijft wat er waarheen
+stroomt. Het netvermogen is bovendien een **gevolg** van verbruik minus opwek, dus het
+staat in de verkeerde volgorde: eerst het gevolg, dan pas de oorzaken.
+
+Er is een tweede argument dat losstaat van betekenis. Het netvermogen draagt een teken en
+heeft daarom een uitleg nodig ("negatief betekent teruglevering aan het net"); het
+thuisverbruik is altijd positief en heeft er geen. Het zelfsprekende getal bovenaan en het
+getal met de voetnoot eronder leest beter dan andersom.
+
+**Het tegenargument, en waarom het niet doorslaat.** Het netvermogen is een meting en het
+thuisverbruik meestal een afleiding; een afgeleid getal bovenaan kan suggereren dat het de
+primaire meting is. Maar het paneel toont het zonneoverschot al net zo goed afgeleid, en
+voor een bewoner is de afleiding hier het betekenisvollere getal. Wie de meting wil ziet
+haar er direct onder.
+
+De nieuwe volgorde van `Actuele situatie`:
+
+```text
+Thuisverbruik · Netvermogen · Zonneproductie · Zonneoverschot ·
+Percentage van maximum · Actuele energieprijs
+```
+
+**Voor de visuele ronde**, niet nu: dit is de sterkste kandidaat om van een gewone regel
+een kopgetal te worden. Dat is een vormbeslissing en hoort daar thuis.
+
+### 36.6 De zinnen, per situatie
+
+Volgens de regel uit §35.9 en CLAUDE.md: eerst opschrijven welke zin bij welke situatie
+hoort, dan pas bouwen. Elke zin staat hier als geheel; er wordt niets uit clausules
+opgebouwd.
+
+| Situatie | Wat er staat |
+|---|---|
+| Thuisverbruik bekend | het getal, zonder zin |
+| Geen netmeting | *Niet beschikbaar* (de bestaande lege status; de checklist meldt de netbron al) |
+| Zonnerij onleesbaar | *Niet beschikbaar*, plus: *Je omvormer levert op dit moment geen waarde, dus het thuisverbruik is niet te berekenen. Controleer de zonnebron bij Energiebronnen.* |
+| Batterijvermogen onleesbaar | *Niet beschikbaar*, plus de bestaande batterijzin (§16) |
+
+**De batterijzin wordt uitgebreid in plaats van verdubbeld.** Hij zegt nu dat het
+*zonneoverschot* te hoog kan zijn. Met thuisverbruik erbij raakt dezelfde blinde vlek twee
+getallen op één kaart, en twee bijna gelijke waarschuwingen naast elkaar is erger dan één
+die beide noemt. Voorstel:
+
+> *Het vermogen van je thuisbatterij kan niet uitgelezen worden. Een batterij die laadt of
+> ontlaadt verschuift wat er van het net komt, dus het thuisverbruik is niet te berekenen
+> en het zonneoverschot kan te hoog zijn. Koppel de vermogenssensor van de batterij om dit
+> op te lossen.*
+
+Dat vervangt `UNREADABLE_BATTERY_SENTENCE` op beide plekken waar hij staat (backend en
+paneel), en het is meteen een voorbeeld van wat de zinneninventaris moet opleveren:
+één plek waar zichtbaar is dat dezelfde zin twee keer bestaat.
+
+### 36.7 De nieuwe entiteit
+
+```text
+sensor.domotiapp_energy_home_consumption
+```
+
+- **Een toevoeging, geen wijziging.** De zes bestaande ID's blijven exact zoals ze zijn,
+  dus geen enkel dashboard en geen enkele statistiekreeks breekt. Dit is de veilige kant
+  van harde regel 11.
+- **Engels en vast**, via `ENTITY_OBJECT_ID_NAMES` (`"Home consumption"`), met dezelfde
+  `suggested_object_id`-override als de rest. Bewaakt in `en` én `nl`, zoals de zes
+  andere — anders heet hij bij een Nederlandse klant `sensor.domotiapp_energy_thuisverbruik`.
+- **W, `device_class: power`, `state_class: measurement`**, zodat hij in de
+  langetermijnstatistieken van Home Assistant bruikbaar is.
+- **`unknown` wanneer er geen getal is**, nooit 0. Dat is dezelfde regel als bij de score:
+  een nul zou een meting beweren.
+- De README-lijst gaat van zes naar zeven ID's.
+
+### 36.8 Wat dit niet raakt
+
+- **De datakwaliteit.** Geen nieuw checklistitem en geen andere weging: er komt geen
+  configuratie bij, alles wordt afgeleid uit bronnen die al gevraagd worden.
+- **De energiescore.** Geen nieuwe component. Thuisverbruik is een meting, geen
+  benuttingsas — er is geen antwoord op "wat kan de bewoner doen om dit te verhogen" dat
+  ook maar iets met benutting te maken heeft, en §35.5 zegt dan: niet in de score.
+- **Het zonneoverschot.** Variant 2 blijft de *gemeten* `general_consumption` gebruiken en
+  niet de afleiding. Anders zou het overschot uit zichzelf worden afgeleid: het
+  thuisverbruik komt uit het netvermogen, en het overschot ook.
+- **De adviesregels.** De coach krijgt er geen regel bij.
+
+### 36.9 Klaar wanneer
+
+- een woning met alleen een netmeter en een omvormer toont een thuisverbruik dat gelijk is
+  aan netvermogen plus zonneproductie, en het staat bovenaan `Actuele situatie`;
+- een woning met een `general_consumption`-bron toont de gemeten waarde en niet de
+  afleiding;
+- een onleesbare zonnerij of batterijrij levert geen getal en de bijbehorende zin uit
+  §36.6, terwijl een woning *zonder* die rij gewoon een getal krijgt;
+- meetruis levert nooit een negatief getal op;
+- `sensor.domotiapp_energy_home_consumption` bestaat met die exacte ID in `en` én `nl`, en
+  de zes bestaande ID's zijn ongewijzigd;
+- de datakwaliteit en de energiescore geven op elke bestaande testconfiguratie exact
+  dezelfde uitkomst als ervoor.
