@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.4.1
+
+Two removals from the Overzicht, and one defect that came to light behind the second.
+
+### Fixed
+
+- **The coach advised using a solar surplus it knew might not exist.** When a home
+  battery is configured whose power cannot be read, a charging battery consumes exactly
+  the surplus shown on screen. The advice fired anyway — "start the dishwasher now", with
+  a euro amount underneath — carrying the label "betrouwbaarheid: laag", which suppressed
+  nothing and which no resident can act on.
+
+  Surplus advice is now withheld entirely in that situation, and the panel says what is
+  wrong instead: *"Het vermogen van je thuisbatterij kan niet uitgelezen worden… Koppel de
+  vermogenssensor van de batterij om dit op te lossen."* The same sentence answers "welke
+  gegevens ontbreken nog?" in the coach.
+
+### Removed
+
+- **The confidence label, everywhere a customer could see it.** The row on the Overzicht,
+  the row in the Energiecoach, the "betrouwbaarheid gemiddeld" suffix behind each further
+  advice, the trailing sentence in the coach's answers, and the `show_confidence`
+  preference that switched them.
+
+  The three levels conflated two different things. `high` versus `medium` said which route
+  the engine took to a number that was correct either way — our business, not the
+  customer's — while reading as doubt about his own data. `low` was never a shade of
+  confidence at all but a blind spot, and it is now a sentence naming its cause and its
+  fix. The engine keeps all three levels: the advisor still caps a charger's advice at
+  medium, and the new suppression rests on them.
+
+- **The Configuratie card at the bottom of the Overzicht.** The home name and the row
+  counts restate two other tabs, are not a reading of this moment, and cost a screenful on
+  a phone. The one useful line — "er zijn nog geen energiebronnen gekoppeld" — moved up to
+  Actuele situatie, next to the empty readings it explains.
+
 ## 0.4.0
 
 The energy score measures one thing now: how much of what this home *could* use well, it

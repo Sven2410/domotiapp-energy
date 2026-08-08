@@ -34,7 +34,6 @@ from custom_components.domotiapp_energy.const import (
     VERSION,
 )
 from custom_components.domotiapp_energy.engine.providers import (
-    _CONFIDENCE_LABELS,
     _ITEM_LABELS,
 )
 from custom_components.domotiapp_energy.engine.reason_codes import REASON_CODES
@@ -212,12 +211,32 @@ def test_every_reason_code_has_a_dutch_label() -> None:
     assert set(REASON_CODES) <= _label_keys("REASON_LABELS")
 
 
-def test_every_confidence_level_has_a_dutch_label() -> None:
-    """Both the panel and the coach need a word for every level."""
-    assert set(CONFIDENCE_LEVELS) <= _label_keys("CONFIDENCE_LABELS")
-    # The coach builds its own sentences in the backend, so it carries the same
-    # table; "Betrouwbaarheid: high." is what a gap here used to produce.
-    assert set(CONFIDENCE_LEVELS) <= set(_CONFIDENCE_LABELS)
+def test_no_confidence_level_ever_reaches_the_customer() -> None:
+    """The levels stay in the engine and get no Dutch word anywhere (0.4.1).
+
+    Inverted from the test that used to demand a label for every level. The
+    engine still ranks its own certainty and the advisor still caps on it, but
+    "betrouwbaarheid: gemiddeld" beside a perfectly correct reading told a
+    customer his data was second-rate on an axis he cannot act on. The one
+    level that carried information became a sentence naming its cause; see
+    `UNREADABLE_BATTERY_SENTENCE`.
+
+    A translation table is how it would come back, so this guards the tables
+    rather than the screens: no label table on either side may key on a level.
+    """
+    for table in ("REASON_LABELS", "CHECKLIST_LABELS", "MEASUREMENT_LABELS"):
+        assert not set(CONFIDENCE_LEVELS) & _label_keys(table)
+
+    panel_source = (
+        Path(__file__).parent.parent
+        / "custom_components"
+        / DOMAIN
+        / FRONTEND_DIR_NAME
+        / "core"
+        / "labels.js"
+    ).read_text(encoding="utf-8")
+    assert "CONFIDENCE_LABELS" not in panel_source
+    assert "confidenceLabel" not in panel_source
 
 
 def test_every_checklist_item_has_a_dutch_label() -> None:

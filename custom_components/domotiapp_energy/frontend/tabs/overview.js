@@ -29,7 +29,6 @@ import {
   setVisible,
   statRow,
 } from '../core/dom.js';
-import { confidenceLabel } from '../core/labels.js';
 
 const EMPTY_NOT_CONFIGURED = 'Nog niet ingesteld';
 const EMPTY_NOT_AVAILABLE = 'Niet beschikbaar';
@@ -145,22 +144,27 @@ export const overviewTab = {
       empty: EMPTY_NOT_AVAILABLE,
     });
     const peakNotice = notice('mdi:flash-alert-outline');
+    // The one thing the old confidence label was about, next to the figure it
+    // qualifies rather than as a grade on it.
+    const surplusNotice = notice('mdi:battery-alert-variant-outline');
+    // Kept from the removed Configuratie card: an installation with nothing
+    // linked has to say what to do, and this is where the empty readings are.
+    const setupNotice = notice('mdi:information-outline');
     powerCard.body.append(
       gridPowerRow.element,
       solarPowerRow.element,
       surplusRow.element,
       loadRow.element,
       priceRow.element,
+      surplusNotice.element,
       peakNotice.element,
+      setupNotice.element,
     );
 
     // --- Advice -------------------------------------------------------------
     const adviceCard = card('Advies');
     const adviceTitle = el('p', { class: 'advice-title' });
     const adviceMessage = el('p', { class: 'advice-message' });
-    const adviceConfidence = statRow('Betrouwbaarheid', {
-      empty: EMPTY_NOT_AVAILABLE,
-    });
     const warningsTitle = el('h3', {
       class: 'subheading',
       text: 'Waarschuwingen',
@@ -172,31 +176,15 @@ export const overviewTab = {
     adviceCard.body.append(
       adviceTitle,
       adviceMessage,
-      adviceConfidence.element,
       warningsTitle,
       warningsHost,
       noWarnings.element,
     );
 
-    // --- Configuration ------------------------------------------------------
-    const configCard = card('Configuratie');
-    const homeNameRow = statRow('Woning', { empty: EMPTY_NOT_CONFIGURED });
-    const sourceCountRow = statRow('Energiebronnen', { empty: '0' });
-    const deviceCountRow = statRow('Apparaten', { empty: '0' });
-    const setupNotice = notice('mdi:information-outline');
-    configCard.body.append(
-      homeNameRow.element,
-      sourceCountRow.element,
-      deviceCountRow.element,
-      setupNotice.element,
-    );
-
-    element.append(
-      scoreCard.element,
-      powerCard.element,
-      adviceCard.element,
-      configCard.element,
-    );
+    // The "Configuratie" card was removed in 0.4.1. It restated the home name
+    // and counted the rows two tabs away, which is not a reading of this
+    // moment and cost a screenful on a phone.
+    element.append(scoreCard.element, powerCard.element, adviceCard.element);
 
     /** Keyed by advice id, so warnings are added and removed, never rebuilt. */
     const warningBlocks = new Map();
@@ -281,10 +269,6 @@ export const overviewTab = {
       );
 
       const sources = config?.sources ?? [];
-      const devices = config?.devices ?? [];
-      sourceCountRow.set(String(sources.length));
-      deviceCountRow.set(String(devices.length));
-      homeNameRow.set(config?.home?.home_name || null);
 
       // An installation with nothing linked yet has to say what to do, not
       // show a column of empty rows (SPEC.md §8).
@@ -341,17 +325,26 @@ export const overviewTab = {
             : null,
       });
       solarPowerRow.set(formatNumber(metrics.solar_power_w));
-      // "Betrouwbaarheid: high" is what this used to read: the level travels as
-      // an English identifier and was printed as it arrived (core/labels.js).
-      const surplusConfidence = confidenceLabel(metrics.solar_surplus_confidence);
-      surplusRow.set(formatNumber(metrics.solar_surplus_w), {
-        hint:
-          metrics.solar_surplus_w && surplusConfidence
-            ? `Betrouwbaarheid: ${surplusConfidence}`
-            : null,
-      });
+      // No confidence label here any more. It read "Betrouwbaarheid: gemiddeld"
+      // beside a number that was perfectly correct — the level said which route
+      // the engine took, not how good the figure was, and a customer cannot act
+      // on either. The one level that did carry information is the notice below.
+      surplusRow.set(formatNumber(metrics.solar_surplus_w));
       loadRow.set(formatNumber(metrics.grid_load_percent, { decimals: 1 }));
       updatePrice(config, metrics);
+
+      // Cause and fix, not a grade. The same sentence is in
+      // `engine/providers.py` (UNREADABLE_BATTERY_SENTENCE) for the coach's
+      // answer to "welke gegevens ontbreken nog?"; the two must stay in step.
+      surplusNotice.set(
+        metrics.solar_surplus_may_be_overstated
+          ? 'Het vermogen van je thuisbatterij kan niet uitgelezen worden. Een ' +
+              'batterij die laadt verbruikt precies het overschot dat hier ' +
+              'staat, dus dat getal kan te hoog zijn. Koppel de ' +
+              'vermogenssensor van de batterij om dit op te lossen.'
+          : '',
+        { tone: 'warning' },
+      );
 
       // Text plus icon, never colour alone (SPEC.md §23).
       peakNotice.set(
@@ -367,7 +360,6 @@ export const overviewTab = {
       adviceMessage.textContent =
         primary?.message ||
         'Zodra er een energiebron gekoppeld is, verschijnt hier het hoofdadvies.';
-      adviceConfidence.set(confidenceLabel(primary?.confidence));
 
       updateWarnings(live.advice || []);
     }

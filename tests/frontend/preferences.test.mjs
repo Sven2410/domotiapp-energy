@@ -81,7 +81,6 @@ describe('the Voorkeuren tab', () => {
       'prefer_solar',
       'quiet_hours_end',
       'quiet_hours_start',
-      'show_confidence',
       'show_estimated_savings',
       'show_technical_explanation',
     ]);

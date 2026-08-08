@@ -109,11 +109,8 @@ const DISPLAY_SCHEMA = [
     label: 'Geschatte besparing tonen',
     selector: { boolean: {} },
   },
-  {
-    name: 'show_confidence',
-    label: 'Betrouwbaarheid tonen',
-    selector: { boolean: {} },
-  },
+  // "Betrouwbaarheid tonen" was removed in 0.4.1 together with the label it
+  // switched: a setting for something nobody should have been reading.
 ];
 
 /** Every field this tab owns, so anything else is left alone. */
