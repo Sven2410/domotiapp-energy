@@ -19,6 +19,7 @@ from custom_components.domotiapp_energy.const import (
     COMPLETENESS_ITEM_PRICE,
     COMPLETENESS_ITEM_SOLAR,
     COMPLETENESS_ITEM_TIME_WINDOWS,
+    COMPLETENESS_UNCONDITIONAL_ITEMS,
     COMPONENT_MAX,
     CONFIDENCE_HIGH,
     CONFIDENCE_LOW,
@@ -35,10 +36,13 @@ from custom_components.domotiapp_energy.const import (
     PRICE_BASIS_MARKET,
     SCORE_COMPONENT_PRICE,
     SCORE_COMPONENT_SOLAR,
+    SCORE_UNAVAILABLE_CHEAP_PRICE,
     SCORE_UNAVAILABLE_INCOMPLETE_SETUP,
+    SCORE_UNAVAILABLE_NO_SUN_CHEAP_PRICE,
+    SCORE_UNAVAILABLE_NO_SUN_FIXED_TARIFF,
     SCORE_UNAVAILABLE_NO_VARIABLE_SIGNAL,
     SCORE_UNAVAILABLE_NOTHING_MOVABLE,
-    SCORE_UNAVAILABLE_NOTHING_RIGHT_NOW,
+    SCORE_UNAVAILABLE_PRICE_THRESHOLDS_MISSING,
     SOURCE_TYPE_CURRENT_PRICE,
     SOURCE_TYPE_FEED_IN_PRICE,
     SOURCE_TYPE_GENERAL_CONSUMPTION,
@@ -1586,7 +1590,8 @@ async def test_a_cheap_hour_is_not_scored_on_price(hass: HomeAssistant) -> None:
 
     assert SCORE_COMPONENT_PRICE not in metrics.score_components
     assert metrics.energy_score is None
-    assert metrics.score_unavailable_reason == SCORE_UNAVAILABLE_NOTHING_RIGHT_NOW
+    # No panels on this home, so the sentence is about the price alone.
+    assert metrics.score_unavailable_reason == SCORE_UNAVAILABLE_CHEAP_PRICE
 
 
 async def test_the_price_component_measures_what_is_drawn_while_expensive(
@@ -1766,6 +1771,167 @@ async def test_a_missing_time_window_does_not_block_the_solar_axis(
 
     assert metrics.score_components[SCORE_COMPONENT_SOLAR] == 75.0
     assert COMPLETENESS_ITEM_TIME_WINDOWS in metrics.data_quality.missing_items
+
+
+# --- Which sentence the tile gets, per situation ----------------------------
+#
+# **Rows are situations, not codes.** Every earlier test here picked a code and
+# then went looking for a configuration that produced it, which proves a branch
+# renders and says nothing about whether it is the right branch. That is how
+# 0.4.1 shipped a tile telling a customer at nine in the evening that his
+# panels were producing: the one test for `nothing_movable` set the production
+# to 2000 W, and so did the browser check, so both layers agreed on the same
+# blind spot (Sven, production, 2026-08-08).
+#
+# Read each row as the question a reader would ask: given this home, at this
+# moment, which sentence belongs on the tile?
+
+
+def _situation(
+    hass: HomeAssistant,
+    *,
+    panels: bool,
+    producing: bool,
+    dynamic: bool,
+    movable: bool,
+    thresholds: bool = True,
+) -> StoredConfiguration:
+    """Build a home the gate lets through, varying only what the table varies.
+
+    The grid meter and a price answer are always present because without them
+    the gate shuts and every row would come back `incomplete_setup` — which is
+    a real case, tested separately, and would hide every other row here.
+    """
+    hass.states.async_set("sensor.grid", "500")
+    hass.states.async_set("sensor.pv", "2000" if producing else "0")
+    hass.states.async_set("sensor.price", "0.10")
+
+    overrides: dict[str, Any] = {"fixed_import_price_eur_kwh": 0.30}
+    if dynamic:
+        overrides["contract_type"] = CONTRACT_TYPE_DYNAMIC
+        if thresholds:
+            overrides["low_price_threshold_eur_kwh"] = 0.15
+            overrides["high_price_threshold_eur_kwh"] = 0.35
+
+    config = _config(**overrides)
+    config.sources.append(_grid_meter())
+    if dynamic:
+        config.sources.append(_price_source())
+    if panels:
+        config.sources.append(_source(SOURCE_TYPE_SOLAR, "sensor.pv"))
+    if movable:
+        config.devices.append(_movable_device())
+    return config
+
+
+@pytest.mark.parametrize(
+    ("home", "expected"),
+    [
+        # No panels and a fixed tariff: nothing will ever vary. Permanent.
+        (
+            {"panels": False, "producing": False, "dynamic": False, "movable": False},
+            SCORE_UNAVAILABLE_NO_VARIABLE_SIGNAL,
+        ),
+        # The sun is out and there is nothing to shift it to. The tariff does
+        # not matter: this used to be reachable only on a fixed tariff, so a
+        # dynamic home in the sun fell through to "je panelen leveren niets".
+        (
+            {"panels": True, "producing": True, "dynamic": False, "movable": False},
+            SCORE_UNAVAILABLE_NOTHING_MOVABLE,
+        ),
+        (
+            {"panels": True, "producing": True, "dynamic": True, "movable": False},
+            SCORE_UNAVAILABLE_NOTHING_MOVABLE,
+        ),
+        # **The production bug.** Evening, panels idle, nothing movable. The
+        # old condition read the solar *row* and claimed there was production.
+        (
+            {"panels": True, "producing": False, "dynamic": True, "movable": False},
+            SCORE_UNAVAILABLE_NO_SUN_CHEAP_PRICE,
+        ),
+        (
+            {"panels": True, "producing": False, "dynamic": False, "movable": False},
+            SCORE_UNAVAILABLE_NO_SUN_FIXED_TARIFF,
+        ),
+        # Same evening, but this home can shift something. Same sentence: what
+        # it lacks is sun, not an appliance.
+        (
+            {"panels": True, "producing": False, "dynamic": True, "movable": True},
+            SCORE_UNAVAILABLE_NO_SUN_CHEAP_PRICE,
+        ),
+        (
+            {"panels": True, "producing": False, "dynamic": False, "movable": True},
+            SCORE_UNAVAILABLE_NO_SUN_FIXED_TARIFF,
+        ),
+        # No panels at all, so the sentence may not mention them.
+        (
+            {"panels": False, "producing": False, "dynamic": True, "movable": False},
+            SCORE_UNAVAILABLE_CHEAP_PRICE,
+        ),
+        (
+            {"panels": False, "producing": False, "dynamic": True, "movable": True},
+            SCORE_UNAVAILABLE_CHEAP_PRICE,
+        ),
+        # Thresholds unset: we cannot claim the hour is cheap, and this one is
+        # a shortcoming somebody can close.
+        (
+            {
+                "panels": False,
+                "producing": False,
+                "dynamic": True,
+                "movable": False,
+                "thresholds": False,
+            },
+            SCORE_UNAVAILABLE_PRICE_THRESHOLDS_MISSING,
+        ),
+        (
+            {
+                "panels": True,
+                "producing": False,
+                "dynamic": True,
+                "movable": False,
+                "thresholds": False,
+            },
+            SCORE_UNAVAILABLE_PRICE_THRESHOLDS_MISSING,
+        ),
+    ],
+)
+async def test_which_sentence_the_tile_gets(
+    hass: HomeAssistant, home: dict[str, bool], expected: str
+) -> None:
+    """One row per situation, asserting the choice rather than the rendering."""
+    config = _situation(hass, **home)
+
+    metrics = Calculator(hass).calculate(config)
+
+    # The gate has to be open, or every row would answer `incomplete_setup`.
+    # Only the unconditional items matter here; a movable appliance without a
+    # ready window costs a checklist point and changes nothing about the tile.
+    assert not [
+        item
+        for item in metrics.data_quality.missing_items
+        if item in COMPLETENESS_UNCONDITIONAL_ITEMS
+    ]
+    assert metrics.energy_score is None
+    assert metrics.score_unavailable_reason == expected
+
+
+async def test_sun_plus_something_movable_is_a_score_and_not_a_sentence(
+    hass: HomeAssistant,
+) -> None:
+    """The row the table above cannot contain, and the reason it cannot.
+
+    Production with something to shift makes the solar component apply, so
+    there is a number and no sentence at all. Asserting it here keeps the
+    table's own claim honest — that every row it lists really is a case with
+    no score.
+    """
+    config = _situation(hass, panels=True, producing=True, dynamic=False, movable=True)
+
+    metrics = Calculator(hass).calculate(config)
+
+    assert metrics.energy_score is not None
+    assert metrics.score_unavailable_reason is None
 
 
 async def test_a_home_without_a_variable_signal_never_gets_a_number(

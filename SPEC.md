@@ -2956,16 +2956,33 @@ zonder getal ernaast. De score is een extra, geen voorwaarde.
 **De paneeltekst zegt waaróm, niet alleen dát.** Een tegel met een streepje leest als een
 storing; een tegel met een reden leest als een antwoord. Per geval, in het paneel:
 
-| Situatie | Wat de tegel zegt |
-|---|---|
-| Vast contract, geen panelen | *Het tarief is altijd gelijk en er is geen eigen opwek, dus er is geen moment dat beter is dan een ander. Er valt op dit moment niets te optimaliseren.* |
-| Panelen, niets verplaatsbaars | *Er is nu opwek, maar geen apparaat of batterij die verbruik kan verplaatsen. Er valt daarom niets te benutten dat nu niet al gebeurt.* |
-| Nacht, dynamisch met panelen | *Er is nu geen opwek en de stroomprijs is laag. Er is op dit moment niets te verbeteren.* |
-| Poort dicht (§35.7) | *De installatie is nog niet compleet: \<het ontbrekende item\>. Zodra dat is ingevuld verschijnt hier een cijfer.* |
+| Situatie | Code | Wat de tegel zegt |
+|---|---|---|
+| Poort dicht (§35.7) | `incomplete_setup` | *Er is nog geen cijfer, omdat de installatie nog niet compleet is. Het tabblad Energiecoach laat zien wat er ontbreekt.* |
+| Dynamisch, drempels niet ingevuld | `price_thresholds_missing` | *Zolang de lage en de hoge prijsdrempel niet zijn ingevuld, is niet te bepalen of dit een duur moment is. Vul ze in bij Installatie.* |
+| Vast tarief, geen panelen | `no_variable_signal` | *Het tarief is altijd gelijk en er zijn geen zonnepanelen, dus er is geen moment dat beter is dan een ander. Er valt daarom niets te optimaliseren. Het advies blijft gewoon werken.* |
+| Er ís opwek, niets verplaatsbaars | `nothing_movable` | *Er is nu opwek, maar geen apparaat of batterij die verbruik kan verplaatsen. Er valt daarom niets te benutten dat nu niet al gebeurt.* |
+| Panelen stil, dynamisch, prijs laag | `no_sun_cheap_price` | *Je panelen leveren op dit moment niets en de stroomprijs is laag. Er is nu dus geen overschot om te benutten en geen duur verbruik om te vermijden.* |
+| Panelen stil, vast tarief | `no_sun_fixed_tariff` | *Je panelen leveren op dit moment niets, en bij een vast tarief is het ene moment niet beter dan het andere. Er is nu dus niets te verbeteren.* |
+| Geen panelen, dynamisch, prijs laag | `cheap_price` | *De stroomprijs is op dit moment laag, dus er is geen duur verbruik om te vermijden.* |
 
-Alleen het laatste geval is een tekortkoming. De eerste drie zijn beschrijvingen van een
-woning die niets fout doet, en de toon hoort dat te weerspiegelen — geen waarschuwingskleur,
-geen uitroepteken. Deze teksten staan in de frontendbestanden, niet in `translations/` (§26).
+**Twee van de zeven zijn een tekortkoming** — de gesloten poort en de ontbrekende
+drempels — en die twee dragen een waarschuwingstoon. De andere vijf beschrijven een
+woning die niets fout doet: geen waarschuwingskleur, geen uitroepteken. Deze teksten staan
+in de frontendbestanden, niet in `translations/` (§26).
+
+**Elke variant is als geheel geschreven en wordt door een situatie gekozen** (besluit
+0.4.2). De verleiding is om er één zin van te maken die zijn helften aan- en uitzet, maar
+dan bestaat de zin die de klant leest nergens in de broncode en kan niemand hem nalezen.
+Zeven hele zinnen zijn te lezen, te herschrijven en op te nemen in de zinneninventaris;
+een sjabloon met gaten is dat niet.
+
+**De voorwaarde moet toetsen wat de zin beweert.** Dat ging mis in 0.4.1: `nothing_movable`
+werd gekozen op het bestáán van een zonnerij terwijl zijn zin "er is nu opwek" zegt, dus
+een woning kreeg 's avonds te horen dat haar panelen leverden. De selector krijgt daarom de
+snapshot en gebruikt dezelfde `_production_now` als `solar_component`. Configuratie
+beantwoordt "wat heeft deze woning", alleen een meting beantwoordt "wat doet zij nu" — regel
+1 van §35.1, toegepast op de teksten in plaats van op de componenten.
 
 ### 35.10 Bekende beperking: de zaagtand
 

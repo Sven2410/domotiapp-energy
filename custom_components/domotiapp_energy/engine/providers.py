@@ -37,10 +37,13 @@ from custom_components.domotiapp_energy.const import (
     MEASUREMENT_SOLAR_SURPLUS_W,
     SCORE_COMPONENT_PRICE,
     SCORE_COMPONENT_SOLAR,
+    SCORE_UNAVAILABLE_CHEAP_PRICE,
     SCORE_UNAVAILABLE_INCOMPLETE_SETUP,
+    SCORE_UNAVAILABLE_NO_SUN_CHEAP_PRICE,
+    SCORE_UNAVAILABLE_NO_SUN_FIXED_TARIFF,
     SCORE_UNAVAILABLE_NO_VARIABLE_SIGNAL,
     SCORE_UNAVAILABLE_NOTHING_MOVABLE,
-    SCORE_UNAVAILABLE_NOTHING_RIGHT_NOW,
+    SCORE_UNAVAILABLE_PRICE_THRESHOLDS_MISSING,
 )
 from custom_components.domotiapp_energy.models import CoachResult, EnergyMetrics
 
@@ -95,32 +98,48 @@ _COMPONENT_LABELS: dict[str, str] = {
     SCORE_COMPONENT_PRICE: "prijs",
 }
 
-# Why there is no score. The panel shows the same four sentences on the tile
+# Why there is no score. The panel shows the same seven sentences on the tile
 # (frontend/tabs/overview.js); the coach says them in answer to "Hoe is mijn
 # energiescore berekend?", where the reader has explicitly asked.
 #
-# Only the first is a shortcoming. The rest describe a home with nothing to
-# optimise at this moment, so they carry no warning tone and no apology — and
-# they say *why*, because a sentence that only reports the absence reads as a
-# fault (SPEC.md §35.9).
+# Two are shortcomings — an incomplete installation and missing price
+# thresholds — and carry a warning tone. The rest describe a home with nothing
+# to optimise at this moment, so they get no warning and no apology, and they
+# say *why*: a sentence that only reports the absence reads as a fault.
+#
+# **Each is written as a whole and selected by a situation**, rather than
+# assembled from clauses. That is what keeps every variant readable and
+# reviewable as the sentence a customer sees (SPEC.md §35.9).
 _SCORE_UNAVAILABLE_SENTENCES: dict[str, str] = {
     SCORE_UNAVAILABLE_INCOMPLETE_SETUP: (
         "Er is nog geen energiescore, omdat de installatie nog niet compleet is. "
         "De checklist hieronder laat zien wat er ontbreekt."
     ),
     SCORE_UNAVAILABLE_NO_VARIABLE_SIGNAL: (
-        "Deze woning heeft geen wisselend signaal om verbruik naar toe te "
-        "verplaatsen: het tarief is altijd gelijk en er is geen eigen opwek. Er "
-        "valt daarom niets te optimaliseren en staat er geen cijfer. Het advies "
-        "blijft gewoon werken."
+        "Het tarief is altijd gelijk en er zijn geen zonnepanelen, dus er is geen "
+        "moment dat beter is dan een ander. Er valt daarom niets te optimaliseren. "
+        "Het advies blijft gewoon werken."
     ),
     SCORE_UNAVAILABLE_NOTHING_MOVABLE: (
-        "Er is wel opwek, maar geen apparaat of batterij die verbruik kan "
+        "Er is nu opwek, maar geen apparaat of batterij die verbruik kan "
         "verplaatsen. Er valt daarom niets te benutten dat nu niet al gebeurt."
     ),
-    SCORE_UNAVAILABLE_NOTHING_RIGHT_NOW: (
-        "Er is op dit moment niets te verbeteren: er is nu geen opwek om zelf te "
-        "gebruiken en geen duur moment om te vermijden."
+    SCORE_UNAVAILABLE_PRICE_THRESHOLDS_MISSING: (
+        "Zolang de lage en de hoge prijsdrempel niet zijn ingevuld, is niet te "
+        "bepalen of dit een duur moment is. Vul ze in bij Installatie."
+    ),
+    SCORE_UNAVAILABLE_NO_SUN_CHEAP_PRICE: (
+        "Je panelen leveren op dit moment niets en de stroomprijs is laag. Er is "
+        "nu dus geen overschot om te benutten en geen duur verbruik om te "
+        "vermijden."
+    ),
+    SCORE_UNAVAILABLE_NO_SUN_FIXED_TARIFF: (
+        "Je panelen leveren op dit moment niets, en bij een vast tarief is het "
+        "ene moment niet beter dan het andere. Er is nu dus niets te verbeteren."
+    ),
+    SCORE_UNAVAILABLE_CHEAP_PRICE: (
+        "De stroomprijs is op dit moment laag, dus er is geen duur verbruik om "
+        "te vermijden."
     ),
 }
 

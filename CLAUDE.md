@@ -335,6 +335,52 @@ nu twee vragen bedient — in dit geval betekende `has_time_window` zowel "is er
 ingevuld" (checklist) als "is er een venster om tegen te toetsen" (advisor), en die twee
 liepen uiteen zodra een halve grens geldig werd.
 
+#### Vijfde variant: de default die niets las, tot er gedrag aan hing
+
+`_metrics()` in `tests/test_advisor.py` zette `solar_surplus_confidence` niet, dus stond
+hij op de modeldefault `low`. Onzichtbaar zolang dat niveau alleen een etiket voedde. Toen
+0.4.1 er gedrag aan hing — geen overschot-advies bij een onbetrouwbare meting — vielen
+**38 tests tegelijk om**, allemaal omdat ze een woning met een onleesbare batterij
+beschreven terwijl ze adviesinhoud dachten te toetsen.
+
+**Een fixturewaarde die niets leest, is niet ongevaarlijk maar onzichtbaar.** Hij hoeft
+alleen te kloppen tegen de code die hem gebruikt, dus zonder gebruiker neemt hij stil aan
+wat de dataclass hem geeft. Vraag bij een default waarop een fixture leunt: *wat zou dit
+beschrijven als het ineens ging meetellen?*
+
+#### Zesde variant: de verificatie die haar invoer uit de verwachte uitkomst afleidt
+
+**De belangrijkste van de zes**, want hij verklaart waarom de browserafspraak hier niet
+hielp (Sven, productie, 2026-08-08).
+
+De tegel koos `nothing_movable` op het bestáán van een zonnerij, terwijl de bijbehorende
+zin "er is nu opwek" zegt. 's Avonds bij 0 W kreeg de klant dus te horen dat zijn panelen
+leverden. Beide lagen misten het:
+
+- de enige test voor dat geval zette `sensor.pv` op 2000 — mét opwek;
+- de browsercontrole koppelde de zonnebron aan een helper die 2875 W stond — mét opwek.
+
+In beide gevallen was de zin toevallig waar, dus er viel niets op. **Ik had per code een
+toestand gezocht die hem opleverde en toen gecontroleerd of de zin erbij paste.** Dat
+toetst of een tak rendert, niet of het de juiste tak is.
+
+**De omkering, en zij geldt breder dan tests.** Bij een selector — of wat dan ook dat één
+uitkomst kiest uit meerdere — is de vraag niet *"welke toestand levert deze uitkomst op"*
+maar **"gegeven deze situatie, welke uitkomst hoort erbij"**. In de testlaag is dat een
+tabel van situaties met de verwachte uitkomst ernaast, één rij per situatie; zie
+`test_which_sentence_the_tile_gets`. Zo'n rij is een oordeel over de keuze in plaats van
+een bevestiging van een tak, en hij dwingt de randgevallen af die je anders niet bedenkt.
+
+**Bij browserverificatie geldt hetzelfde, en daar is het makkelijker te vergeten.** Stuur
+de browser aan vanuit de situatie ("het is avond en de panelen staan stil — wat hoort hier
+te staan?"), niet vanuit de code ("hoe krijg ik deze tak op het scherm?"). Doe je het
+tweede, dan bouw je twee lagen die elkaar bevestigen in plaats van corrigeren, en is de
+browsercontrole geen tweede mening maar dezelfde mening in een ander venster.
+
+Praktisch gevolg voor elke zin die door een voorwaarde gekozen wordt: **de voorwaarde moet
+toetsen wat de zin beweert.** Zegt de zin "nu", dan mag de voorwaarde niet uit de
+configuratie komen.
+
 ### Versieverschil tussen tests en de draaiende HA (bewuste keuze, niet oplossen)
 
 | | Python | Home Assistant |

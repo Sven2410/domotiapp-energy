@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.4.2
+
+### Fixed
+
+- **The tile claimed the sun was shining at nine in the evening.** With the panels at
+  0 W it said *"Er is nu opwek, maar geen apparaat of batterij die verbruik kan
+  verplaatsen"*. The condition behind that sentence asked whether a solar **row** was
+  configured, not whether it was producing anything — the difference between "not
+  applicable" and "happens to be zero" that SPEC.md §35.1 draws everywhere else.
+
+  The selector now receives the snapshot and shares `_production_now` with the solar
+  component, so the sentence and the measurement cannot mean different things.
+
+- **The mirror of the same fault.** A dynamic-tariff home in the sun with nothing movable
+  fell through to a sentence saying its panels were producing nothing — and lost the one
+  useful thing it could have been told.
+
+### Changed
+
+- **One catch-all sentence became four.** *"Er is nu geen opwek om zelf te gebruiken en
+  geen duur moment om te vermijden"* asserted two measurements it could not both
+  guarantee: it offered expensive hours to a home on a fixed tariff, and mentioned panels
+  to a home that has none. There are now separate sentences for panels idle on a dynamic
+  tariff, panels idle on a fixed tariff, a cheap hour without panels, and price thresholds
+  that were never filled in.
+
+  Each is written out in full and selected by a situation. Composing one sentence from
+  interchangeable clauses would mean the sentence a customer reads exists nowhere in the
+  source, and nobody could review it.
+
+- **"Er is geen eigen opwek" is now "er zijn geen zonnepanelen"** in the fixed-tariff
+  sentence. The same ambiguity between a configuration and a measurement, in the wording
+  this time.
+
+- **Unset price thresholds get their own sentence and a warning tone.** A dynamic home
+  whose thresholds are empty cannot be told the hour is cheap, because nothing knows that.
+  It is a shortcoming somebody can close, and it now says so.
+
 ## 0.4.1
 
 Two removals from the Overzicht, and one defect that came to light behind the second.

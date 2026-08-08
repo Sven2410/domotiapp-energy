@@ -36,10 +36,16 @@ const EMPTY_NOT_AVAILABLE = 'Niet beschikbaar';
 /**
  * Why there is no energy score, in a sentence (SPEC.md §35.9).
  *
- * A tile with a dash reads as a fault. Only `incomplete_setup` is one; the
- * other three describe a home that is doing nothing wrong and has nothing to
- * optimise at this moment, so they say *why* there is nothing to measure and
- * carry no warning tone.
+ * A tile with a dash reads as a fault. Two of these are faults — an incomplete
+ * installation and unset price thresholds — and only those carry a warning
+ * tone. The rest describe a home doing nothing wrong with nothing to optimise
+ * at this moment, and they say *why*.
+ *
+ * **Every variant is written out in full rather than assembled from clauses.**
+ * `nothing_right_now` used to be one catch-all sentence claiming both "geen
+ * opwek" and "geen duur moment", which told a fixed-tariff home about
+ * expensive hours it never has. Splitting it means each sentence can be read
+ * and rewritten as the thing a customer actually sees.
  *
  * Keyed by the backend's reason code, which travels in English like every other
  * identifier in this project. The sentences live here rather than in
@@ -53,10 +59,17 @@ const SCORE_UNAVAILABLE_TEXT = {
     tone: 'warning',
     icon: 'mdi:clipboard-alert-outline',
   },
+  price_thresholds_missing: {
+    text:
+      'Zolang de lage en de hoge prijsdrempel niet zijn ingevuld, is niet te ' +
+      'bepalen of dit een duur moment is. Vul ze in bij Installatie.',
+    tone: 'warning',
+    icon: 'mdi:clipboard-alert-outline',
+  },
   no_variable_signal: {
     text:
-      'Het tarief is altijd gelijk en er is geen eigen opwek, dus er is geen ' +
-      'moment dat beter is dan een ander. Er valt op dit moment niets te ' +
+      'Het tarief is altijd gelijk en er zijn geen zonnepanelen, dus er is ' +
+      'geen moment dat beter is dan een ander. Er valt daarom niets te ' +
       'optimaliseren. Het advies blijft gewoon werken.',
     tone: 'info',
     icon: 'mdi:information-outline',
@@ -68,10 +81,25 @@ const SCORE_UNAVAILABLE_TEXT = {
     tone: 'info',
     icon: 'mdi:information-outline',
   },
-  nothing_right_now: {
+  no_sun_cheap_price: {
     text:
-      'Er is nu geen opwek om zelf te gebruiken en geen duur moment om te ' +
-      'vermijden. Er is op dit moment niets te verbeteren.',
+      'Je panelen leveren op dit moment niets en de stroomprijs is laag. Er ' +
+      'is nu dus geen overschot om te benutten en geen duur verbruik om te ' +
+      'vermijden.',
+    tone: 'info',
+    icon: 'mdi:information-outline',
+  },
+  no_sun_fixed_tariff: {
+    text:
+      'Je panelen leveren op dit moment niets, en bij een vast tarief is het ' +
+      'ene moment niet beter dan het andere. Er is nu dus niets te verbeteren.',
+    tone: 'info',
+    icon: 'mdi:information-outline',
+  },
+  cheap_price: {
+    text:
+      'De stroomprijs is op dit moment laag, dus er is geen duur verbruik om ' +
+      'te vermijden.',
     tone: 'info',
     icon: 'mdi:information-outline',
   },
