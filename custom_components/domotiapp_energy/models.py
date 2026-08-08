@@ -1041,7 +1041,12 @@ class UserPreferences:
     max_advice_count: int = DEFAULT_MAX_ADVICE_COUNT
     show_technical_explanation: bool = True
     show_estimated_savings: bool = True
-    show_confidence: bool = True
+    # `show_confidence` was removed in 0.4.1. It switched a label that told a
+    # customer his own data was "laag betrouwbaar", which is not something he
+    # can act on, and which for the two upper levels was an implementation
+    # detail — which route the engine took to reach a number that was correct
+    # either way. The one case that did carry information became a sentence
+    # naming its cause; see `EnergyMetrics.solar_surplus_may_be_overstated`.
 
     def to_dict(self) -> dict[str, Any]:
         """Return the preferences as a JSON-serialisable mapping."""
@@ -1055,7 +1060,6 @@ class UserPreferences:
             "max_advice_count": self.max_advice_count,
             "show_technical_explanation": self.show_technical_explanation,
             "show_estimated_savings": self.show_estimated_savings,
-            "show_confidence": self.show_confidence,
         }
 
     @classmethod
@@ -1089,7 +1093,6 @@ class UserPreferences:
                 data.get("show_technical_explanation"), True
             ),
             show_estimated_savings=_as_bool(data.get("show_estimated_savings"), True),
-            show_confidence=_as_bool(data.get("show_confidence"), True),
         )
 
 
@@ -1440,6 +1443,28 @@ class EnergyMetrics:
     score_unavailable_reason: str | None = None
     reason_codes: list[str] = field(default_factory=list)
 
+    @property
+    def solar_surplus_may_be_overstated(self) -> bool:
+        """Return whether a battery we cannot read could be eating the surplus.
+
+        **This is a blind spot, not a shade of confidence**, and the difference
+        is why the three-level label was dropped from the panel in 0.4.1.
+        `high` versus `medium` said which route the engine took to a number that
+        was right either way — an implementation detail dressed up as doubt.
+        This case is the opposite: the number can be wrong by kilowatts, because
+        a home battery is configured whose power cannot be read, and a charging
+        battery consumes exactly the surplus shown here.
+
+        It is a derived property rather than a stored field so the calculator,
+        the advisor, the coach and the panel cannot disagree about it. The
+        surplus has to exist: without a number there is nothing to overstate,
+        and the missing data is already reported on its own.
+        """
+        return (
+            self.solar_surplus_w is not None
+            and self.solar_surplus_confidence == CONFIDENCE_LOW
+        )
+
     def to_dict(self) -> dict[str, Any]:
         """Return the metrics as a JSON-serialisable mapping."""
         return {
@@ -1448,6 +1473,9 @@ class EnergyMetrics:
             "solar_power_w": self.solar_power_w,
             "solar_surplus_w": self.solar_surplus_w,
             "solar_surplus_confidence": self.solar_surplus_confidence,
+            # Derived, not stored: the panel gets the conclusion rather than
+            # recomputing the rule. `from_dict` ignores it for that reason.
+            "solar_surplus_may_be_overstated": self.solar_surplus_may_be_overstated,
             "grid_load_percent": self.grid_load_percent,
             "peak_risk": self.peak_risk,
             "solar_surplus_sufficient": self.solar_surplus_sufficient,

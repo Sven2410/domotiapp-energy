@@ -294,8 +294,14 @@ wélke velden er zijn; de eigenaarschapskaart beschrijft van wie ze zijn.
 ### Overzicht
 Status integratie · datakwaliteit (%) · energiescore (0–100) · actueel netvermogen ·
 zonneproductie · zonneoverschot · percentage van max. netvermogen · **actuele
-energieprijs** · hoofdadvies · waarschuwingen · aantal geconfigureerde apparaten ·
-tijdstip laatste berekening. Duidelijke lege statussen wanneer nog niets is ingesteld.
+energieprijs** · hoofdadvies · waarschuwingen · tijdstip laatste berekening.
+Duidelijke lege statussen wanneer nog niets is ingesteld.
+
+**Vervallen in 0.4.1: de kaart `Configuratie`** (woningnaam, aantal bronnen, aantal
+apparaten). Zij herhaalde wat twee tabbladen verderop staat en was geen meting van dit
+moment, terwijl zij op een telefoon een schermvulling kostte. De hint "er zijn nog geen
+energiebronnen gekoppeld" is behouden en verhuisd naar `Actuele situatie`, waar de lege
+metingen staan.
 
 **Actuele energieprijs (toegevoegd in fase 8b).** Het paneel toonde de prijs nergens,
 terwijl de rekenmotor er wel mee rekent — dat was een gat in deze spec. Getoond wordt het
@@ -487,7 +493,7 @@ laadt. Dat onderscheid wordt niet als modus opgeslagen maar als predicaat afgele
 quiet_hours_start · quiet_hours_end · allow_advice_during_quiet_hours
 prefer_solar · prefer_low_price
 min_savings_eur · max_advice_count (1–5)
-show_technical_explanation · show_estimated_savings · show_confidence
+show_technical_explanation · show_estimated_savings
 ```
 
 Dit tabblad heet `Mijn voorkeuren` en is **volledig bewonersgebied** (§33.4): elk veld
@@ -512,8 +518,8 @@ klant mee lastig te vallen.
 
 ### Energiecoach
 Huidige situatie · hoofdadvies · max. vijf aanvullende adviezen · reden per advies ·
-relevante meetwaarden · geschatte besparing indien berekenbaar · betrouwbaarheid
-(`low`/`medium`/`high`) · ontbrekende gegevens · knop `Opnieuw berekenen`.
+relevante meetwaarden · geschatte besparing indien berekenbaar · ontbrekende
+gegevens · knop `Opnieuw berekenen`.
 
 Geen vrije chat. Wel een lokale vraagselector:
 
@@ -967,6 +973,35 @@ Volgorde van bepaling (eerste die lukt wint, expliciet — niet gokken):
 
 Een thuisbatterij die laadt telt als verbruik; is er wel een batterijbron geconfigureerd
 maar geen batterijvermogen leesbaar, dan zakt de betrouwbaarheid van variant 2 naar `low`.
+
+**De drie niveaus blijven in de motor en verdwijnen van het scherm (besluit 0.4.1).**
+Ze gooiden twee onvergelijkbare dingen op één as:
+
+- `high` versus `medium` zegt wélke route de motor nam naar een getal dat in beide
+  gevallen klopt. Dat is een implementatiedetail. Als "betrouwbaarheid: gemiddeld" naast
+  een correcte meting leest het als twijfel over de gegevens van de klant, en er is geen
+  handeling die het verandert.
+- `low` is geen gradatie maar een **blinde vlek**: er hangt een batterij aan de woning
+  waarvan het vermogen niet leesbaar is, en een ladende batterij verbruikt precies het
+  overschot dat op het scherm staat. Het getal kan kilowatts mis zijn.
+
+Daaruit volgen twee regels.
+
+**Het overschot-advies vuurt niet op een overschot dat overschat kan zijn.** Dat was het
+werkelijke gebrek: de coach adviseerde de vaatwasser aan te zetten op een overschot dat
+er misschien niet was, met een besparingsbedrag eronder, en het etiket `low` onderdrukte
+niets. Het etiket zag eruit alsof het probleem was afgehandeld. Zie ook §35.1 regel 2 —
+een advies dat op een aantoonbaar onbetrouwbaar getal rust, is geen streng advies maar
+een verkeerd advies.
+
+**De blinde vlek wordt een zin die de oorzaak en de oplossing noemt**, naast het getal op
+het Overzicht en in het coachantwoord op "welke gegevens ontbreken nog?". Niet als
+checklistitem: de batterijrij bestáát, er ontbreekt geen invoer, en de datakwaliteit hoort
+er dus niet voor te zakken.
+
+Het predicaat heet `EnergyMetrics.solar_surplus_may_be_overstated` en is afgeleid, niet
+opgeslagen. Het eist een overschot: variant 3 levert óók `low` maar zonder getal, en zonder
+getal valt er niets te overschatten.
 
 ### Netbelasting
 

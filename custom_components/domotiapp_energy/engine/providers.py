@@ -25,9 +25,6 @@ from custom_components.domotiapp_energy.const import (
     COMPLETENESS_ITEM_PRICE,
     COMPLETENESS_ITEM_SOLAR,
     COMPLETENESS_ITEM_TIME_WINDOWS,
-    CONFIDENCE_HIGH,
-    CONFIDENCE_LOW,
-    CONFIDENCE_MEDIUM,
     EXPLANATION_KEY_MISSING_DATA,
     EXPLANATION_KEY_PEAK_RISK,
     EXPLANATION_KEY_SCORE_BREAKDOWN,
@@ -78,15 +75,20 @@ _MEASUREMENT_LABELS: dict[str, str] = {
     MEASUREMENT_MISSING_ITEMS: "ontbrekende onderdelen",
 }
 
-# The confidence levels travel as English identifiers, like every other code in
-# this project, and one of them used to end up verbatim in the answer to "Waarom
-# krijg ik dit advies?": "Betrouwbaarheid: high." A reader is owed a word here,
-# and the frontend has the same table in core/labels.js for what it renders.
-_CONFIDENCE_LABELS: dict[str, str] = {
-    CONFIDENCE_LOW: "laag",
-    CONFIDENCE_MEDIUM: "gemiddeld",
-    CONFIDENCE_HIGH: "hoog",
-}
+# The one thing the old "betrouwbaarheid: laag" label was actually about, said
+# as a cause and a fix instead of as a grade on the customer's own data.
+#
+# **This sentence also lives in `frontend/tabs/overview.js`**, beside the
+# surplus figure it qualifies, and the two have to stay in step. Splitting it is
+# deliberate rather than sloppy: panel text belongs in the panel (SPEC.md §26)
+# and coach answers are composed here with the rest of the advice. Whoever
+# rewrites one has to rewrite the other; a text inventory is the round that
+# makes that checkable (finding 6).
+UNREADABLE_BATTERY_SENTENCE = (
+    "Het vermogen van je thuisbatterij kan niet uitgelezen worden. Een batterij "
+    "die laadt verbruikt precies het overschot dat hier staat, dus dat getal kan "
+    "te hoog zijn. Koppel de vermogenssensor van de batterij om dit op te lossen."
+)
 
 _COMPONENT_LABELS: dict[str, str] = {
     SCORE_COMPONENT_SOLAR: "zonnebenutting",
@@ -182,11 +184,9 @@ def _why_advice(result: CoachResult) -> str:
     if readings:
         parts.append(f"Gebaseerd op {readings}.")
 
-    # A level we have no word for is left out rather than printed as its code:
-    # an identifier in a Dutch sentence is worse than a shorter sentence.
-    confidence = _CONFIDENCE_LABELS.get(primary.confidence)
-    if confidence is not None:
-        parts.append(f"Betrouwbaarheid: {confidence}.")
+    # No confidence sentence since 0.4.1. "Betrouwbaarheid: gemiddeld." told a
+    # customer his own reading was second-rate when it was exactly right; the
+    # level says which route the engine took, which is our business and not his.
     return " ".join(parts)
 
 
@@ -300,6 +300,13 @@ def _missing_data(metrics: EnergyMetrics) -> str:
             f" Niet van toepassing op deze woning, en dus niet meegeteld: "
             f"{', '.join(skipped)}."
         )
+
+    # Not a checklist item — the battery source exists, it just cannot be read,
+    # so no item is missing and the percentage stays where it is. It belongs in
+    # the answer to "welke gegevens ontbreken nog?" all the same, because it is
+    # the one gap that silently changes what the coach does (0.4.1).
+    if metrics.solar_surplus_may_be_overstated:
+        sentence += f" {UNREADABLE_BATTERY_SENTENCE}"
     return sentence
 
 

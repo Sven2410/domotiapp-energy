@@ -225,9 +225,23 @@ def _advise_solar_surplus(context: _Context) -> list[AdviceItem]:
     drifting around the threshold does not switch this advice — and the euro
     amount under it — on and off every few seconds. Without a decision the plain
     comparison stands, which is what the advisor produces on its own.
+
+    **No advice at all on a surplus that may be overstated** (0.4.1). When a
+    home battery is configured whose power cannot be read, the surplus shown
+    could be entirely the battery charging — and this advice would tell the
+    resident to switch on a dishwasher that then runs off the grid, with a euro
+    amount underneath it that is simply wrong.
+
+    Labelling that "betrouwbaarheid: laag" and sending it out anyway was the
+    real defect, and it survived because the label looked like it had dealt
+    with the problem. The panel says instead what is wrong and what to link;
+    silence plus a reason beats a confident sentence built on a number we know
+    can be false.
     """
     surplus = context.metrics.solar_surplus_w
     if surplus is None:
+        return []
+    if context.metrics.solar_surplus_may_be_overstated:
         return []
     sufficient = context.metrics.solar_surplus_sufficient
     if sufficient is None:

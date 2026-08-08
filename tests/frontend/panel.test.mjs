@@ -140,7 +140,7 @@ describe('notices and the banner', () => {
     );
 
     const notices = [...panel.shadowRoot.querySelectorAll('.notice')];
-    assert.equal(notices.length, 5);
+    assert.equal(notices.length, 6);
 
     for (const node of notices.filter(isVisible)) {
       assert.notEqual(
@@ -213,13 +213,16 @@ describe('empty and populated configurations', () => {
     assert.match(text, /nog geen energiebronnen gekoppeld/);
   });
 
-  it('shows the configured values on the Overzicht', async () => {
+  it('shows the live situation on the Overzicht', async () => {
     const panel = await mountPanel();
 
     const text = panel.shadowRoot.textContent;
 
-    assert.match(text, /Mijn woning/);
     assert.match(text, /Aanvullende gegevens nodig/);
+    // The home name and the row counts went with the Configuratie card in
+    // 0.4.1: they restate two other tabs and are not a reading of this moment.
+    assert.doesNotMatch(text, /Mijn woning/);
+    assert.doesNotMatch(text, /Configuratie/);
   });
 
   it('gives the score its own headline figure, apart from its label', async () => {
@@ -301,6 +304,49 @@ describe('empty and populated configurations', () => {
       assert.equal(node.dataset.tone, tone);
     });
   }
+
+  // SPEC.md §16 and the 0.4.1 decision: the surplus figure no longer carries a
+  // confidence grade. The one level that meant something became this sentence,
+  // which names the cause and the fix instead of grading the customer's data.
+  it('warns that an unreadable battery may inflate the surplus', async () => {
+    const panel = await mountPanel(
+      fakeHass({
+        coach: sampleCoach({
+          metrics: { solar_surplus_w: 1900, solar_surplus_may_be_overstated: true },
+        }),
+      }),
+    );
+
+    const texts = [...panel.shadowRoot.querySelectorAll('.notice')]
+      .filter(isVisible)
+      .map((node) => node.querySelector('.notice-text').textContent);
+    const sentence = texts.find((text) => text.includes('thuisbatterij'));
+
+    assert.ok(sentence, 'expected the unreadable-battery sentence');
+    assert.match(sentence, /Koppel de vermogenssensor/);
+  });
+
+  it('says nothing about the battery when the surplus is sound', async () => {
+    const panel = await mountPanel(
+      fakeHass({
+        coach: sampleCoach({
+          metrics: { solar_surplus_w: 1900, solar_surplus_may_be_overstated: false },
+        }),
+      }),
+    );
+
+    const texts = [...panel.shadowRoot.querySelectorAll('.notice')]
+      .filter(isVisible)
+      .map((node) => node.querySelector('.notice-text').textContent);
+
+    assert.ok(!texts.some((text) => text.includes('thuisbatterij')));
+  });
+
+  it('never grades the surplus with a confidence level', async () => {
+    const panel = await mountPanel();
+
+    assert.doesNotMatch(panel.shadowRoot.textContent, /etrouwbaarheid/);
+  });
 
   it('says nothing about a missing score when there is one', async () => {
     const panel = await mountPanel(

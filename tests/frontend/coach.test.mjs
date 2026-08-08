@@ -71,7 +71,7 @@ function rowFor(tab, label) {
 }
 
 describe('the primary advice', () => {
-  it('shows what the backend said, with its reason and confidence', async () => {
+  it('shows what the backend said, with its reason', async () => {
     const { tab } = await openCoachTab();
 
     assert.match(tab.textContent, /Aanvullende gegevens nodig/);
@@ -79,7 +79,10 @@ describe('the primary advice', () => {
     // The reason is a machine identifier, and this row used to print it: a
     // customer read "missing_required_data" where a sentence belonged.
     assert.equal(rowFor(tab, 'Reden').value, 'Er ontbreken gegevens');
-    assert.equal(rowFor(tab, 'Betrouwbaarheid').value, 'hoog');
+    // No confidence row since 0.4.1: it graded the customer's own data on an
+    // axis he could not act on. See the notice on the Overzicht for the one
+    // case that carried information.
+    assert.equal(rowFor(tab, 'Betrouwbaarheid'), null);
   });
 
   it('never shows a raw code, whatever the backend sends', async () => {
@@ -101,7 +104,6 @@ describe('the primary advice', () => {
     assert.doesNotMatch(tab.textContent, /unknown_reading/);
     assert.doesNotMatch(tab.textContent, /a_new_checklist_item/);
     assert.equal(rowFor(tab, 'Reden').visible, false);
-    assert.equal(rowFor(tab, 'Betrouwbaarheid').value, 'Onbekend');
   });
 
   it('says a saving could not be calculated instead of showing zero', async () => {
@@ -133,7 +135,8 @@ describe('the display preferences', () => {
     const { tab } = await openCoachTab(hass);
 
     assert.equal(rowFor(tab, 'Geschatte besparing').visible, false);
-    assert.equal(rowFor(tab, 'Betrouwbaarheid').visible, true);
+    // The neighbouring rows are unaffected by this one preference.
+    assert.equal(rowFor(tab, 'Reden').visible, true);
   });
 
   it('hides the technical reason when the customer does not want it', async () => {
@@ -148,16 +151,13 @@ describe('the display preferences', () => {
     assert.equal(rowFor(tab, 'Reden').visible, false);
   });
 
-  it('hides the confidence when the customer does not want it', async () => {
-    const hass = fakeHass({
-      config: sampleConfig({
-        preferences: { max_advice_count: 3, show_confidence: false },
-      }),
-      coach: answeredCoach(),
-    });
-    const { tab } = await openCoachTab(hass);
+  it('never shows a confidence row at all', async () => {
+    // The preference that used to switch this went with the label (0.4.1), so
+    // the row may not come back for any configuration.
+    const { tab } = await openCoachTab();
 
-    assert.equal(rowFor(tab, 'Betrouwbaarheid').visible, false);
+    assert.equal(rowFor(tab, 'Betrouwbaarheid'), null);
+    assert.doesNotMatch(tab.textContent, /etrouwbaarheid/);
   });
 });
 
@@ -182,10 +182,10 @@ describe('the further advice', () => {
     const rows = [...tab.querySelectorAll('.row-item')];
     assert.equal(rows.length, 1);
     assert.match(rows[0].textContent, /Zonneoverschot beschikbaar/);
-    // Measurement, saving and confidence, in readable Dutch.
+    // Measurement and saving, in readable Dutch.
     assert.match(rows[0].textContent, /zonneoverschot in W: 1\.500/);
     assert.match(rows[0].textContent, /geschatte besparing € 0,36/);
-    assert.match(rows[0].textContent, /betrouwbaarheid gemiddeld/);
+    assert.doesNotMatch(rows[0].textContent, /etrouwbaarheid/);
   });
 
   it('says so when there is nothing further to advise', async () => {
