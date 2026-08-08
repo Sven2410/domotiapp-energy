@@ -38,11 +38,12 @@ from custom_components.domotiapp_energy.const import (
     MEASUREMENT_MISSING_ITEMS,
     MEASUREMENT_PRICE,
     MEASUREMENT_SOLAR_SURPLUS_W,
-    SCORE_COMPONENT_DATA_QUALITY,
-    SCORE_COMPONENT_FLEXIBILITY,
-    SCORE_COMPONENT_PEAK,
     SCORE_COMPONENT_PRICE,
     SCORE_COMPONENT_SOLAR,
+    SCORE_UNAVAILABLE_INCOMPLETE_SETUP,
+    SCORE_UNAVAILABLE_NO_VARIABLE_SIGNAL,
+    SCORE_UNAVAILABLE_NOTHING_MOVABLE,
+    SCORE_UNAVAILABLE_NOTHING_RIGHT_NOW,
 )
 from custom_components.domotiapp_energy.models import CoachResult, EnergyMetrics
 
@@ -88,11 +89,37 @@ _CONFIDENCE_LABELS: dict[str, str] = {
 }
 
 _COMPONENT_LABELS: dict[str, str] = {
-    SCORE_COMPONENT_DATA_QUALITY: "datakwaliteit",
-    SCORE_COMPONENT_PEAK: "netbelasting",
     SCORE_COMPONENT_SOLAR: "zonnebenutting",
     SCORE_COMPONENT_PRICE: "prijs",
-    SCORE_COMPONENT_FLEXIBILITY: "flexibiliteit",
+}
+
+# Why there is no score. The panel shows the same four sentences on the tile
+# (frontend/tabs/overview.js); the coach says them in answer to "Hoe is mijn
+# energiescore berekend?", where the reader has explicitly asked.
+#
+# Only the first is a shortcoming. The rest describe a home with nothing to
+# optimise at this moment, so they carry no warning tone and no apology — and
+# they say *why*, because a sentence that only reports the absence reads as a
+# fault (SPEC.md §35.9).
+_SCORE_UNAVAILABLE_SENTENCES: dict[str, str] = {
+    SCORE_UNAVAILABLE_INCOMPLETE_SETUP: (
+        "Er is nog geen energiescore, omdat de installatie nog niet compleet is. "
+        "De checklist hieronder laat zien wat er ontbreekt."
+    ),
+    SCORE_UNAVAILABLE_NO_VARIABLE_SIGNAL: (
+        "Deze woning heeft geen wisselend signaal om verbruik naar toe te "
+        "verplaatsen: het tarief is altijd gelijk en er is geen eigen opwek. Er "
+        "valt daarom niets te optimaliseren en staat er geen cijfer. Het advies "
+        "blijft gewoon werken."
+    ),
+    SCORE_UNAVAILABLE_NOTHING_MOVABLE: (
+        "Er is wel opwek, maar geen apparaat of batterij die verbruik kan "
+        "verplaatsen. Er valt daarom niets te benutten dat nu niet al gebeurt."
+    ),
+    SCORE_UNAVAILABLE_NOTHING_RIGHT_NOW: (
+        "Er is op dit moment niets te verbeteren: er is nu geen opwek om zelf te "
+        "gebruiken en geen duur moment om te vermijden."
+    ),
 }
 
 
@@ -281,11 +308,19 @@ def _score_breakdown(metrics: EnergyMetrics) -> str:
 
     The score is a reading of **this moment**, not a report card, and the
     sentence says so. It also names the components this home is not judged on,
-    for the reason the checklist names its own: a score built from three
-    components instead of five looks like it skipped something.
+    for the reason the checklist names its own: a score built from one
+    component instead of two looks like it skipped something.
+
+    **No score is an answer, not a blank.** "Nog niet berekend" was true only
+    while nothing had run yet; for a home with a fixed contract and no panels
+    it would be permanent and wrong, because there is nothing to calculate
+    rather than something still pending (SPEC.md §35.9).
     """
     if metrics.energy_score is None or not metrics.score_components:
-        return "De energiescore is nog niet berekend."
+        return _SCORE_UNAVAILABLE_SENTENCES.get(
+            metrics.score_unavailable_reason or "",
+            "De energiescore is nog niet berekend.",
+        )
 
     parts = ", ".join(
         f"{label} {round(value)}"

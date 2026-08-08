@@ -30,27 +30,26 @@ from homeassistant.util import dt as dt_util
 
 from custom_components.domotiapp_energy.const import (
     ADDITIVE_SOURCE_TYPES,
+    COMPLETENESS_UNCONDITIONAL_ITEMS,
     COMPONENT_MAX,
-    COMPONENT_MIN,
-    COMPONENT_UNKNOWN,
     CONFIDENCE_HIGH,
     CONFIDENCE_LOW,
     CONFIDENCE_MEDIUM,
     CONTRACT_TYPE_DYNAMIC,
     METER_MODE_SEPARATE,
     METER_MODE_SINGLE_SIGNED,
-    PEAK_COMPONENT_FULL_BELOW_PERCENT,
     PERCENT_MAX,
     POSITIVE_MEANS_EXPORT,
     POSITIVE_MEANS_IMPORT,
     PRICE_BASES,
     PRICE_BASIS_MARKET,
-    SCORE_COMPONENT_DATA_QUALITY,
-    SCORE_COMPONENT_FLEXIBILITY,
-    SCORE_COMPONENT_PEAK,
     SCORE_COMPONENT_PRICE,
     SCORE_COMPONENT_SOLAR,
     SCORE_COMPONENT_WEIGHTS,
+    SCORE_UNAVAILABLE_INCOMPLETE_SETUP,
+    SCORE_UNAVAILABLE_NO_VARIABLE_SIGNAL,
+    SCORE_UNAVAILABLE_NOTHING_MOVABLE,
+    SCORE_UNAVAILABLE_NOTHING_RIGHT_NOW,
     SOLAR_COMPONENT_MIN_PRODUCTION_W,
     SOURCE_TYPE_CURRENT_PRICE,
     SOURCE_TYPE_FEED_IN_PRICE,
@@ -71,7 +70,10 @@ from custom_components.domotiapp_energy.models import (
 )
 from custom_components.domotiapp_energy.validators import ReadResult, read_entity_value
 
-from .completeness import evaluate_completeness, is_complete_device_profile
+from .completeness import (
+    evaluate_completeness,
+    has_movable_load,
+)
 from .reason_codes import REASON_MISSING_REQUIRED_DATA
 
 _LOGGER = logging.getLogger(__name__)
@@ -146,7 +148,8 @@ class Calculator:
             reason_codes.append(load_reason)
 
         data_quality = evaluate_completeness(config, snapshot)
-        components = _score_components(config, snapshot, data_quality, load_percent)
+        components = _score_components(config, snapshot)
+        score = _energy_score(components, data_quality)
 
         return EnergyMetrics(
             timestamp=snapshot.timestamp,
@@ -161,9 +164,14 @@ class Calculator:
             feed_in_price_eur_kwh=snapshot.feed_in_price_eur_kwh,
             market_feed_in_price_eur_kwh=snapshot.market_feed_in_price_eur_kwh,
             data_quality=data_quality,
-            energy_score=_energy_score(components),
+            energy_score=score,
             score_components=components,
             not_applicable_components=not_applicable_components(components),
+            score_unavailable_reason=(
+                None
+                if score is not None
+                else _score_unavailable_reason(config, data_quality)
+            ),
             reason_codes=reason_codes,
         )
 
@@ -436,33 +444,42 @@ def _peak_risk(config: StoredConfiguration, load_percent: float | None) -> bool:
 
 
 def _score_components(
-    config: StoredConfiguration,
-    snapshot: EnergySnapshot,
-    data_quality: DataQualityResult,
-    load_percent: float | None,
+    config: StoredConfiguration, snapshot: EnergySnapshot
 ) -> dict[str, float]:
     """Return the weighted components that apply to this home, right now.
 
-    A component that cannot apply is **absent** rather than zero or half, and
-    the score divides by the weight of what is left — the same rule the data
-    quality checklist follows (SPEC.md §16). Scoring a fixed contract 50 on
-    price cost that home 7.5 points forever while the constant's own comment
-    claimed the score was "not dragged down by it"; scoring a home without
-    appliances 0 on flexibility cost it 10 more. Neither is a measurement: both
-    are deductions the resident cannot answer, and a component nobody can move
-    is a discount, not a meter.
+    Two components, both about the same question: did movable consumption fall
+    on the right moment (SPEC.md §35.8). Three others were removed in 0.4.0 for
+    failing one of the two rules in §35.1, and the rules are worth repeating
+    here because this is where a fourth component would be added:
+
+    1. **The drop-out rule.** A component is left out when the home cannot
+       influence it *in this situation* — not when the signal happens to be
+       zero. A component that is absent leaves both the sum and the divisor, so
+       100 stays reachable; there is no number on a 0-100 axis that means "does
+       not apply", and every attempt to find one has cost a real home real
+       points. A fixed contract scored 50 here, meant as neutral, which was a
+       permanent 7.5-point deduction for choosing a fixed contract.
+    2. **The advice rule.** Following the coach's advice may never lower the
+       score. `peak_component` did exactly that — a 3.7 kW charge the coach had
+       just recommended took a 1x25 A home from 100 to 57 on that axis — and no
+       amount of re-anchoring its slope closes that, because the conflict is
+       between what the axis measures and what the advice asks for.
+
+    A missing input does **not** score zero any more. That used to be the rule
+    ("the signal exists and was not configured"), and it was another way of
+    deducting points for the installer's paperwork from the resident's number.
+    An unreadable price makes the price component inapplicable; the omission is
+    reported by the data quality checklist and by the gate, where it belongs.
 
     Each component is rounded to two decimals. The linear interpolations
     otherwise leave binary floating point noise (74.99999999999999 for a clean
-    75), which would show up in the panel and make the score jitter between
-    two whole numbers on identical input.
+    75), which would show up in the panel and make the score jitter between two
+    whole numbers on identical input.
     """
     candidates = (
-        (SCORE_COMPONENT_DATA_QUALITY, float(data_quality.score)),
-        (SCORE_COMPONENT_PEAK, _peak_component(load_percent)),
         (SCORE_COMPONENT_SOLAR, _solar_component(config, snapshot)),
         (SCORE_COMPONENT_PRICE, _price_component(config, snapshot)),
-        (SCORE_COMPONENT_FLEXIBILITY, _flexibility_component(config)),
     )
     return {key: round(value, 2) for key, value in candidates if value is not None}
 
@@ -471,28 +488,10 @@ def not_applicable_components(components: dict[str, float]) -> list[str]:
     """Return the component keys this home is not being judged on.
 
     Public because the panel and the coach both name them, for the reason the
-    checklist names its own: a score built from three components instead of five
-    looks like it skipped something unless it says which two and why.
+    checklist names its own: a score built from one component instead of two
+    looks like it skipped something unless it says which one and why.
     """
     return [key for key in SCORE_COMPONENT_WEIGHTS if key not in components]
-
-
-def _peak_component(load_percent: float | None) -> float:
-    """Return 100 below half load, dropping linearly to 0 at full load.
-
-    An unknown load scores zero: the grid load is always applicable, so not
-    knowing it means it was not configured (SPEC.md §16).
-    """
-    if load_percent is None:
-        return COMPONENT_UNKNOWN
-    if load_percent <= PEAK_COMPONENT_FULL_BELOW_PERCENT:
-        return COMPONENT_MAX
-    if load_percent >= PERCENT_MAX:
-        return COMPONENT_MIN
-
-    remaining = PERCENT_MAX - load_percent
-    span = PERCENT_MAX - PEAK_COMPONENT_FULL_BELOW_PERCENT
-    return remaining / span * COMPONENT_MAX
 
 
 def _solar_component(
@@ -500,32 +499,42 @@ def _solar_component(
 ) -> float | None:
     """Return what share of this moment's production the home uses itself.
 
-    **The previous definition measured the opposite of its own name.** It scored
-    the *surplus*, which is `max(-grid_power, 0)` — power flowing out to the
-    grid. So it awarded 100 to a home exporting everything and 0 to a home
-    consuming all of its own production, while being labelled "zonnebenutting"
-    and sitting next to a coach advising the resident to use their surplus
-    themselves. The score rewarded exactly what the advice discouraged
-    (production finding, 2026-08-07).
-
-    What it measures now::
+    ::
 
         zelfverbruik = (opwek - teruglevering) / opwek
 
-    Returns ``None`` — not applicable — when there is no production to speak of.
-    At night nothing is being wasted, so there is nothing to score, and a nightly
-    zero was twenty points off a home that had done nothing wrong.
+    Returns ``None`` — not applicable — in three cases, each a different way of
+    having nothing to measure:
 
-    This still moves with behaviour, which is what keeps it a measurement rather
-    than a discount: a resident who runs the dishwasher while the sun is out
-    raises it, with or without a smart appliance. That is precisely the advice
-    the coach gives.
+    - **no production.** At night nothing is being wasted. A nightly zero was
+      twenty points off a home that had done nothing wrong.
+    - **no readable grid power.** Without it the export is unknown, so the
+      share cannot be computed. Not zero: see the module note on missing
+      inputs.
+    - **nothing movable** (`has_movable_load`). A home with panels, no battery
+      and no complete flexible appliance cannot raise its self-consumption at
+      all, so the axis would be a discount rather than a meter (SPEC.md §35.4a).
+      Adding a battery switches it on, which is the honest description of what
+      a battery does: the ceiling and the bar rise together.
+
+    **An earlier definition measured the opposite of its own name.** It scored
+    the *surplus* — power flowing out — so it awarded 100 to a home exporting
+    everything and 0 to a home consuming all of its own production, while being
+    labelled "zonnebenutting" and sitting next to a coach advising the resident
+    to use that surplus themselves.
+
+    This moves with behaviour, which is what keeps it a measurement rather than
+    a discount, and it moves the right way: a resident who runs the dishwasher
+    while the sun is out raises it. That is precisely what the coach advises,
+    so the advice rule holds.
     """
     production = snapshot.solar_power_w
     if production is None or production <= SOLAR_COMPONENT_MIN_PRODUCTION_W:
         return None
+    if snapshot.grid_power_w is None or not has_movable_load(config):
+        return None
 
-    exported = max(-snapshot.grid_power_w, 0.0) if snapshot.grid_power_w else 0.0
+    exported = max(-snapshot.grid_power_w, 0.0)
     self_used = (production - exported) / production
     return min(max(self_used, 0.0), 1.0) * COMPONENT_MAX
 
@@ -533,17 +542,35 @@ def _solar_component(
 def _price_component(
     config: StoredConfiguration, snapshot: EnergySnapshot
 ) -> float | None:
-    """Return 100 at or below the low price, 0 at or above the high price.
+    """Return how little of the connection is being drawn while it is expensive.
 
-    A fixed contract has no price to react to, so the component does not apply
-    and is left out of the score entirely. It used to score 50 — meant as
-    neutral, but on a 0-100 axis where everything else can reach 100 that is a
-    permanent 7.5-point deduction for choosing a fixed contract. "Neutral" does
-    not exist on this axis; the only neutral answer is not to be weighed.
+    ::
 
-    A dynamic contract without a readable price or without thresholds *is*
-    unknown, and unknown scores zero: the signal exists and was not configured
-    (SPEC.md §16).
+        prijspositie = clamp((prijs - laag) / (hoog - laag), 0, 1)
+        importdeel   = clamp(max(netvermogen, 0) / max_grid_power_w, 0, 1)
+        component    = 100 * (1 - prijspositie * importdeel)
+
+    **The previous definition measured the weather.** It scored the price alone,
+    so every dynamic home scored 0 at 18:00 and 100 at 03:00 whatever it did,
+    and two identical houses — one asleep, one running the tumble dryer —
+    scored the same. Now the sleeping house scores high and the one with the
+    dryer on scores low, and exporting during an expensive hour counts as full
+    utilisation, because it is.
+
+    Returns ``None`` — not applicable — when there is nothing to avoid:
+
+    - **a fixed contract.** No price to react to, ever.
+    - **a price at or below the low threshold.** `prijspositie` is then zero and
+      the component would be 100 without anybody being able to move it, which
+      is the drop-out rule. At the threshold itself it is exactly 100, so
+      stepping in and out is continuous — no jump in the component.
+    - **a missing price, threshold, maximum or grid reading.** Not zero; see
+      the module note on missing inputs.
+
+    **The axis is deliberately asymmetric.** Avoiding expensive consumption is
+    behaviour; seeking out cheap consumption is only behaviour if you had
+    something to run. Penalising a house that sleeps at 03:00 for not using
+    cheap power would make the score demand that a tumble dryer be switched on.
     """
     if config.home.contract_type != CONTRACT_TYPE_DYNAMIC:
         return None
@@ -551,62 +578,50 @@ def _price_component(
     price = snapshot.current_price_eur_kwh
     low = config.home.low_price_threshold_eur_kwh
     high = config.home.high_price_threshold_eur_kwh
+    maximum = config.home.max_grid_power_w
+    grid_power = snapshot.grid_power_w
     if price is None or low is None or high is None or high <= low:
-        return COMPONENT_UNKNOWN
-
+        return None
+    if maximum is None or maximum <= 0 or grid_power is None:
+        return None
     if price <= low:
-        return COMPONENT_MAX
-    if price >= high:
-        return COMPONENT_MIN
-    return (high - price) / (high - low) * COMPONENT_MAX
-
-
-def _flexibility_component(config: StoredConfiguration) -> float | None:
-    """Return 100 when one device could actually be advised, 0 when none can.
-
-    Returns ``None`` — not applicable — when the home has **no usable appliances
-    at all**. There is then nothing to be flexible with, and no configuring
-    would change that: a permanent zero on a home that owns no smart appliances
-    is a discount, not a measurement (SPEC.md §16).
-
-    A home that *does* have appliances and none of them flexible or complete
-    scores a real 0, because that is a gap the installer can close. The dividing
-    line is the same one the data quality checklist draws between "not asked"
-    and "missing".
-
-    "Usable and flexible" is not enough to score 100: a row with nothing but a
-    name and a type satisfied that, so adding an empty appliance raised the
-    score by ten points. That is a meter rewarding what has been *created*
-    rather than what the home can *do*.
-
-    The line sits at the same place as the data quality checklist's idea of a
-    complete device — a nominal power and an energy per cycle — because that is
-    what makes advice about this appliance say something: without the energy per
-    cycle there is no saving to name (SPEC.md §16). It is one shared predicate,
-    so the score, the checklist and the form cannot disagree about it.
-    """
-    usable = [device for device in config.devices if device.is_usable]
-    if not usable:
         return None
 
-    has_flexible = any(
-        device.is_flexible and is_complete_device_profile(device) for device in usable
-    )
-    return COMPONENT_MAX if has_flexible else COMPONENT_MIN
+    price_position = min((price - low) / (high - low), 1.0)
+    import_share = min(max(grid_power, 0.0) / maximum, 1.0)
+    return (1.0 - price_position * import_share) * COMPONENT_MAX
 
 
-def _energy_score(components: dict[str, float]) -> int | None:
-    """Return the weighted score over the components that apply.
+def _energy_score(
+    components: dict[str, float], data_quality: DataQualityResult
+) -> int | None:
+    """Return the weighted score over the components that apply, or None.
 
     The share of the applicable weight that was earned, so a home is measured
-    against what it can influence and 100 stays reachable. With all five
-    components applicable the weights sum to 1.0 and this returns exactly what
-    the flat sum used to — a fully configured home sees no change.
+    against what it can influence and 100 stays reachable.
 
-    ``None`` when nothing applies at all. Data quality and peak load are both
-    unconditional, so in practice that needs a home with no configuration
-    whatsoever; returning a number there would be scoring an empty page.
+    ``None`` in two cases, and the panel says which (SPEC.md §35.9):
+
+    - **the gate is shut.** The three unconditional checklist items — the home
+      profile, a usable grid source, a price — are what the integration is for,
+      and without them it measures nothing. This is what keeps the guarantee
+      that a fresh install cannot score 100: it scores nothing at all. It
+      replaces `data_quality_component`, whose 0.30 weight made the resident's
+      number mostly a report on the installer's paperwork.
+    - **nothing applies.** No sun to use, no expensive hour to avoid. A tile
+      saying "nothing to measure right now" is more honest than a number that
+      claims something untrue, and that number has already claimed something
+      untrue twice (Sven, 2026-08-07).
+
+    The gate is the item list rather than a percentage on purpose: a threshold
+    would have been an invented number, and these three items are already the
+    project's own definition of an installation that means something.
     """
+    if any(
+        item in data_quality.missing_items for item in COMPLETENESS_UNCONDITIONAL_ITEMS
+    ):
+        return None
+
     total = sum(SCORE_COMPONENT_WEIGHTS[key] for key in components)
     if not total:
         return None
@@ -615,3 +630,41 @@ def _energy_score(components: dict[str, float]) -> int | None:
         SCORE_COMPONENT_WEIGHTS[key] * value for key, value in components.items()
     )
     return round(weighted / total)
+
+
+def _score_unavailable_reason(
+    config: StoredConfiguration, data_quality: DataQualityResult
+) -> str:
+    """Return why there is no score, so the panel can explain rather than dash.
+
+    A tile with a dash reads as a fault. Three of these four are not faults:
+    they describe a home that is doing nothing wrong and has nothing to
+    optimise at this moment (SPEC.md §35.9).
+
+    The order is precedence, from "somebody can fix this" to "there is nothing
+    to fix":
+
+    1. **the gate** — the installation is incomplete, and that is the only one
+       of the four that is a shortcoming.
+    2. **no variable signal at all** — a fixed contract and no solar row. This
+       home will never see a number, which is accepted: it has no moment that
+       is better than another, so there is nothing to measure. The coach keeps
+       working; the score is an extra, not a precondition.
+    3. **nothing movable** — panels, but no battery and no complete flexible
+       appliance. Also permanent, but it closes by configuring or adding
+       something, so it gets its own sentence.
+    4. **nothing right now** — an axis could apply, just not at this moment.
+       Night, or a cheap hour.
+    """
+    if any(
+        item in data_quality.missing_items for item in COMPLETENESS_UNCONDITIONAL_ITEMS
+    ):
+        return SCORE_UNAVAILABLE_INCOMPLETE_SETUP
+
+    dynamic = config.home.contract_type == CONTRACT_TYPE_DYNAMIC
+    has_solar_row = any(source.type == SOURCE_TYPE_SOLAR for source in config.sources)
+    if not dynamic and not has_solar_row:
+        return SCORE_UNAVAILABLE_NO_VARIABLE_SIGNAL
+    if not dynamic and not has_movable_load(config):
+        return SCORE_UNAVAILABLE_NOTHING_MOVABLE
+    return SCORE_UNAVAILABLE_NOTHING_RIGHT_NOW

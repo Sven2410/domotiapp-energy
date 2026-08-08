@@ -140,7 +140,7 @@ describe('notices and the banner', () => {
     );
 
     const notices = [...panel.shadowRoot.querySelectorAll('.notice')];
-    assert.equal(notices.length, 4);
+    assert.equal(notices.length, 5);
 
     for (const node of notices.filter(isVisible)) {
       assert.notEqual(
@@ -263,7 +263,60 @@ describe('empty and populated configurations', () => {
     const [score] = [...panel.shadowRoot.querySelectorAll('.display-metric')];
 
     assert.ok(!isVisible(score.querySelector('.display-value')));
-    assert.equal(score.querySelector('.display-empty').textContent, 'Nog niet berekend');
+    assert.equal(score.querySelector('.display-empty').textContent, 'Geen cijfer');
+  });
+
+  // SPEC.md §35.9. A tile with a dash reads as a fault; three of these four
+  // describe a home that is doing nothing wrong, so the sentence has to say
+  // *why* there is nothing to measure and not merely that there is no number.
+  const SCORE_REASONS = [
+    ['no_variable_signal', 'tarief is altijd gelijk', 'info'],
+    ['nothing_movable', 'verbruik kan verplaatsen', 'info'],
+    ['nothing_right_now', 'niets te verbeteren', 'info'],
+    ['incomplete_setup', 'installatie nog niet compleet', 'warning'],
+  ];
+
+  for (const [reason, fragment, tone] of SCORE_REASONS) {
+    it(`explains why there is no score: ${reason}`, async () => {
+      const panel = await mountPanel(
+        fakeHass({
+          coach: sampleCoach({
+            metrics: { energy_score: null, score_unavailable_reason: reason },
+          }),
+        }),
+      );
+
+      const visible = [...panel.shadowRoot.querySelectorAll('.notice')]
+        .filter(isVisible)
+        .map((node) => node.querySelector('.notice-text').textContent);
+      const sentence = visible.find((text) => text.includes(fragment));
+
+      assert.ok(sentence, `expected a sentence explaining ${reason}`);
+      // Only the incomplete installation is a shortcoming. The others may not
+      // shout at a resident who has done nothing wrong.
+      const node = [...panel.shadowRoot.querySelectorAll('.notice')].find(
+        (candidate) =>
+          candidate.querySelector('.notice-text').textContent === sentence,
+      );
+      assert.equal(node.dataset.tone, tone);
+    });
+  }
+
+  it('says nothing about a missing score when there is one', async () => {
+    const panel = await mountPanel(
+      fakeHass({
+        coach: sampleCoach({
+          metrics: { energy_score: 46, score_unavailable_reason: null },
+        }),
+      }),
+    );
+
+    const texts = [...panel.shadowRoot.querySelectorAll('.notice')]
+      .filter(isVisible)
+      .map((node) => node.querySelector('.notice-text').textContent);
+
+    assert.ok(!texts.some((text) => text.includes('Geen cijfer')));
+    assert.ok(!texts.some((text) => text.includes('niets te verbeteren')));
   });
 
   it('does not rebuild the DOM when the state changes', async () => {

@@ -37,8 +37,11 @@ from custom_components.domotiapp_energy.const import (
     COMPLETENESS_ITEM_SOLAR,
     COMPLETENESS_ITEM_TIME_WINDOWS,
     COMPLETENESS_POINTS,
+    COMPLETENESS_UNCONDITIONAL_ITEMS,
     CONTRACT_TYPE_DYNAMIC,
     CONTRACT_TYPES,
+    DEVICE_TYPE_HOME_BATTERY,
+    SOURCE_TYPE_HOME_BATTERY,
     SOURCE_TYPE_SOLAR,
 )
 from custom_components.domotiapp_energy.models import (
@@ -89,11 +92,7 @@ def _applicable_items(config: StoredConfiguration) -> set[str]:
     other three each depend on the installer having said the home owns the
     thing. See the module docstring for why that is a statement and not a guess.
     """
-    applicable = {
-        COMPLETENESS_ITEM_HOME,
-        COMPLETENESS_ITEM_GRID,
-        COMPLETENESS_ITEM_PRICE,
-    }
+    applicable = set(COMPLETENESS_UNCONDITIONAL_ITEMS)
 
     # A disabled solar row still counts: the panels exist, they were switched
     # off in the panel. That the item then fails is correct — it is a gap the
@@ -153,10 +152,10 @@ def is_complete_device_profile(device: DeviceProfile) -> bool:
     """Return whether this device is described well enough to act on.
 
     Public, and the only definition of "a complete device" in the project. The
-    data quality checklist asks it of at least one device, the energy score's
-    flexibility component asks it of the device it is about to award points for,
-    and the Apparaten tab marks exactly these two fields. One predicate, so the
-    three cannot drift apart.
+    data quality checklist asks it of at least one device, `has_movable_load`
+    asks it of the appliance that would switch the solar axis on, and the
+    Apparaten tab marks exactly these two fields. One predicate, so the three
+    cannot drift apart.
 
     The time window is deliberately **not** part of it. A device without one is
     allowed at any hour, so it is *more* available for advice, not less;
@@ -166,6 +165,40 @@ def is_complete_device_profile(device: DeviceProfile) -> bool:
     return (
         device.nominal_power_w is not None and device.energy_per_cycle_kwh is not None
     )
+
+
+def has_movable_load(config: StoredConfiguration) -> bool:
+    """Return whether this home can move consumption to another moment.
+
+    The condition on the solar component (SPEC.md §35.4a). A home with panels
+    but nothing to shift cannot raise its own self-consumption: 100% is
+    physically out of reach, so scoring the axis is a discount and not a
+    measurement — the same failure the fixed contract's permanent 50 was.
+
+    Two ways to qualify, and they are genuinely different:
+
+    - **a complete, flexible appliance** — somebody can start the dishwasher
+      now instead of tonight. The completeness bar is the shared one, because
+      an appliance without an energy per cycle gives the coach nothing to say
+      about it, and an axis nobody can be advised on fails the advice rule.
+    - **a home battery** — it moves energy without anybody touching anything.
+
+    The battery counts as a *row*, enabled or not, the same reading the solar
+    checklist item uses: a row is the installer's statement that the home has
+    the thing. Switching it off in the panel does not remove the hardware, and
+    the question here is what the home is capable of.
+
+    Public for the reason `is_complete_device_profile` is: the score asks it,
+    the panel explains it, and one predicate keeps them from disagreeing.
+    """
+    usable = [device for device in config.devices if device.is_usable]
+    if any(
+        device.is_flexible and is_complete_device_profile(device) for device in usable
+    ):
+        return True
+    if any(device.device_type == DEVICE_TYPE_HOME_BATTERY for device in usable):
+        return True
+    return any(source.type == SOURCE_TYPE_HOME_BATTERY for source in config.sources)
 
 
 def _has_complete_device_profile(config: StoredConfiguration) -> bool:

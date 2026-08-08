@@ -52,6 +52,7 @@ from custom_components.domotiapp_energy.const import (
     POSITIVE_MEANS_IMPORT,
     SEVERITY_INFO,
     SOURCE_TYPE_GRID_METER,
+    SOURCE_TYPE_SOLAR,
     STORAGE_KEY,
     STORAGE_VERSION,
     UNIT_W,
@@ -328,15 +329,67 @@ async def test_sensor_states_and_units(
     # home with panels. It used to read 85 with no way to ever reach more.
     assert int(data_quality.state) == 100
 
+    # A fixed contract and no panels: no moment is better than another, so
+    # there is nothing to benut and the score is deliberately absent rather
+    # than a number that claims something untrue (SPEC.md §35.9). The panel
+    # explains it in a sentence; in Home Assistant it reads as unknown, which
+    # is what leaves the gap in the long-term statistics the README warns about.
     score = hass.states.get(SENSOR_SCORE)
     assert score is not None
-    assert 0 <= int(score.state) <= 100
+    assert score.state == STATE_UNKNOWN
     assert "unit_of_measurement" not in score.attributes
 
     peak_risk = hass.states.get(BINARY_SENSOR_PEAK_RISK)
     assert peak_risk is not None
     assert peak_risk.state == STATE_OFF
     assert peak_risk.attributes["device_class"] == "problem"
+
+
+async def test_the_score_sensor_carries_a_number_when_there_is_one(
+    hass: HomeAssistant, hass_storage: dict[str, Any]
+) -> None:
+    """The other half of the previous test: with a signal there is a value.
+
+    Asserting only the absent case would leave a suite that stays green if the
+    score never produced a number at all. This home has panels and a complete
+    dishwasher to shift, so the solar axis applies (SPEC.md §35.4a).
+    """
+    config = _stored_configuration()
+    config["sources"].append(
+        {
+            "id": "pv",
+            "name": "Omvormer",
+            "type": SOURCE_TYPE_SOLAR,
+            "entity_id": "sensor.omvormer",
+            "unit": UNIT_W,
+        }
+    )
+    hass_storage[STORAGE_KEY] = {
+        "version": STORAGE_VERSION,
+        "minor_version": 1,
+        "key": STORAGE_KEY,
+        "data": config,
+    }
+    hass.states.async_set(GRID_ENTITY, "-500")
+    hass.states.async_set("sensor.omvormer", "2000")
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title=DEFAULT_HOME_NAME,
+        data={
+            CONF_HOME_NAME: DEFAULT_HOME_NAME,
+            CONF_MANUAL_SETUP_ACKNOWLEDGED: True,
+        },
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    score = hass.states.get(SENSOR_SCORE)
+    assert score is not None
+    # Producing 2000 W and exporting 500 leaves 75% used at home, and solar is
+    # the only axis that applies to a fixed-contract home.
+    assert int(score.state) == 75
 
 
 async def test_entities_stay_available_without_data(

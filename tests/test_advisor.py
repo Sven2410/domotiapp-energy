@@ -1716,13 +1716,35 @@ async def test_the_provider_lists_the_missing_data(hass: HomeAssistant) -> None:
 async def test_the_provider_explains_the_score(hass: HomeAssistant) -> None:
     """The breakdown names every component that went into the score."""
     result = CoachResult(
-        metrics=_metrics(energy_score=96, score_components={"peak_component": 100.0})
+        metrics=_metrics(energy_score=96, score_components={"solar_component": 96.0})
     )
 
     generated = await RuleBasedCoachProvider().async_generate(result)
 
     assert "96" in generated.explanations["score_breakdown"]
-    assert "netbelasting" in generated.explanations["score_breakdown"]
+    assert "zonnebenutting" in generated.explanations["score_breakdown"]
+
+
+async def test_the_provider_says_why_there_is_no_score(hass: HomeAssistant) -> None:
+    """No score is an answer, not a blank (SPEC.md §35.9).
+
+    "Nog niet berekend" was true only while nothing had run yet. For a home
+    with a fixed contract and no panels it would be permanent and wrong: there
+    is nothing to calculate, not something still pending.
+    """
+    result = CoachResult(
+        metrics=_metrics(
+            energy_score=None,
+            score_components={},
+            score_unavailable_reason="no_variable_signal",
+        )
+    )
+
+    generated = await RuleBasedCoachProvider().async_generate(result)
+
+    breakdown = generated.explanations["score_breakdown"]
+    assert "niets te optimaliseren" in breakdown
+    assert "Het advies blijft gewoon werken." in breakdown
 
 
 async def test_the_provider_invents_nothing_without_advice(

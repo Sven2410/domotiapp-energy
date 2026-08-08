@@ -34,6 +34,50 @@ import { confidenceLabel } from '../core/labels.js';
 const EMPTY_NOT_CONFIGURED = 'Nog niet ingesteld';
 const EMPTY_NOT_AVAILABLE = 'Niet beschikbaar';
 
+/**
+ * Why there is no energy score, in a sentence (SPEC.md §35.9).
+ *
+ * A tile with a dash reads as a fault. Only `incomplete_setup` is one; the
+ * other three describe a home that is doing nothing wrong and has nothing to
+ * optimise at this moment, so they say *why* there is nothing to measure and
+ * carry no warning tone.
+ *
+ * Keyed by the backend's reason code, which travels in English like every other
+ * identifier in this project. The sentences live here rather than in
+ * `translations/` because they carry the reasoning (SPEC.md §26).
+ */
+const SCORE_UNAVAILABLE_TEXT = {
+  incomplete_setup: {
+    text:
+      'Er is nog geen cijfer, omdat de installatie nog niet compleet is. ' +
+      'Het tabblad Energiecoach laat zien wat er ontbreekt.',
+    tone: 'warning',
+    icon: 'mdi:clipboard-alert-outline',
+  },
+  no_variable_signal: {
+    text:
+      'Het tarief is altijd gelijk en er is geen eigen opwek, dus er is geen ' +
+      'moment dat beter is dan een ander. Er valt op dit moment niets te ' +
+      'optimaliseren. Het advies blijft gewoon werken.',
+    tone: 'info',
+    icon: 'mdi:information-outline',
+  },
+  nothing_movable: {
+    text:
+      'Er is nu opwek, maar geen apparaat of batterij die verbruik kan ' +
+      'verplaatsen. Er valt daarom niets te benutten dat nu niet al gebeurt.',
+    tone: 'info',
+    icon: 'mdi:information-outline',
+  },
+  nothing_right_now: {
+    text:
+      'Er is nu geen opwek om zelf te gebruiken en geen duur moment om te ' +
+      'vermijden. Er is op dit moment niets te verbeteren.',
+    tone: 'info',
+    icon: 'mdi:information-outline',
+  },
+};
+
 export const overviewTab = {
   // English and fixed like every other identifier here; only the label the
   // customer reads is Dutch.
@@ -47,18 +91,26 @@ export const overviewTab = {
     // --- Headline figures ---------------------------------------------------
     const scoreCard = card('Energiescore');
     // "van 100" read as a report card on the household. It is a reading of this
-    // moment: at night two components drop out because there is nothing to
-    // measure, not because anything is wrong (SPEC.md §16).
+    // moment: components drop out because there is nothing to measure, not
+    // because anything is wrong (SPEC.md §35).
+    //
+    // The empty text is "Geen cijfer" and not "Nog niet berekend", because for
+    // a home with a fixed contract and no panels there is nothing to calculate
+    // — not something still pending. The sentence underneath says which of the
+    // four reasons it is.
     const energyScore = displayMetric('Energiescore', {
       suffix: 'op dit moment',
+      empty: 'Geen cijfer',
     });
     const dataQuality = displayMetric('Datakwaliteit', { suffix: 'procent' });
+    const scoreNotice = notice('mdi:information-outline');
     const missingNotice = notice('mdi:clipboard-alert-outline');
     scoreCard.body.append(
       el('div', { class: 'display-row' }, [
         energyScore.element,
         dataQuality.element,
       ]),
+      scoreNotice.element,
       missingNotice.element,
     );
 
@@ -253,6 +305,17 @@ export const overviewTab = {
 
       energyScore.set(metrics.energy_score ?? null);
       dataQuality.set(metrics.data_quality?.score ?? null);
+
+      // Only when there is no number: with a score on screen the sentence
+      // would explain an absence that is not there.
+      const unavailable =
+        metrics.energy_score === null || metrics.energy_score === undefined
+          ? SCORE_UNAVAILABLE_TEXT[metrics.score_unavailable_reason]
+          : null;
+      scoreNotice.set(unavailable ? unavailable.text : '', {
+        tone: unavailable ? unavailable.tone : 'info',
+        icon: unavailable ? unavailable.icon : null,
+      });
 
       // "van de zes" was a constant, and it was wrong for any home that does
       // not own all six things — a home with solar and a smart meter but no

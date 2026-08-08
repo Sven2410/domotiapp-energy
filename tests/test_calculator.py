@@ -33,11 +33,12 @@ from custom_components.domotiapp_energy.const import (
     POSITIVE_MEANS_IMPORT,
     PRICE_BASIS_ALL_IN,
     PRICE_BASIS_MARKET,
-    SCORE_COMPONENT_DATA_QUALITY,
-    SCORE_COMPONENT_FLEXIBILITY,
-    SCORE_COMPONENT_PEAK,
     SCORE_COMPONENT_PRICE,
     SCORE_COMPONENT_SOLAR,
+    SCORE_UNAVAILABLE_INCOMPLETE_SETUP,
+    SCORE_UNAVAILABLE_NO_VARIABLE_SIGNAL,
+    SCORE_UNAVAILABLE_NOTHING_MOVABLE,
+    SCORE_UNAVAILABLE_NOTHING_RIGHT_NOW,
     SOURCE_TYPE_CURRENT_PRICE,
     SOURCE_TYPE_FEED_IN_PRICE,
     SOURCE_TYPE_GENERAL_CONSUMPTION,
@@ -87,6 +88,44 @@ def _source(source_type: str, entity_id: str, **overrides: Any) -> EnergySource:
         binding=EntityBinding(entity_id=entity_id, unit=UNIT_W),
         **overrides,
     )
+
+
+def _movable_device(**overrides: Any) -> DeviceProfile:
+    """Return an appliance that can actually be moved to another moment.
+
+    Both fields are set on purpose and neither is decoration: without them
+    `has_movable_load` is False, the solar component does not apply, and a test
+    that meant to measure self-consumption would quietly measure nothing at all.
+    """
+    defaults: dict[str, Any] = {
+        "id": "d1",
+        "device_type": DEVICE_TYPE_DISHWASHER,
+        "nominal_power_w": 2000.0,
+        "energy_per_cycle_kwh": 1.2,
+    }
+    return DeviceProfile(**(defaults | overrides))
+
+
+def _solar_home(**home_overrides: Any) -> StoredConfiguration:
+    """Return a home with panels, a grid meter and something to shift.
+
+    The movable appliance is what makes the solar axis apply at all (SPEC.md
+    §35.4a): a home with panels and nothing to shift cannot raise its own
+    self-consumption, so the component is deliberately absent there. Every test
+    about *how much* self-consumption is scored needs this home; the test about
+    a home without anything movable builds its own.
+
+    **The fixed import price is not decoration either.** Without it the price
+    checklist item fails, the gate shuts, and `energy_score` is None whatever
+    the solar component says — so a test that meant to measure self-consumption
+    would silently be testing the gate instead.
+    """
+    home_overrides.setdefault("fixed_import_price_eur_kwh", 0.30)
+    config = _config(**home_overrides)
+    config.sources.append(_grid_meter())
+    config.sources.append(_source(SOURCE_TYPE_SOLAR, "sensor.pv"))
+    config.devices.append(_movable_device())
+    return config
 
 
 def _price_source(entity_id: str = "sensor.price", **overrides: Any) -> EnergySource:
@@ -696,6 +735,9 @@ async def test_the_price_component_judges_the_normalised_price(
     price it stands for is 0.25 and is not low at all.
     """
     hass.states.async_set("sensor.price", "0.08")
+    # The grid meter is what makes the component computable at all: the import
+    # share is half of what it multiplies (SPEC.md §35.4c).
+    hass.states.async_set("sensor.grid", "2000")
     config = _config(
         contract_type=CONTRACT_TYPE_DYNAMIC,
         low_price_threshold_eur_kwh=0.15,
@@ -703,6 +745,7 @@ async def test_the_price_component_judges_the_normalised_price(
         energy_tax_eur_kwh=0.1088,
         supplier_markup_eur_kwh=0.02,
     )
+    config.sources.append(_grid_meter())
     config.sources.append(_price_source(price_basis=PRICE_BASIS_MARKET))
 
     metrics = Calculator(hass).calculate(config)
@@ -1206,44 +1249,19 @@ async def test_a_fixed_input_gives_a_fixed_score(hass: HomeAssistant) -> None:
 
     metrics = Calculator(hass).calculate(config)
 
-    # Data quality 100, load 50% -> peak 100, price 0.20 between 0.15 and 0.35
-    # -> 75, one flexible device -> 100. Solar: producing 3000 W and exporting
-    # 2875 leaves 125 W used at home, so 4.17% self-consumption — the old
-    # definition scored this a perfect 100 for exporting almost everything.
+    # Solar: producing 3000 W and exporting 2875 leaves 125 W used at home, so
+    # 4.17% self-consumption — the old definition scored this a perfect 100 for
+    # exporting almost everything. Price: the home is exporting, so the import
+    # share is zero and there is nothing being drawn at the higher price.
     assert metrics.score_components == {
-        SCORE_COMPONENT_DATA_QUALITY: 100.0,
-        SCORE_COMPONENT_PEAK: 100.0,
         SCORE_COMPONENT_SOLAR: 4.17,
-        SCORE_COMPONENT_PRICE: 75.0,
-        SCORE_COMPONENT_FLEXIBILITY: 100.0,
+        SCORE_COMPONENT_PRICE: 100.0,
     }
-    # All five apply, so the weights still sum to 1.0 and no rescaling happens:
-    # 0.30x100 + 0.25x100 + 0.20x4.17 + 0.15x75 + 0.10x100 = 77.08 -> 77
-    assert metrics.energy_score == 77
+    # Both apply, so the weights sum to 1.0 and no rescaling happens:
+    # 0.50x4.17 + 0.50x100 = 52.08 -> 52
+    assert metrics.energy_score == 52
     assert metrics.not_applicable_components == []
-
-
-async def test_the_peak_component_falls_linearly(hass: HomeAssistant) -> None:
-    """100 below half load, 0 at full load, straight line between."""
-    hass.states.async_set("sensor.grid", "4312.5")
-    config = _config()
-    config.sources.append(_grid_meter())
-
-    metrics = Calculator(hass).calculate(config)
-
-    assert metrics.grid_load_percent == 75.0
-    assert metrics.score_components[SCORE_COMPONENT_PEAK] == 50.0
-
-
-async def test_a_full_load_scores_no_peak_points(hass: HomeAssistant) -> None:
-    """At and above the maximum the peak component is zero."""
-    hass.states.async_set("sensor.grid", "6000")
-    config = _config()
-    config.sources.append(_grid_meter())
-
-    metrics = Calculator(hass).calculate(config)
-
-    assert metrics.score_components[SCORE_COMPONENT_PEAK] == 0.0
+    assert metrics.score_unavailable_reason is None
 
 
 async def test_no_production_means_no_solar_component_at_all(
@@ -1273,9 +1291,7 @@ async def test_the_solar_component_measures_self_consumption(
     """
     hass.states.async_set("sensor.pv", "2000")
     hass.states.async_set("sensor.grid", "-500")
-    config = _config()
-    config.sources.append(_grid_meter())
-    config.sources.append(_source(SOURCE_TYPE_SOLAR, "sensor.pv"))
+    config = _solar_home()
 
     metrics = Calculator(hass).calculate(config)
 
@@ -1290,9 +1306,7 @@ async def test_consuming_all_production_is_full_marks(hass: HomeAssistant) -> No
     """
     hass.states.async_set("sensor.pv", "2000")
     hass.states.async_set("sensor.grid", "300")
-    config = _config()
-    config.sources.append(_grid_meter())
-    config.sources.append(_source(SOURCE_TYPE_SOLAR, "sensor.pv"))
+    config = _solar_home()
 
     metrics = Calculator(hass).calculate(config)
 
@@ -1303,9 +1317,7 @@ async def test_exporting_everything_scores_nothing(hass: HomeAssistant) -> None:
     """All production going out to the grid is none of it used at home."""
     hass.states.async_set("sensor.pv", "2000")
     hass.states.async_set("sensor.grid", "-2000")
-    config = _config()
-    config.sources.append(_grid_meter())
-    config.sources.append(_source(SOURCE_TYPE_SOLAR, "sensor.pv"))
+    config = _solar_home()
 
     metrics = Calculator(hass).calculate(config)
 
@@ -1422,10 +1434,16 @@ async def test_a_feed_in_source_without_a_basis_is_unusable(
     assert metrics.feed_in_price_eur_kwh is None
 
 
-async def test_a_dynamic_contract_without_a_price_scores_zero(
+async def test_a_dynamic_contract_without_a_price_does_not_apply(
     hass: HomeAssistant,
 ) -> None:
-    """Unknown is not the same as not applicable (SPEC.md §16)."""
+    """A missing input drops the component; it no longer scores zero.
+
+    The old rule was "the signal exists and was not configured, so it scores
+    zero", which deducted points from the resident for the installer's
+    paperwork. The omission is reported by the data quality checklist and by
+    the gate, where the person who can fix it will see it (SPEC.md §35.8).
+    """
     config = _config(
         contract_type=CONTRACT_TYPE_DYNAMIC,
         low_price_threshold_eur_kwh=0.15,
@@ -1434,67 +1452,146 @@ async def test_a_dynamic_contract_without_a_price_scores_zero(
 
     metrics = Calculator(hass).calculate(config)
 
-    assert metrics.score_components[SCORE_COMPONENT_PRICE] == 0.0
+    assert SCORE_COMPONENT_PRICE not in metrics.score_components
 
 
-async def test_a_dynamic_contract_without_thresholds_scores_zero(
+async def test_a_dynamic_contract_without_thresholds_does_not_apply(
     hass: HomeAssistant,
 ) -> None:
-    """A price without thresholds to judge it by is just as unknown."""
+    """A price without thresholds to judge it by is just as unusable."""
     hass.states.async_set("sensor.price", "0.20")
     config = _config(contract_type=CONTRACT_TYPE_DYNAMIC)
     config.sources.append(_price_source())
 
     metrics = Calculator(hass).calculate(config)
 
-    assert metrics.score_components[SCORE_COMPONENT_PRICE] == 0.0
+    assert SCORE_COMPONENT_PRICE not in metrics.score_components
 
 
-async def test_an_unknown_grid_load_scores_no_peak_points(
+async def test_an_incomplete_installation_has_no_score_at_all(
     hass: HomeAssistant,
 ) -> None:
-    """The grid load is always applicable, so not knowing it scores zero."""
-    config = _config()
-    config.home.max_grid_power_w = None
+    """The gate: no number until the three unconditional items are answered.
 
-    metrics = Calculator(hass).calculate(config)
-
-    assert metrics.grid_load_percent is None
-    assert metrics.score_components[SCORE_COMPONENT_PEAK] == 0.0
-
-
-async def test_a_half_configured_installation_scores_poorly(
-    hass: HomeAssistant,
-) -> None:
-    """The whole point of the distinction: no comfortable score for nothing.
-
-    An empty configuration is judged on the two unconditional components, and
-    fails both, so it scores a clean zero. It used to score 8, entirely from the
-    50 that a fixed contract was handed for free — a number earned by having
-    configured nothing at all.
+    An empty configuration used to score 8 — a number earned entirely by the 50
+    a fixed contract was handed for free — and later 0, which still reads as a
+    grade. It is neither: there is nothing to grade yet, and the panel says
+    which item is missing (SPEC.md §35.7).
     """
     metrics = Calculator(hass).calculate(StoredConfiguration())
 
-    # Data quality 0 and peak unknown 0 are all that apply; solar, price and
-    # flexibility have nothing to judge.
-    assert metrics.energy_score == 0
-    assert set(metrics.not_applicable_components) == {
-        SCORE_COMPONENT_SOLAR,
-        SCORE_COMPONENT_PRICE,
-        SCORE_COMPONENT_FLEXIBILITY,
-    }
+    assert metrics.energy_score is None
+    assert metrics.score_unavailable_reason == SCORE_UNAVAILABLE_INCOMPLETE_SETUP
 
 
-async def test_a_price_below_the_low_threshold_scores_full(
+async def test_the_gate_shuts_even_when_a_component_could_be_scored(
     hass: HomeAssistant,
 ) -> None:
-    """At or below the low threshold the price component is 100."""
+    """A computable component is not enough; the gate comes first.
+
+    Solar can be measured here — there is production, a grid reading and a
+    dishwasher to shift — but the home profile has no main fuse, so the
+    installation does not yet mean anything and there is no number.
+    """
+    hass.states.async_set("sensor.pv", "2000")
+    hass.states.async_set("sensor.grid", "-500")
+    config = _solar_home()
+    config.home.main_fuse_a = None
+
+    metrics = Calculator(hass).calculate(config)
+
+    assert metrics.score_components[SCORE_COMPONENT_SOLAR] == 75.0
+    assert metrics.energy_score is None
+    assert metrics.score_unavailable_reason == SCORE_UNAVAILABLE_INCOMPLETE_SETUP
+
+
+async def test_a_cheap_hour_is_not_scored_on_price(hass: HomeAssistant) -> None:
+    """At or below the low threshold there is nothing to avoid.
+
+    This used to be a free 100. Nobody can move it, so it is the mirror image
+    of the fixed contract's permanent 50 — a component that flatters instead of
+    measuring (SPEC.md §35.4c).
+    """
     hass.states.async_set("sensor.price", "0.10")
+    hass.states.async_set("sensor.grid", "1000")
     config = _config(
         contract_type=CONTRACT_TYPE_DYNAMIC,
         low_price_threshold_eur_kwh=0.15,
         high_price_threshold_eur_kwh=0.35,
     )
+    config.sources.append(_grid_meter())
+    config.sources.append(_price_source())
+
+    metrics = Calculator(hass).calculate(config)
+
+    assert SCORE_COMPONENT_PRICE not in metrics.score_components
+    assert metrics.energy_score is None
+    assert metrics.score_unavailable_reason == SCORE_UNAVAILABLE_NOTHING_RIGHT_NOW
+
+
+async def test_the_price_component_measures_what_is_drawn_while_expensive(
+    hass: HomeAssistant,
+) -> None:
+    """Price position times import share, not the price on its own.
+
+    0.35 of the way between 0.15 and 0.35 is the maximum, so the price position
+    is 1.0; drawing 2875 W of a 5750 W connection is half. 100 x (1 - 1 x 0.5)
+    = 50. The old definition scored this a flat 0 for the hour alone, whatever
+    the house was doing.
+    """
+    hass.states.async_set("sensor.price", "0.35")
+    hass.states.async_set("sensor.grid", "2875")
+    config = _config(
+        contract_type=CONTRACT_TYPE_DYNAMIC,
+        low_price_threshold_eur_kwh=0.15,
+        high_price_threshold_eur_kwh=0.35,
+    )
+    config.sources.append(_grid_meter())
+    config.sources.append(_price_source())
+
+    metrics = Calculator(hass).calculate(config)
+
+    assert metrics.score_components[SCORE_COMPONENT_PRICE] == 50.0
+
+
+async def test_two_identical_homes_are_told_apart_by_what_they_draw(
+    hass: HomeAssistant,
+) -> None:
+    """The sleeping house and the one with the dryer on score differently.
+
+    The exact failure the old price component had: it measured the market, so
+    both of these scored the same at the same moment (SPEC.md §35.4c).
+    """
+    config = _config(
+        contract_type=CONTRACT_TYPE_DYNAMIC,
+        low_price_threshold_eur_kwh=0.15,
+        high_price_threshold_eur_kwh=0.35,
+    )
+    config.sources.append(_grid_meter())
+    config.sources.append(_price_source())
+    hass.states.async_set("sensor.price", "0.35")
+
+    hass.states.async_set("sensor.grid", "100")
+    asleep = Calculator(hass).calculate(config)
+    hass.states.async_set("sensor.grid", "3000")
+    drying = Calculator(hass).calculate(config)
+
+    assert asleep.score_components[SCORE_COMPONENT_PRICE] > 95.0
+    assert drying.score_components[SCORE_COMPONENT_PRICE] < 50.0
+
+
+async def test_exporting_during_an_expensive_hour_is_full_marks(
+    hass: HomeAssistant,
+) -> None:
+    """Nothing drawn is nothing drawn at the high price, so the axis is clean."""
+    hass.states.async_set("sensor.price", "0.50")
+    hass.states.async_set("sensor.grid", "-1500")
+    config = _config(
+        contract_type=CONTRACT_TYPE_DYNAMIC,
+        low_price_threshold_eur_kwh=0.15,
+        high_price_threshold_eur_kwh=0.35,
+    )
+    config.sources.append(_grid_meter())
     config.sources.append(_price_source())
 
     metrics = Calculator(hass).calculate(config)
@@ -1502,118 +1599,219 @@ async def test_a_price_below_the_low_threshold_scores_full(
     assert metrics.score_components[SCORE_COMPONENT_PRICE] == 100.0
 
 
-async def test_a_price_above_the_high_threshold_scores_zero(
+async def test_panels_without_anything_movable_are_not_scored_on_solar(
     hass: HomeAssistant,
 ) -> None:
-    """At or above the high threshold the price component is 0."""
-    hass.states.async_set("sensor.price", "0.50")
+    """100% self-consumption is out of reach, so the axis is a discount.
+
+    A home with panels, no battery and no complete flexible appliance cannot
+    raise its self-consumption by any action at all (SPEC.md §35.4a).
+    """
+    hass.states.async_set("sensor.pv", "2000")
+    hass.states.async_set("sensor.grid", "-1500")
+    # The fixed price keeps the gate open, so this test is about the missing
+    # movable load and not about an incomplete installation.
+    config = _config(fixed_import_price_eur_kwh=0.30)
+    config.sources.append(_grid_meter())
+    config.sources.append(_source(SOURCE_TYPE_SOLAR, "sensor.pv"))
+
+    metrics = Calculator(hass).calculate(config)
+
+    assert metrics.data_quality.missing_items == []
+    assert SCORE_COMPONENT_SOLAR not in metrics.score_components
+    assert metrics.energy_score is None
+    assert metrics.score_unavailable_reason == SCORE_UNAVAILABLE_NOTHING_MOVABLE
+
+
+async def test_an_incomplete_appliance_does_not_switch_the_solar_axis_on(
+    hass: HomeAssistant,
+) -> None:
+    """A row with a name and a type is not something that can be advised on.
+
+    Without the energy per cycle there is no saving to name, so the coach can
+    say nothing concrete about this appliance — and an axis nobody can be
+    advised on fails the advice rule.
+    """
+    hass.states.async_set("sensor.pv", "2000")
+    hass.states.async_set("sensor.grid", "-1500")
+    config = _config()
+    config.sources.append(_grid_meter())
+    config.sources.append(_source(SOURCE_TYPE_SOLAR, "sensor.pv"))
+    config.devices.append(DeviceProfile(id="d1", device_type=DEVICE_TYPE_DISHWASHER))
+
+    metrics = Calculator(hass).calculate(config)
+
+    assert SCORE_COMPONENT_SOLAR not in metrics.score_components
+
+
+async def test_an_inflexible_appliance_does_not_switch_the_solar_axis_on(
+    hass: HomeAssistant,
+) -> None:
+    """A monitor-only device cannot be moved, so there is still nothing to shift."""
+    hass.states.async_set("sensor.pv", "2000")
+    hass.states.async_set("sensor.grid", "-1500")
+    config = _config()
+    config.sources.append(_grid_meter())
+    config.sources.append(_source(SOURCE_TYPE_SOLAR, "sensor.pv"))
+    config.devices.append(
+        DeviceProfile.from_dict(
+            {
+                "id": "d1",
+                "device_type": DEVICE_TYPE_GENERIC_MONITOR,
+                "nominal_power_w": 2000.0,
+                "energy_per_cycle_kwh": 1.2,
+            }
+        )
+    )
+
+    metrics = Calculator(hass).calculate(config)
+
+    assert SCORE_COMPONENT_SOLAR not in metrics.score_components
+
+
+async def test_a_battery_switches_the_solar_axis_on(hass: HomeAssistant) -> None:
+    """A battery moves energy without anybody touching anything.
+
+    The intended side effect (SPEC.md §35.4a): adding one turns the component
+    on, so the ceiling and the bar rise together. Same readings as the test
+    above, which scores nothing at all.
+    """
+    hass.states.async_set("sensor.pv", "2000")
+    hass.states.async_set("sensor.grid", "-1500")
+    config = _config()
+    config.sources.append(_grid_meter())
+    config.sources.append(_source(SOURCE_TYPE_SOLAR, "sensor.pv"))
+    config.sources.append(_source(SOURCE_TYPE_HOME_BATTERY, "sensor.accu"))
+
+    metrics = Calculator(hass).calculate(config)
+
+    assert metrics.score_components[SCORE_COMPONENT_SOLAR] == 25.0
+
+
+async def test_a_missing_time_window_does_not_block_the_solar_axis(
+    hass: HomeAssistant,
+) -> None:
+    """The boundary sits before the window, deliberately (SPEC.md §16).
+
+    A device without a window may run at any hour, so it is *more* available
+    for advice, not less. Counting the window here would punish the freer
+    appliance and would charge for the checklist's own time-window item twice —
+    which it still does, in the data quality, where it belongs.
+    """
+    hass.states.async_set("sensor.pv", "2000")
+    hass.states.async_set("sensor.grid", "-500")
+    config = _solar_home()
+
+    metrics = Calculator(hass).calculate(config)
+
+    assert metrics.score_components[SCORE_COMPONENT_SOLAR] == 75.0
+    assert COMPLETENESS_ITEM_TIME_WINDOWS in metrics.data_quality.missing_items
+
+
+async def test_a_home_without_a_variable_signal_never_gets_a_number(
+    hass: HomeAssistant,
+) -> None:
+    """A fixed contract and no panels: no moment is better than another.
+
+    Accepted consequence of the principle (SPEC.md §35.9). The tile explains
+    itself rather than showing a dash, and the coach keeps working.
+    """
+    hass.states.async_set("sensor.grid", "1500")
+    config = _config(contract_type=CONTRACT_TYPE_FIXED, fixed_import_price_eur_kwh=0.30)
+    config.sources.append(_grid_meter())
+
+    metrics = Calculator(hass).calculate(config)
+
+    assert metrics.data_quality.missing_items == []
+    assert metrics.energy_score is None
+    assert metrics.score_unavailable_reason == SCORE_UNAVAILABLE_NO_VARIABLE_SIGNAL
+
+
+# --- The advice rule (SPEC.md §35.1, regel 2) -------------------------------
+#
+# Following the coach may never lower the score. These tests take an advice the
+# coach can give, apply it to the readings, and compare the score before and
+# after. It is the falsifiable half of the principle, and it is what removed
+# `peak_component`: no re-anchoring of its slope could satisfy it.
+
+
+async def test_charging_when_the_coach_says_so_does_not_lower_the_score(
+    hass: HomeAssistant,
+) -> None:
+    """The 1x25 A case from SPEC.md §35.4b, which used to cost 10 to 16 points.
+
+    Price low, coach says "charge the car now". Plugging in takes the home from
+    400 W to 4100 W, which is 71% of a 5750 W connection. `peak_component`
+    scored that 100 -> 57 in the same minute the advice was given.
+
+    The load is still measured and still warns — it is only out of the score.
+    """
     config = _config(
         contract_type=CONTRACT_TYPE_DYNAMIC,
         low_price_threshold_eur_kwh=0.15,
         high_price_threshold_eur_kwh=0.35,
     )
+    config.sources.append(_grid_meter())
     config.sources.append(_price_source())
+    hass.states.async_set("sensor.price", "0.10")
 
-    metrics = Calculator(hass).calculate(config)
+    hass.states.async_set("sensor.grid", "400")
+    before = Calculator(hass).calculate(config)
+    hass.states.async_set("sensor.grid", "4100")
+    after = Calculator(hass).calculate(config)
 
-    assert metrics.score_components[SCORE_COMPONENT_PRICE] == 0.0
+    assert after.score_components == before.score_components
+    assert after.energy_score == before.energy_score
+    # The warning side is untouched: the load is still tracked and still rises.
+    assert after.grid_load_percent is not None
+    assert before.grid_load_percent is not None
+    assert after.grid_load_percent > before.grid_load_percent
 
 
-async def test_a_device_with_only_a_name_scores_no_flexibility_points(
+async def test_using_the_solar_surplus_raises_the_score(
     hass: HomeAssistant,
 ) -> None:
-    """Adding an empty row may not raise the score (SPEC.md §16).
+    """The coach's own advice, and the score has to agree with it.
 
-    Before this, "usable and flexible" was the whole test, and a row with
-    nothing but a name and a type satisfied it — so adding a blank appliance was
-    worth ten points. A meter that rewards having created something rather than
-    what the home can do is not measuring anything.
+    Producing 2000 W while exporting 1500 is 25% self-consumption. Starting the
+    dishwasher on that surplus leaves nothing going out, which is 100.
     """
-    config = _config()
-    config.devices.append(DeviceProfile(id="d1", device_type=DEVICE_TYPE_DISHWASHER))
+    config = _solar_home()
+    hass.states.async_set("sensor.pv", "2000")
 
-    metrics = Calculator(hass).calculate(config)
+    hass.states.async_set("sensor.grid", "-1500")
+    before = Calculator(hass).calculate(config)
+    hass.states.async_set("sensor.grid", "0")
+    after = Calculator(hass).calculate(config)
 
-    assert metrics.score_components[SCORE_COMPONENT_FLEXIBILITY] == 0.0
+    assert before.score_components[SCORE_COMPONENT_SOLAR] == 25.0
+    assert after.score_components[SCORE_COMPONENT_SOLAR] == 100.0
+    assert after.energy_score is not None
+    assert before.energy_score is not None
+    assert after.energy_score > before.energy_score
 
 
-async def test_half_a_device_scores_no_flexibility_points(
+async def test_waiting_out_an_expensive_hour_raises_the_score(
     hass: HomeAssistant,
 ) -> None:
-    """Either field on its own is still not something to advise about."""
-    config = _config()
-    config.devices.append(
-        DeviceProfile(
-            id="d1", device_type=DEVICE_TYPE_DISHWASHER, nominal_power_w=2000.0
-        )
+    """Advice to wait out an expensive hour has to move the number with it."""
+    config = _config(
+        contract_type=CONTRACT_TYPE_DYNAMIC,
+        low_price_threshold_eur_kwh=0.15,
+        high_price_threshold_eur_kwh=0.35,
     )
+    config.sources.append(_grid_meter())
+    config.sources.append(_price_source())
+    hass.states.async_set("sensor.price", "0.35")
 
-    metrics = Calculator(hass).calculate(config)
+    hass.states.async_set("sensor.grid", "3000")
+    running = Calculator(hass).calculate(config)
+    hass.states.async_set("sensor.grid", "300")
+    waited = Calculator(hass).calculate(config)
 
-    # Without the energy per cycle there is no saving to name, so advice about
-    # this appliance would say nothing concrete.
-    assert metrics.score_components[SCORE_COMPONENT_FLEXIBILITY] == 0.0
-
-
-async def test_a_complete_flexible_device_scores_the_flexibility_points(
-    hass: HomeAssistant,
-) -> None:
-    """Power and energy per cycle are what make it count."""
-    config = _config()
-    config.devices.append(
-        DeviceProfile(
-            id="d1",
-            device_type=DEVICE_TYPE_DISHWASHER,
-            nominal_power_w=2000.0,
-            energy_per_cycle_kwh=1.2,
-        )
-    )
-
-    metrics = Calculator(hass).calculate(config)
-
-    assert metrics.score_components[SCORE_COMPONENT_FLEXIBILITY] == 100.0
-
-
-async def test_a_missing_time_window_does_not_cost_flexibility_points(
-    hass: HomeAssistant,
-) -> None:
-    """The boundary sits before the window, deliberately (SPEC.md §16).
-
-    A device without a window may run at any hour, so it is *more* available for
-    advice, not less. Counting the window here would punish the freer appliance
-    and would charge for the checklist's own time-window item twice — which it
-    still does, in the data quality, where it belongs.
-    """
-    config = _config()
-    config.devices.append(
-        DeviceProfile(
-            id="d1",
-            device_type=DEVICE_TYPE_DISHWASHER,
-            nominal_power_w=2000.0,
-            energy_per_cycle_kwh=1.2,
-        )
-    )
-
-    metrics = Calculator(hass).calculate(config)
-
-    assert metrics.score_components[SCORE_COMPONENT_FLEXIBILITY] == 100.0
-    assert COMPLETENESS_ITEM_TIME_WINDOWS in metrics.data_quality.missing_items
-
-
-async def test_only_inflexible_devices_score_no_flexibility_points(
-    hass: HomeAssistant,
-) -> None:
-    """A monitor-only device cannot be moved, so it earns nothing here."""
-    config = _config()
-    config.devices.append(
-        DeviceProfile.from_dict(
-            {"id": "d1", "device_type": DEVICE_TYPE_GENERIC_MONITOR}
-        )
-    )
-
-    metrics = Calculator(hass).calculate(config)
-
-    assert metrics.score_components[SCORE_COMPONENT_FLEXIBILITY] == 0.0
+    assert waited.energy_score is not None
+    assert running.energy_score is not None
+    assert waited.energy_score > running.energy_score
 
 
 async def test_metrics_serialise_for_the_frontend(hass: HomeAssistant) -> None:
@@ -1628,6 +1826,7 @@ async def test_metrics_serialise_for_the_frontend(hass: HomeAssistant) -> None:
     assert restored.grid_power_w == metrics.grid_power_w
     assert restored.energy_score == metrics.energy_score
     assert restored.score_components == metrics.score_components
+    assert restored.score_unavailable_reason == metrics.score_unavailable_reason
     assert restored.data_quality.score == metrics.data_quality.score
 
 
