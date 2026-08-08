@@ -1068,6 +1068,11 @@ Resultaat: `score`, `completed_items[]`, `missing_items[]`, `not_applicable_item
 
 ### Energiescore (0–100)
 
+> **Vervangen door §35 (ontwerp, nog niet gebouwd).** Onderstaande beschrijving is wat er
+> vandaag draait. §35 herontwerpt de score rond het principe *benut / benutbaar*, laat
+> `peak_component` en `flexibility_component` vervallen en maakt `data_quality` een poort
+> in plaats van een term. Lees §35 vóór je hier iets aan verandert.
+
 **De score is een meting van dít moment, geen rapportcijfer over de woning.** Het
 paneel zegt dat ook: "op dit moment", niet "van 100". 's Nachts vallen componenten
 weg omdat er niets te meten valt, niet omdat er iets mis is.
@@ -2604,3 +2609,349 @@ kan. Dat is adviesvorming en geen datamodel, en het kan zonder migratie later.
   geeft zij in fase 2 nog gewoon `duration_minutes` terug;
 - een bestaande configuratie laadt ongewijzigd door — beide velden zijn nullable, dus er
   is geen migratie.
+
+## 35. De energiescore: benut / benutbaar
+
+**Status: ontwerp, nog niet gebouwd.** Deze sectie vervangt "Energiescore (0–100)" uit §16
+in zijn geheel. Zij is bewust vóór de code geschreven, omdat de twee vorige herzieningen
+juist daaraan zijn bezweken: er werd per ronde één component gerepareerd tegen een principe
+dat nergens stond, en de ronde daarna vond het volgende component dat er niet aan voldeed.
+
+- **0.1.3** — `solar_component` mat het overschot en heette zelfverbruik. Hij beloonde
+  precies wat de coach afraadt.
+- **0.1.2 en 0.1.5** — de voorwaardelijke weging, omdat een vast contract en een woning
+  zonder apparaten permanent punten kwijt waren.
+
+Beide reparaties waren juist. Geen van beide was af, want geen van beide kon zeggen wat de
+score eigenlijk meet.
+
+### 35.1 Het principe
+
+> **benut / benutbaar, waarbij benutbaar volgt uit wat deze woning heeft.**
+
+Een woning zonder stuurbare apparaten scoort hoger dan een woning die ze wél heeft maar
+niet benut. De teller is wat er daadwerkelijk benut is; de noemer is wat er op dit moment,
+in deze woning, te benutten viel. Beide kanten volgen uit de configuratie die de
+installateur heeft vastgelegd en uit de meting van dit moment — nergens uit een aanname
+over hoe een gemiddelde woning eruitziet.
+
+### 35.2 De wegvalregel, aangescherpt
+
+De regel stond er al impliciet en werd twee keer verkeerd toegepast. Expliciet:
+
+> **Een component valt weg wanneer de woning hem in deze situatie niet kan beïnvloeden —
+> niet wanneer het signaal toevallig nul is.**
+
+Het onderscheid zit in de vraag "kán hier iets aan veranderen", niet in de vraag "is de
+waarde nu nul". Een woning die om drie uur 's nachts niets teruglevert heeft geen slechte
+zonnebenutting; er valt niets te benutten. Een woning die om drie uur 's middags de helft
+van haar opwek exporteert terwijl de vaatwasser leeg klaarstaat, heeft dat wél.
+
+Dit heeft één gevolg dat expliciet besloten is (Sven, 2026-08-07): **de score levert
+regelmatig geen getal op.** Dat is de bedoeling.
+
+> Een tegel die zegt "op dit moment niets te meten" is eerlijker dan een cijfer dat iets
+> beweert wat niet waar is.
+
+Dat getal heeft nu al twee keer iets verkeerds beweerd, en dat kost meer dan een lege tegel.
+
+### 35.3 Wat de score níét is
+
+Dit onderscheid is onderweg drie keer bijgesteld, en staat daarom hier vast voordat iemand
+het opnieuw verkeerd leest.
+
+| De score is niet | Waarom niet, en waar het wél staat |
+|---|---|
+| **een zuinigheidsmeter** | Hij zegt nooit "gebruik minder". De oven om 18:00 aanzetten is geen fout; eten koken op het duurste moment van de dag is wat een oven doet. De score gaat over het *moment* waarop verplaatsbaar verbruik valt, niet over de hoeveelheid. |
+| **een oordeel over de installatie** | Hoe compleet de installateur heeft ingevuld is de **datakwaliteit**, die als eigen percentage naast de score staat. Dat is administratie van DomotiTech, geen prestatie van de bewoner. |
+| **een oordeel over wat de woning bezit** | Geen panelen, geen slimme apparaten, een vast contract: het zijn keuzes, geen tekortkomingen. Ze verlagen de score niet — ze verkleinen wat er te meten valt. |
+| **een rapportcijfer over de woning** | Het is een meting van dít moment. Het paneel zegt "op dit moment", niet "van 100". |
+| **een maat voor aansturing** | De score meet mogelijkheid, niet controle. Of de integratie iets aanstuurt hoort er niet in; dat is de aansturingsrelease en die verandert hier niets aan. |
+
+### 35.4 De adviesregel: opvolgen mag nooit kosten
+
+Uit het principe volgt één toets die scherper is dan de wegvalregel, en die de rest van
+deze sectie draagt:
+
+> **Volgt de bewoner het advies van de coach op, dan mag de score daar niet door dalen.**
+
+De coach en de score kijken naar dezelfde meting op hetzelfde moment. Wijzen ze
+verschillende kanten op, dan is er per definitie één van de twee fout — en het is niet de
+coach, want die is het product. Een component die zakt wanneer de bewoner doet wat er
+gevraagd wordt, is geen strenge meting maar een verkeerde.
+
+Dit is schuurgeval (b) uit §35.6, omgezet in een regel waar elke component langs kan.
+
+### 35.5 De audit: vier van de vijf voldoen niet
+
+**Dit is een herontwerp en geen bijstelling.** Van de vijf componenten die vandaag draaien
+voldoet er één aan het principe.
+
+| Component | Gewicht | Meet feitelijk | Volgt het principe |
+|---|---|---|---|
+| `data_quality_component` | 0,30 | hoe compleet de installateur invulde | nee |
+| `peak_component` | 0,25 | absolute belasting t.o.v. de aansluiting | nee |
+| `solar_component` | 0,20 | zelfverbruik / opwek | **ja** |
+| `price_component` | 0,15 | of de markt nu goedkoop is | nee |
+| `flexibility_component` | 0,10 | of er één compleet flexibel apparaat bestáát | nee |
+
+Vier van de vijf meten een eigenschap van de woning of van het weer, en niet iets wat de
+bewoner op dit moment beïnvloedt. Samen dragen ze 0,80 van het gewicht.
+
+### 35.6 De drie schuurgevallen
+
+Alle drie zijn ze in de praktijk gevonden, niet bedacht.
+
+#### (a) Panelen zonder verplaatsbare last
+
+Een woning met panelen, zonder batterij en zonder één compleet flexibel apparaat, kan haar
+zelfverbruik niet verhogen op het moment dat de zon schijnt. 100% zelfverbruik is voor die
+woning fysiek onbereikbaar. De as is dan een korting en geen meting, en dat is in strijd
+met de wegvalregel.
+
+**Voorstel: `solar_component` geldt alleen wanneer er iets te verplaatsen ís** — minimaal
+één bruikbaar, flexibel én compleet apparaat, of een thuisbatterij.
+
+Het bijeffect is precies wat er gewenst is: een batterij toevoegen zet de component áán.
+Het plafond en de lat gaan tegelijk omhoog, wat de eerlijke beschrijving is van wat een
+batterij met een woning doet.
+
+#### (b) Het opvolgen van het advies verlaagt de score
+
+**Het ernstigste geval.** Concreet, op een 1×25 A-aansluiting (5750 W):
+
+```text
+prijs laag, coach zegt "laad nu de auto"
+vóór:   400 W  →  7% belasting  →  peak_component 100
+ná:    4100 W  → 71% belasting  →  peak_component  57
+```
+
+Dat kost 10 tot 16 punten in dezelfde minuut waarin de coach het aanraadt.
+
+De oorzaak is dat `peak_component` een hoofdruimtemaat is met een knik op een vaste 50%.
+Daardoor scoort een grotere aansluiting beter bij identiek gedrag, en daardoor kost normaal
+gebruik punten op een kleine aansluiting.
+
+**Voorstel: `peak_component` verdwijnt uit de score.** Dat is meer dan eerder voorgesteld —
+daar stond het ankeren van de helling op `peak_warning_percent`, zodat de aftrek pas begint
+waar de installateur heeft vastgelegd dat het in dít huis een probleem wordt. Drie redenen
+waarom dat niet ver genoeg gaat:
+
+1. **Het lost (b) niet op, het verkleint het.** Op een kleine aansluiting kan een
+   werkelijk geadviseerde laadsessie nog steeds over `peak_warning_percent` komen. Dan
+   daalt de score nog altijd op het moment dat de bewoner doet wat er gevraagd wordt, en
+   dat is precies wat §35.4 verbiedt.
+2. **Onder de drempel is er niets te verbeteren.** De component staat dan op 100 en geen
+   enkele handeling verandert dat. Dat is dezelfde vorm als de permanente 50 van het vaste
+   contract, alleen aan de andere kant van de as — een component die niemand kan bewegen.
+   Zie de toets in §35.7.
+3. **Het is dubbeltelling.** Het piekrisico heeft al een eigen binaire sensor, een eigen
+   waarschuwing en een eigen adviesregel (§16). Het hoeft niet óók nog in het cijfer van de
+   bewoner te zitten om gezien te worden.
+
+Het piekrisico verdwijnt dus niet uit het product — `peak_risk`, de waarschuwing, de
+hysterese en de twee reason codes blijven ongewijzigd. Alleen het cijfer laat het los.
+
+#### (c) De prijscomponent meet het weer
+
+Elke dynamische woning scoort om 18:00 nul en om 03:00 honderd, ongeacht gedrag. Twee
+identieke huizen, één slapend en één met de droger aan, scoren op dat moment gelijk. De
+component meet de markt, niet de bewoner.
+
+**Voorstel**, zonder enige prognose en volledig uit de bestaande snapshot:
+
+```text
+prijspositie = clamp((prijs − laag) / (hoog − laag), 0, 1)
+importdeel   = clamp(max(netvermogen, 0) / max_grid_power_w, 0, 1)
+component    = 100 × (1 − prijspositie × importdeel)
+```
+
+Nu meet hij wat de woning doet op het moment dat het duur is. De slapende woning scoort
+hoog, de woning met de droger aan laag, en teruglevering bij een hoge prijs telt als volle
+benutting — want dat is het ook.
+
+**De component geldt niet wanneer de prijs op of onder de lage drempel staat.** Dan is
+`prijspositie` nul en is er niets te vermijden; de component zou 100 zijn zonder dat iemand
+iets kan doen, en dat is de wegvalregel. Op de drempel zelf is hij precies 100, dus het
+in- en uitstappen gaat zonder sprong in de component.
+
+**De as is bewust asymmetrisch.** Duur verbruik vermijden is gedrag; goedkoop verbruik
+opzoeken is dat alleen wanneer je iets te draaien hád. Een woning die om 03:00 slaapt
+straffen omdat zij goedkope stroom niet benut, zou de score laten eisen dat er een droger
+aangaat. Daarom meet deze as alleen de vermijdkant.
+
+### 35.7 De toets: wat kan de bewoner concreet doen?
+
+Dit is de scherpste toets op het principe, en hij staat hier als staande regel:
+
+> **Is er geen concreet antwoord op "wat kan de bewoner nú doen om deze component te
+> verhogen", dan hoort de component niet in de score.**
+
+| Component | Wat de bewoner concreet kan doen | Blijft |
+|---|---|---|
+| `solar_component` | De vaatwasser of de wasmachine nu aanzetten, de auto nu laden, de batterij laten laden. Elke kWh die nu zelf gebruikt wordt in plaats van teruggeleverd, verhoogt hem direct. | **ja** |
+| `price_component` | Wachten met de droger tot de prijs zakt; nu minder van het net afnemen. Zichtbaar binnen één update. | **ja** |
+| `peak_component` | Boven de drempel: iets zwaars uitzetten. Daaronder — dus vrijwel altijd — niets; hij staat op 100 en beweegt niet. En boven de drempel botst hij met het advies. | nee, §35.6(b) |
+| `flexibility_component` | Niets. Hij meet of er een compleet apparaatprofiel bestáát, en dat profiel invullen is het werk van de installateur. Voor de bewoner is het een vast getal. | nee, §35.8 |
+| `data_quality_component` | Niets. Het is per definitie de administratie van DomotiTech. | nee, wordt poort (§35.9) |
+
+De twee componenten die overblijven zijn precies de twee waarop de coach ook daadwerkelijk
+advies geeft. Dat is geen toeval maar het gevolg van §35.4: een score die met het advies
+meebeweegt, kan alleen bestaan uit assen waarover advies gegeven wordt.
+
+### 35.8 `flexibility_component` vervalt
+
+Twee onafhankelijke redenen, elk voldoende:
+
+- **Hij meet bestaan in plaats van gebruik.** Of er één compleet flexibel apparaat is,
+  verandert niet door iets wat de bewoner vandaag doet.
+- **Hij telt dubbel.** Hij gebruikt hetzelfde predicaat als een checklistitem van 15 punten
+  in de datakwaliteit, dus een complete vaatwasser levert twee keer punten op.
+
+Wat hij wilde uitdrukken — "deze woning kan iets verplaatsen" — komt terug op de plek waar
+het thuishoort: als voorwaarde van `solar_component` (§35.6a). Daar is het geen punt maar
+een poortje, en dat is wat het altijd was.
+
+### 35.9 `data_quality` wordt een poort, geen term
+
+De datakwaliteit blijft bestaan, blijft berekend worden en blijft als eigen percentage in
+het paneel staan. Zij weegt alleen niet meer mee in de energiescore.
+
+**De poort is geen percentage maar een voorwaarde**, zodat er geen drempelgetal verzonnen
+hoeft te worden:
+
+> De energiescore is `None` zolang niet alle drie de **onvoorwaardelijke** checklistitems
+> compleet zijn: de verplichte woninggegevens, minimaal één bruikbare netbron, en
+> prijsinformatie.
+
+Dat zijn exact de drie items waarvan §16 al zegt dat de integratie zonder hen niets meet.
+Het paneel noemt in dat geval welke van de drie ontbreekt, in plaats van een cijfer te
+tonen.
+
+Dit bewaart de garantie waarvoor `data_quality_component` in de score zat — **een verse
+installatie kan geen 100 halen** — en wel op de enige manier die klopt: zij haalt niets.
+Tegelijk verdwijnt de installateursadministratie uit het cijfer van de bewoner, waar zij
+bovendien al als eigen percentage naast stond.
+
+### 35.10 De nieuwe samenstelling
+
+```text
+poort:  de drie onvoorwaardelijke checklistitems compleet   → anders None
+```
+
+| Component | Gewicht | Geldt wanneer |
+|---|---|---|
+| `solar_component` | 0,50 | er is opwek op dit moment, het netvermogen is leesbaar, én de woning heeft iets te verplaatsen |
+| `price_component` | 0,50 | dynamisch contract, prijs en beide drempels bekend, `max_grid_power_w` bekend, én de prijs staat boven de lage drempel |
+
+De rekenregel blijft ongewijzigd — het aandeel van wat van toepassing is:
+
+```text
+energiescore = round(100 × Σ(gewicht × component) / Σ(gewicht))   over de geldende componenten
+             = None                                              wanneer geen component geldt
+```
+
+**Waarom gelijke gewichten.** Er is geen grond om ze te splitsen: beide beantwoorden
+dezelfde vraag over hetzelfde moment, namelijk of verplaatsbaar verbruik op het juiste
+moment viel. Bovendien doet de verhouding er alleen toe wanneer beide gelden — zon én een
+hoge prijs — en juist dan wijzen ze dezelfde kant op, want het overschot zelf gebruiken is
+niet importeren. Een verzonnen verhouding zou hier niets toevoegen behalve een getal dat
+niemand kan verantwoorden.
+
+**Een ontbrekende invoer geeft geen 0 meer, maar laat de component wegvallen.** Dit
+draait de bestaande regel uit §16 om ("onbekend blijft wél 0: het signaal bestaat en is
+niet geconfigureerd"), en dat is opzet. Onder het nieuwe principe is een niet
+geconfigureerd signaal het werk van de installateur, en de bewoner kan er niets aan doen —
+dus is het een aftrek van precies het soort dat deze herziening opruimt. Het ontbreken
+wordt gemeld waar het thuishoort: in de datakwaliteit, en bij de drie onvoorwaardelijke
+items in de poort.
+
+`not_applicable_components[]` blijft bestaan en blijft door het paneel genoemd worden. Een
+score uit één component in plaats van twee ziet er anders uit alsof er iets is overgeslagen.
+
+### 35.11 De consequentie die expliciet besloten moet worden
+
+Een woning met een **vast contract en zonder zonnepanelen** heeft onder dit ontwerp geen
+enkele geldende component, op elk moment van de dag. Haar energiescore is permanent `None`.
+
+Dat is geen bug maar het principe tot het einde toe doorgevoerd: zo'n woning heeft geen
+variabel signaal om iets naar toe te verplaatsen, dus er ís geen benutting om te meten. De
+coach heeft er om dezelfde reden weinig te zeggen, op het piekrisico na.
+
+**Voorstel:** het paneel toont voor die woning geen streepje maar één zin die uitlegt
+waarom er geen cijfer is, met de datakwaliteit ernaast als het getal dat er wél toe doet.
+Een lege tegel met een streepje leest als een storing; een zin leest als een antwoord.
+
+Dit hoort expliciet besloten te worden vóór de bouw, omdat het een productkeuze is en geen
+rekenkeuze: het betekent dat de energiescore een functie is van woningen met een variabel
+signaal, en dat DomotiTech dat bij verkoop weet.
+
+### 35.12 Bekende beperking: de zaagtand
+
+Een momentmeting waarvan componenten in en uit stappen, springt. Onder het huidige ontwerp
+gaat dezelfde woning van 72 overdag naar 91 's nachts zonder dat iemand iets doet —
+negentien punten heen en terug per dag — omdat een component laten wegvallen de score naar
+het gemiddelde van de rest trekt.
+
+Het herontwerp maakt dit **kleiner maar niet weg**, en verandert wel de aard ervan:
+
+- De nachtsprong verdwijnt als sprong. Vallen beide componenten weg, dan komt er geen ander
+  getal maar géén getal. Dat is de eerlijke vorm.
+- De resterende sprong zit tussen twee momenten waarop verschillende componenten gelden.
+  Concreet, een dynamische woning met panelen en een vaatwasser: 's middags `solar` 30 en
+  `price` niet van toepassing → 30; 's avonds `solar` weg en `price` 90 → 90. Zestig punten
+  verschil op één dag, zonder dat de bewoner iets fout deed.
+
+**De echte oplossing is een score over een venster in plaats van over een moment**, en dat
+is de historie-ronde (bevinding 14, ronde D). Hier benoemd en geparkeerd, niet half
+opgelost: het venster vraagt om opslag van een reeks en om een eigen ontwerp, en het
+halverwege inbouwen zou precies het soort losse reparatie zijn waar deze sectie tegen
+geschreven is.
+
+### 35.13 Gevolgen elders
+
+- **§16, "Energiescore (0–100)"** — vervangen door deze sectie. De gewichtentabel met vijf
+  componenten vervalt.
+- **`const.py`** — `SCORE_COMPONENT_DATA_QUALITY`, `SCORE_COMPONENT_PEAK`,
+  `SCORE_COMPONENT_FLEXIBILITY` en `PEAK_COMPONENT_FULL_BELOW_PERCENT` vervallen;
+  `SCORE_COMPONENT_WEIGHTS` houdt twee sleutels.
+- **`engine/completeness.py`** — een nieuw predicaat `has_movable_load(config)`, naast
+  `is_complete_device_profile` en de gereed-vensterpredicaten, zodat de score, de checklist
+  en het paneel niet uit elkaar kunnen lopen. Dezelfde afspraak als §34.4.
+- **`engine/calculator.py`** — `_peak_component` en `_flexibility_component` verdwijnen;
+  `_grid_load_percent` en `_peak_risk` blijven ongewijzigd, want de waarschuwing blijft.
+- **De sensor `energy_score`** — wordt vaker `unknown`. Dat is zichtbaar in de
+  langetermijnstatistieken als een gat in de reeks, en dat hoort in de README onder
+  Limitations: een gemiddelde over een dag is voor deze sensor niet zinvol.
+- **Het paneel** — de tegel krijgt de tekst voor "op dit moment niets te meten", noemt
+  welke componenten niet van toepassing zijn en waarom, en toont bij een gesloten poort
+  welke van de drie onvoorwaardelijke items ontbreekt. De teksten staan in de
+  frontendbestanden, niet in `translations/` (§26).
+- **README** — de beschrijving van de score, en de twee beperkingen uit §35.11 en §35.12.
+
+### 35.14 Wat deze ronde niet raakt
+
+- **De datakwaliteit zelf.** Zelfde items, zelfde gewichten, zelfde berekening. Alleen haar
+  rol in de energiescore verandert.
+- **Het piekrisico.** `peak_risk`, de hysterese, de waarschuwing en de twee reason codes
+  blijven exact zoals ze zijn.
+- **De adviesregels.** De coach verandert niet. Deze sectie maakt de score consistent met
+  het advies, niet andersom.
+- **Prognose.** Alles komt uit de bestaande snapshot van dit moment.
+
+### 35.15 Klaar wanneer
+
+- geen enkele configuratiehandeling van de installateur verhoogt of verlaagt de
+  energiescore, en een test bewijst dat voor de datakwaliteit en voor het toevoegen van een
+  apparaat;
+- het opvolgen van elk advies dat de coach kan geven, verhoogt de score of laat hem gelijk
+  — nooit lager. Een test per adviesregel;
+- een woning met panelen zonder verplaatsbare last krijgt geen `solar_component`, en het
+  toevoegen van een batterij zet hem aan;
+- een dynamische woning bij een lage prijs krijgt geen `price_component`; bij een hoge
+  prijs zakt hij zichtbaar wanneer het importvermogen stijgt;
+- een woning die één van de drie onvoorwaardelijke items mist, krijgt `None` en het paneel
+  noemt welk item;
+- een woning met een vast contract en zonder panelen krijgt `None` met de uitleg uit
+  §35.11, en niet een streepje;
+- de zaagtand is niet opgelost en staat als beperking in de README.
