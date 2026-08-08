@@ -140,7 +140,7 @@ describe('notices and the banner', () => {
     );
 
     const notices = [...panel.shadowRoot.querySelectorAll('.notice')];
-    assert.equal(notices.length, 6);
+    assert.equal(notices.length, 7);
 
     for (const node of notices.filter(isVisible)) {
       assert.notEqual(
@@ -324,6 +324,86 @@ describe('empty and populated configurations', () => {
   // SPEC.md §16 and the 0.4.1 decision: the surplus figure no longer carries a
   // confidence grade. The one level that meant something became this sentence,
   // which names the cause and the fix instead of grading the customer's data.
+  it('puts the home consumption above the grid power', async () => {
+    // SPEC.md §36.5: the grid power is a consequence of consumption minus
+    // production, so it used to sit above its own causes.
+    const panel = await mountPanel(
+      fakeHass({ coach: sampleCoach({ metrics: { home_consumption_w: 600 } }) }),
+    );
+
+    const labels = [...panel.shadowRoot.querySelectorAll('.stat-row .stat-label')]
+      .map((node) => node.textContent);
+
+    assert.ok(labels.indexOf('Thuisverbruik') >= 0, 'expected a Thuisverbruik row');
+    assert.ok(labels.indexOf('Thuisverbruik') < labels.indexOf('Netvermogen'));
+  });
+
+  it('explains an unreadable inverter instead of leaving the row blank', async () => {
+    const panel = await mountPanel(
+      fakeHass({
+        coach: sampleCoach({
+          metrics: {
+            home_consumption_w: null,
+            home_consumption_unavailable_reason: 'solar_unreadable',
+          },
+        }),
+      }),
+    );
+
+    const texts = [...panel.shadowRoot.querySelectorAll('.notice')]
+      .filter(isVisible)
+      .map((node) => node.querySelector('.notice-text').textContent);
+
+    assert.ok(texts.some((text) => text.includes('omvormer')));
+  });
+
+  it('says nothing extra when the grid reading is what is missing', async () => {
+    // The checklist already reports the grid source; a second line about it
+    // would say the same thing twice on one card.
+    const panel = await mountPanel(
+      fakeHass({
+        coach: sampleCoach({
+          metrics: {
+            home_consumption_w: null,
+            home_consumption_unavailable_reason: 'no_grid_reading',
+          },
+        }),
+      }),
+    );
+
+    const texts = [...panel.shadowRoot.querySelectorAll('.notice')]
+      .filter(isVisible)
+      .map((node) => node.querySelector('.notice-text').textContent);
+
+    assert.ok(!texts.some((text) => text.includes('omvormer')));
+    assert.ok(!texts.some((text) => text.includes('thuisbatterij')));
+  });
+
+  it('uses one battery sentence for both figures it touches', async () => {
+    // Two near-identical warnings on one card is worse than one naming both
+    // (SPEC.md §36.6).
+    const panel = await mountPanel(
+      fakeHass({
+        coach: sampleCoach({
+          metrics: {
+            home_consumption_w: null,
+            home_consumption_unavailable_reason: 'battery_unreadable',
+            solar_surplus_may_be_overstated: true,
+          },
+        }),
+      }),
+    );
+
+    const texts = [...panel.shadowRoot.querySelectorAll('.notice')]
+      .filter(isVisible)
+      .map((node) => node.querySelector('.notice-text').textContent);
+    const battery = texts.filter((text) => text.includes('thuisbatterij'));
+
+    assert.equal(battery.length, 1);
+    assert.match(battery[0], /thuisverbruik is niet te berekenen/);
+    assert.match(battery[0], /zonneoverschot kan te hoog zijn/);
+  });
+
   it('warns that an unreadable battery may inflate the surplus', async () => {
     const panel = await mountPanel(
       fakeHass({

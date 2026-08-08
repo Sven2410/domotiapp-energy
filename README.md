@@ -17,6 +17,10 @@ The user interface is in Dutch; the code, entity IDs and this README are in Engl
 
 - **Reads what you link.** A grid meter, solar production, a price source, a home
   battery, general consumption — each one an entity you pick, with a unit you state.
+- **Derives what your home is actually using.** Grid power is a *net* figure, not
+  consumption: a home exporting 2400 W while producing 3000 is using 600. That figure is
+  now on screen, from `grid + production − battery`, and it is absent rather than guessed
+  when a configured source cannot be read.
 - **Normalises it.** Grid power to "positive means import", battery power to "positive
   means charging", a bare market price to an all-in price. One convention per quantity,
   applied once, on reading.
@@ -114,7 +118,7 @@ does not own is shown greyed out, with a line saying who manages it.
 
 | Tab | What it is for |
 |---|---|
-| Overzicht | Status, data quality, energy score, current grid power, solar production and surplus, percentage of the configured maximum, the current all-in price, the primary advice and any warnings. |
+| Overzicht | Status, data quality, energy score, **home consumption**, current grid power, solar production and surplus, percentage of the configured maximum, the current all-in price, the primary advice and any warnings. |
 | Energiecoach | The primary advice, further advice with their reasons and measurements, what data is still missing, and the five fixed questions. |
 | Apparaten | Add, edit and remove appliances, with their power, energy per cycle, ready window, behaviour flags and optional entity links. A resident sets how each appliance should behave; the rest is the installer's. |
 | Mijn voorkeuren | Quiet hours, what weighs in the advice, the savings threshold and what is displayed. Entirely the resident's. |
@@ -193,13 +197,14 @@ precondition.
 
 ## Generated entity IDs
 
-These six are fixed. They do **not** change with the language your Home Assistant runs
+These seven are fixed. They do **not** change with the language your Home Assistant runs
 in, so dashboards, automations and long-term statistics built on them keep working:
 
 ```text
 sensor.domotiapp_energy_score
 sensor.domotiapp_energy_data_quality
 sensor.domotiapp_energy_grid_power
+sensor.domotiapp_energy_home_consumption
 sensor.domotiapp_energy_solar_surplus
 sensor.domotiapp_energy_current_advice
 binary_sensor.domotiapp_energy_peak_risk

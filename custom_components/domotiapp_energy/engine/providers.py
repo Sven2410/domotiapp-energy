@@ -89,8 +89,9 @@ _MEASUREMENT_LABELS: dict[str, str] = {
 # makes that checkable (finding 6).
 UNREADABLE_BATTERY_SENTENCE = (
     "Het vermogen van je thuisbatterij kan niet uitgelezen worden. Een batterij "
-    "die laadt verbruikt precies het overschot dat hier staat, dus dat getal kan "
-    "te hoog zijn. Koppel de vermogenssensor van de batterij om dit op te lossen."
+    "die laadt of ontlaadt verschuift wat er van het net komt, dus het "
+    "thuisverbruik is niet te berekenen en het zonneoverschot kan te hoog zijn. "
+    "Koppel de vermogenssensor van de batterij om dit op te lossen."
 )
 
 _COMPONENT_LABELS: dict[str, str] = {

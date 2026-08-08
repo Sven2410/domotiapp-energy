@@ -36,6 +36,9 @@
       "grid_power": {
         "name": "Netvermogen"
       },
+      "home_consumption": {
+        "name": "Thuisverbruik"
+      },
       "solar_surplus": {
         "name": "Zonneoverschot"
       },

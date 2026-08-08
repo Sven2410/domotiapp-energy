@@ -16,7 +16,7 @@ from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 
 DOMAIN: Final = "domotiapp_energy"
 INTEGRATION_NAME: Final = "DomotiApp Energy"
-VERSION: Final = "0.4.2"
+VERSION: Final = "0.5.0"
 
 MANUFACTURER: Final = "DomotiApp"
 DEVICE_MODEL: Final = "Energy Coach"
@@ -729,6 +729,24 @@ SCORE_UNAVAILABLE_NO_SUN_FIXED_TARIFF: Final = "no_sun_fixed_tariff"
 SCORE_UNAVAILABLE_CHEAP_PRICE: Final = "cheap_price"
 SCORE_UNAVAILABLE_PRICE_THRESHOLDS_MISSING: Final = "price_thresholds_missing"
 
+# Why there is no home consumption figure (SPEC.md §36.3). One code, one whole
+# sentence, the same contract the tile texts follow.
+#
+# `battery_unreadable` deliberately withholds the number where the solar
+# surplus keeps it: a charging battery shifts the surplus but is attributed
+# *entirely* to the household here, so 3.5 kW would show where the house uses
+# 500 W. Show a figure with a caveat while it stays usable; show nothing once
+# it does not. See SPEC.md §36.3 before levelling the two.
+HOME_CONSUMPTION_NO_GRID_READING: Final = "no_grid_reading"
+HOME_CONSUMPTION_SOLAR_UNREADABLE: Final = "solar_unreadable"
+HOME_CONSUMPTION_BATTERY_UNREADABLE: Final = "battery_unreadable"
+
+HOME_CONSUMPTION_UNAVAILABLE_REASONS: Final = (
+    HOME_CONSUMPTION_NO_GRID_READING,
+    HOME_CONSUMPTION_SOLAR_UNREADABLE,
+    HOME_CONSUMPTION_BATTERY_UNREADABLE,
+)
+
 SCORE_UNAVAILABLE_REASONS: Final = (
     SCORE_UNAVAILABLE_INCOMPLETE_SETUP,
     SCORE_UNAVAILABLE_NO_VARIABLE_SIGNAL,
@@ -793,6 +811,9 @@ ENTITY_KEY_GRID_POWER: Final = "grid_power"
 ENTITY_KEY_SOLAR_SURPLUS: Final = "solar_surplus"
 ENTITY_KEY_CURRENT_ADVICE: Final = "current_advice"
 ENTITY_KEY_PEAK_RISK: Final = "peak_risk"
+# Added in 0.5.0. A seventh entity is an addition, not a change: the six above
+# keep their ids, so no dashboard and no statistics series breaks (rule 11).
+ENTITY_KEY_HOME_CONSUMPTION: Final = "home_consumption"
 
 ENTITY_KEYS: Final[tuple[str, ...]] = (
     ENTITY_KEY_ENERGY_SCORE,
@@ -801,6 +822,7 @@ ENTITY_KEYS: Final[tuple[str, ...]] = (
     ENTITY_KEY_SOLAR_SURPLUS,
     ENTITY_KEY_CURRENT_ADVICE,
     ENTITY_KEY_PEAK_RISK,
+    ENTITY_KEY_HOME_CONSUMPTION,
 )
 
 # The English entity name each object id is built from, whatever language the
@@ -819,6 +841,7 @@ ENTITY_OBJECT_ID_NAMES: Final[dict[str, str]] = {
     ENTITY_KEY_SOLAR_SURPLUS: "Solar surplus",
     ENTITY_KEY_CURRENT_ADVICE: "Current advice",
     ENTITY_KEY_PEAK_RISK: "Peak risk",
+    ENTITY_KEY_HOME_CONSUMPTION: "Home consumption",
 }
 
 # Home Assistant rejects a state longer than 255 characters.

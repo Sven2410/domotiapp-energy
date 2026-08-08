@@ -37,6 +37,7 @@ from .const import (
     ENTITY_KEY_DATA_QUALITY,
     ENTITY_KEY_ENERGY_SCORE,
     ENTITY_KEY_GRID_POWER,
+    ENTITY_KEY_HOME_CONSUMPTION,
     ENTITY_KEY_SOLAR_SURPLUS,
     MAX_ADVICE_ITEMS_IN_ATTRIBUTES,
     MAX_STATE_LENGTH,
@@ -74,6 +75,16 @@ SENSOR_DESCRIPTIONS: tuple[DomotiAppEnergySensorDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=0,
         value_fn=lambda result: result.metrics.grid_power_w,
+    ),
+    DomotiAppEnergySensorDescription(
+        key=ENTITY_KEY_HOME_CONSUMPTION,
+        device_class=SensorDeviceClass.POWER,
+        native_unit_of_measurement=UnitOfPower.WATT,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=0,
+        # `unknown` rather than 0 when the balance cannot be closed: a zero
+        # would claim the house is using nothing (SPEC.md §36.3).
+        value_fn=lambda result: result.metrics.home_consumption_w,
     ),
     DomotiAppEnergySensorDescription(
         key=ENTITY_KEY_SOLAR_SURPLUS,

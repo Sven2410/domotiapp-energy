@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.5.0
+
+### Added
+
+- **Thuisverbruik, the first figure a resident looks for, and the one that was missing.**
+  Grid power is a *net* figure: a home exporting 2400 W while producing 3000 is using 600,
+  and nothing on screen said so. It now sits at the top of Actuele situatie, above the grid
+  power — which is a consequence of consumption minus production and had been standing
+  above its own causes. SPEC.md §36.
+
+  Derived from `netvermogen + zonneproductie − batterijvermogen`, which for the common
+  installation (P1 meter and inverter) is the first two terms. A measured
+  `general_consumption` source wins from the derivation.
+
+- **`sensor.domotiapp_energy_home_consumption`**, a seventh entity. The six existing ids
+  are untouched, so no dashboard and no statistics series breaks. English and fixed like
+  the rest, guarded in `en` and `nl`.
+
+### Changed
+
+- **The unreadable-battery sentence now covers both figures it touches.** The same blind
+  spot affects the solar surplus and the home consumption, and two near-identical warnings
+  on one card is worse than one that names both.
+
+### Known limitations
+
+- **A configured source that cannot be read withholds the figure rather than guessing.**
+  Panels the engine cannot read mean the consumption is unknown, and the panel says which
+  source to check. A home *without* panels is a different case: production is a true zero
+  there and the figure appears normally.
+
+- **An unreadable home battery withholds it too, unlike the solar surplus**, which keeps
+  its number with a caveat. Deliberate: a charging battery shifts the surplus, but is
+  attributed to the household in full here — 3.5 kW on screen where the house uses 500 W.
+  The reasoning is in SPEC.md §36.3; do not level the two without reading it.
+
 ## 0.4.2
 
 ### Fixed

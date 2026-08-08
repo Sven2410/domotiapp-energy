@@ -60,6 +60,7 @@ from .const import (
     DEVICE_ENTITY_BINDING_KEYS,
     DEVICE_TYPES,
     EXCLUSIVE_SOURCE_TYPES,
+    HOME_CONSUMPTION_UNAVAILABLE_REASONS,
     INFLEXIBLE_BY_DEFAULT_DEVICE_TYPES,
     INITIAL_REVISION,
     INVALID_REASON_UNKNOWN_TYPE,
@@ -1408,6 +1409,14 @@ class EnergyMetrics:
     # shows solar production next to the surplus (SPEC.md §8), and the panel
     # reads the metrics, never the snapshot.
     solar_power_w: float | None = None
+    # What the house itself is using, from the energy balance (SPEC.md §36).
+    # The first figure a resident looks for, and the only one on the card that
+    # answers "what is my home doing" rather than "what flows where".
+    home_consumption_w: float | None = None
+    # Why there is none, when there is none. Set exactly when
+    # home_consumption_w is None, so the panel prints a sentence instead of
+    # leaving a bare "Niet beschikbaar" that reads like a fault.
+    home_consumption_unavailable_reason: str | None = None
     solar_surplus_w: float | None = None
     solar_surplus_confidence: str = CONFIDENCE_LOW
     grid_load_percent: float | None = None
@@ -1471,6 +1480,10 @@ class EnergyMetrics:
             "timestamp": self.timestamp.isoformat(),
             "grid_power_w": self.grid_power_w,
             "solar_power_w": self.solar_power_w,
+            "home_consumption_w": self.home_consumption_w,
+            "home_consumption_unavailable_reason": (
+                self.home_consumption_unavailable_reason
+            ),
             "solar_surplus_w": self.solar_surplus_w,
             "solar_surplus_confidence": self.solar_surplus_confidence,
             # Derived, not stored: the panel gets the conclusion rather than
@@ -1499,6 +1512,12 @@ class EnergyMetrics:
             timestamp=_as_datetime(data.get("timestamp")) or dt_util.utcnow(),
             grid_power_w=_as_optional_float(data.get("grid_power_w")),
             solar_power_w=_as_optional_float(data.get("solar_power_w")),
+            home_consumption_w=_as_optional_float(data.get("home_consumption_w")),
+            home_consumption_unavailable_reason=_as_choice(
+                data.get("home_consumption_unavailable_reason"),
+                HOME_CONSUMPTION_UNAVAILABLE_REASONS,
+                None,
+            ),
             solar_surplus_w=_as_optional_float(data.get("solar_surplus_w")),
             solar_surplus_confidence=_as_choice(
                 data.get("solar_surplus_confidence"), CONFIDENCE_LEVELS, CONFIDENCE_LOW

@@ -149,6 +149,14 @@ export const overviewTab = {
 
     // --- Measurements -------------------------------------------------------
     const powerCard = card('Actuele situatie');
+    // First, and above the grid power on purpose: this is the only row that
+    // answers "what is my home doing", and the grid power is a *consequence*
+    // of it minus production, so it used to sit above its own causes. It also
+    // needs no footnote, where the signed grid figure does (SPEC.md §36.5).
+    const homeConsumptionRow = statRow('Thuisverbruik', {
+      unit: ' W',
+      empty: EMPTY_NOT_AVAILABLE,
+    });
     const gridPowerRow = statRow('Netvermogen', {
       unit: ' W',
       empty: EMPTY_NOT_CONFIGURED,
@@ -175,15 +183,18 @@ export const overviewTab = {
     // The one thing the old confidence label was about, next to the figure it
     // qualifies rather than as a grade on it.
     const surplusNotice = notice('mdi:battery-alert-variant-outline');
+    const consumptionNotice = notice('mdi:solar-power-variant-outline');
     // Kept from the removed Configuratie card: an installation with nothing
     // linked has to say what to do, and this is where the empty readings are.
     const setupNotice = notice('mdi:information-outline');
     powerCard.body.append(
+      homeConsumptionRow.element,
       gridPowerRow.element,
       solarPowerRow.element,
       surplusRow.element,
       loadRow.element,
       priceRow.element,
+      consumptionNotice.element,
       surplusNotice.element,
       peakNotice.element,
       setupNotice.element,
@@ -346,6 +357,7 @@ export const overviewTab = {
         { tone: missingCount > 0 ? 'warning' : 'success' },
       );
 
+      homeConsumptionRow.set(formatNumber(metrics.home_consumption_w));
       gridPowerRow.set(formatNumber(metrics.grid_power_w), {
         hint:
           metrics.grid_power_w < 0
@@ -361,15 +373,33 @@ export const overviewTab = {
       loadRow.set(formatNumber(metrics.grid_load_percent, { decimals: 1 }));
       updatePrice(config, metrics);
 
-      // Cause and fix, not a grade. The same sentence is in
+      // Cause and fix, not a grade. One sentence covers both figures the
+      // blind spot touches: two near-identical warnings on one card is worse
+      // than one that names both (SPEC.md §36.6). The same sentence is in
       // `engine/providers.py` (UNREADABLE_BATTERY_SENTENCE) for the coach's
       // answer to "welke gegevens ontbreken nog?"; the two must stay in step.
+      const batteryUnreadable =
+        metrics.solar_surplus_may_be_overstated ||
+        metrics.home_consumption_unavailable_reason === 'battery_unreadable';
       surplusNotice.set(
-        metrics.solar_surplus_may_be_overstated
+        batteryUnreadable
           ? 'Het vermogen van je thuisbatterij kan niet uitgelezen worden. Een ' +
-              'batterij die laadt verbruikt precies het overschot dat hier ' +
-              'staat, dus dat getal kan te hoog zijn. Koppel de ' +
-              'vermogenssensor van de batterij om dit op te lossen.'
+              'batterij die laadt of ontlaadt verschuift wat er van het net ' +
+              'komt, dus het thuisverbruik is niet te berekenen en het ' +
+              'zonneoverschot kan te hoog zijn. Koppel de vermogenssensor van ' +
+              'de batterij om dit op te lossen.'
+          : '',
+        { tone: 'warning' },
+      );
+
+      // Only the inverter case gets its own sentence. A missing grid reading
+      // leaves the row empty and is already reported by the checklist, so a
+      // second line about it would say what the card says twice.
+      consumptionNotice.set(
+        metrics.home_consumption_unavailable_reason === 'solar_unreadable'
+          ? 'Je omvormer levert op dit moment geen waarde, dus het ' +
+              'thuisverbruik is niet te berekenen. Controleer de zonnebron ' +
+              'bij Energiebronnen.'
           : '',
         { tone: 'warning' },
       );

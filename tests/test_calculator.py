@@ -28,6 +28,9 @@ from custom_components.domotiapp_energy.const import (
     CONTRACT_TYPE_FIXED,
     DEVICE_TYPE_DISHWASHER,
     DEVICE_TYPE_GENERIC_MONITOR,
+    HOME_CONSUMPTION_BATTERY_UNREADABLE,
+    HOME_CONSUMPTION_NO_GRID_READING,
+    HOME_CONSUMPTION_SOLAR_UNREADABLE,
     METER_MODE_SEPARATE,
     METER_MODE_SINGLE_SIGNED,
     POSITIVE_MEANS_EXPORT,
@@ -1281,6 +1284,217 @@ def test_quarantined_rows_are_counted_as_invalid_items() -> None:
     result = evaluate_completeness(config, EnergySnapshot(invalid_source_ids=["s2"]))
 
     assert result.invalid_items == ["s1", "s2", "d1"]
+
+
+# --- Home consumption (SPEC.md §36) -----------------------------------------
+#
+# Rows are situations again, not outcomes: what does this home have, what can
+# be read, and what belongs on the tile because of it.
+
+
+def _consumption_home(
+    hass: HomeAssistant,
+    *,
+    grid: float | None = 500.0,
+    solar: float | None = None,
+    battery: float | None = None,
+    panels: bool = False,
+    has_battery: bool = False,
+) -> StoredConfiguration:
+    """Build a home whose readable terms are exactly the ones named.
+
+    `panels` and `has_battery` are the *rows*; `solar` and `battery` are the
+    readings. Separating them is the whole point of §36.3: a row that is absent
+    means the home does not have the thing, a row that reads nothing means we
+    do not know.
+    """
+    config = _config(fixed_import_price_eur_kwh=0.30)
+    if grid is not None:
+        hass.states.async_set("sensor.grid", str(grid))
+        config.sources.append(_grid_meter())
+    if panels:
+        config.sources.append(_source(SOURCE_TYPE_SOLAR, "sensor.pv"))
+        if solar is not None:
+            hass.states.async_set("sensor.pv", str(solar))
+    if has_battery:
+        config.sources.append(_source(SOURCE_TYPE_HOME_BATTERY, "sensor.accu"))
+        if battery is not None:
+            hass.states.async_set("sensor.accu", str(battery))
+    return config
+
+
+async def test_home_consumption_is_grid_plus_production(hass: HomeAssistant) -> None:
+    """The common installation: a P1 meter and an inverter, nothing else.
+
+    Exporting 2400 W while producing 3000 leaves 600 W for the house — the
+    figure that was nowhere on screen, and the one a resident looks for first.
+    """
+    config = _consumption_home(hass, grid=-2400.0, solar=3000.0, panels=True)
+
+    metrics = Calculator(hass).calculate(config)
+
+    assert metrics.home_consumption_w == 600.0
+    assert metrics.home_consumption_unavailable_reason is None
+
+
+async def test_a_charging_battery_is_not_household_consumption(
+    hass: HomeAssistant,
+) -> None:
+    """It comes off the balance: the house is not the one using it."""
+    config = _consumption_home(
+        hass, grid=1000.0, solar=2000.0, battery=1500.0, panels=True, has_battery=True
+    )
+
+    metrics = Calculator(hass).calculate(config)
+
+    assert metrics.home_consumption_w == 1500.0
+
+
+async def test_a_discharging_battery_feeds_the_house(hass: HomeAssistant) -> None:
+    """Negative battery power adds, through the sign convention of §16."""
+    config = _consumption_home(
+        hass, grid=200.0, solar=0.0, battery=-800.0, panels=True, has_battery=True
+    )
+
+    metrics = Calculator(hass).calculate(config)
+
+    assert metrics.home_consumption_w == 1000.0
+
+
+async def test_a_home_without_panels_needs_no_production_reading(
+    hass: HomeAssistant,
+) -> None:
+    """No solar row is a statement, not a gap: production is a true zero."""
+    config = _consumption_home(hass, grid=750.0)
+
+    metrics = Calculator(hass).calculate(config)
+
+    assert metrics.home_consumption_w == 750.0
+
+
+async def test_an_unreadable_inverter_yields_no_figure(hass: HomeAssistant) -> None:
+    """Panels we cannot read means we do not know the consumption.
+
+    Treating the missing term as zero would report 500 W of household use for a
+    home that might be producing three kilowatts.
+    """
+    config = _consumption_home(hass, grid=500.0, panels=True, solar=None)
+
+    metrics = Calculator(hass).calculate(config)
+
+    assert metrics.home_consumption_w is None
+    assert (
+        metrics.home_consumption_unavailable_reason == HOME_CONSUMPTION_SOLAR_UNREADABLE
+    )
+
+
+async def test_an_unreadable_battery_yields_no_figure(hass: HomeAssistant) -> None:
+    """Deliberately unlike the solar surplus, which keeps its number.
+
+    A charging battery is attributed to the household in full here, so the
+    figure would be wrong rather than merely uncertain (SPEC.md §36.3). Do not
+    level this with the surplus without reading that section.
+    """
+    config = _consumption_home(hass, grid=3500.0, has_battery=True, battery=None)
+
+    metrics = Calculator(hass).calculate(config)
+
+    assert metrics.home_consumption_w is None
+    assert (
+        metrics.home_consumption_unavailable_reason
+        == HOME_CONSUMPTION_BATTERY_UNREADABLE
+    )
+
+
+async def test_no_grid_reading_yields_no_figure(hass: HomeAssistant) -> None:
+    """Without the meter the balance has no anchor."""
+    config = _consumption_home(hass, grid=None)
+
+    metrics = Calculator(hass).calculate(config)
+
+    assert metrics.home_consumption_w is None
+    assert (
+        metrics.home_consumption_unavailable_reason == HOME_CONSUMPTION_NO_GRID_READING
+    )
+
+
+async def test_a_measured_source_wins_from_the_derivation(hass: HomeAssistant) -> None:
+    """A measurement beats the difference of two other measurements.
+
+    The balance here would give 500 + 2000 = 2500; the meter says 900, and the
+    installer linking it was the statement that this is the truth.
+    """
+    hass.states.async_set("sensor.house", "900")
+    config = _consumption_home(hass, grid=500.0, solar=2000.0, panels=True)
+    config.sources.append(_source(SOURCE_TYPE_GENERAL_CONSUMPTION, "sensor.house"))
+
+    metrics = Calculator(hass).calculate(config)
+
+    assert metrics.home_consumption_w == 900.0
+
+
+async def test_the_measured_source_answers_without_a_grid_meter(
+    hass: HomeAssistant,
+) -> None:
+    """It is not part of the balance, so it needs none of the other terms."""
+    hass.states.async_set("sensor.house", "1200")
+    config = _consumption_home(hass, grid=None)
+    config.sources.append(_source(SOURCE_TYPE_GENERAL_CONSUMPTION, "sensor.house"))
+
+    metrics = Calculator(hass).calculate(config)
+
+    assert metrics.home_consumption_w == 1200.0
+    assert metrics.home_consumption_unavailable_reason is None
+
+
+async def test_sensor_noise_never_shows_a_negative_consumption(
+    hass: HomeAssistant,
+) -> None:
+    """Two sensors sampling a moment apart, and a physical floor.
+
+    Producing 40 W more than the meter reports leaving is arithmetic, not a
+    house that consumes negative power.
+    """
+    config = _consumption_home(hass, grid=-3040.0, solar=3000.0, panels=True)
+
+    metrics = Calculator(hass).calculate(config)
+
+    assert metrics.home_consumption_w == 0.0
+    # A clean zero rather than -0.0, which formats as "-0" in the panel.
+    assert math.copysign(1.0, metrics.home_consumption_w) > 0
+
+
+async def test_home_consumption_survives_the_trip_to_the_panel(
+    hass: HomeAssistant,
+) -> None:
+    """Both the figure and the reason reach the frontend."""
+    config = _consumption_home(hass, grid=500.0, panels=True, solar=None)
+
+    metrics = Calculator(hass).calculate(config)
+    restored = type(metrics).from_dict(metrics.to_dict())
+
+    assert restored.home_consumption_w == metrics.home_consumption_w
+    assert (
+        restored.home_consumption_unavailable_reason
+        == metrics.home_consumption_unavailable_reason
+    )
+
+
+async def test_home_consumption_changes_neither_score_nor_checklist(
+    hass: HomeAssistant,
+) -> None:
+    """It is a measurement, not an axis, and it asks for no configuration.
+
+    SPEC.md §36.8. Without this the round could quietly move the number a
+    customer sees every day.
+    """
+    config = _consumption_home(hass, grid=-2400.0, solar=3000.0, panels=True)
+
+    metrics = Calculator(hass).calculate(config)
+
+    assert metrics.home_consumption_w == 600.0
+    assert metrics.data_quality.score == 100
+    assert SCORE_COMPONENT_SOLAR not in metrics.score_components
 
 
 # --- Energy score -----------------------------------------------------------

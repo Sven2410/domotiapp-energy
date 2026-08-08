@@ -41,6 +41,7 @@ from custom_components.domotiapp_energy.const import (
     ENTITY_KEY_DATA_QUALITY,
     ENTITY_KEY_ENERGY_SCORE,
     ENTITY_KEY_GRID_POWER,
+    ENTITY_KEY_HOME_CONSUMPTION,
     ENTITY_KEY_PEAK_RISK,
     ENTITY_KEY_SOLAR_SURPLUS,
     ENTITY_OBJECT_ID_NAMES,
@@ -69,11 +70,14 @@ from custom_components.domotiapp_energy.models import (
 
 GRID_ENTITY = "sensor.netmeter"
 
-# The six ids SPEC.md §19 fixes. Written out in full rather than built from a
-# constant: the point of the test is that the derivation produces exactly these.
+# The ids SPEC.md §19 and §36.7 fix. Written out in full rather than built from
+# a constant: the point of the test is that the derivation produces exactly
+# these. Home consumption was added in 0.5.0 — an addition, so the six above it
+# are untouched and no dashboard breaks.
 SENSOR_SCORE = "sensor.domotiapp_energy_score"
 SENSOR_DATA_QUALITY = "sensor.domotiapp_energy_data_quality"
 SENSOR_GRID_POWER = "sensor.domotiapp_energy_grid_power"
+SENSOR_HOME_CONSUMPTION = "sensor.domotiapp_energy_home_consumption"
 SENSOR_SOLAR_SURPLUS = "sensor.domotiapp_energy_solar_surplus"
 SENSOR_CURRENT_ADVICE = "sensor.domotiapp_energy_current_advice"
 BINARY_SENSOR_PEAK_RISK = "binary_sensor.domotiapp_energy_peak_risk"
@@ -146,10 +150,10 @@ async def entry_fixture(
     return entry
 
 
-async def test_the_six_entity_ids_are_built_from_the_pinned_english_names(
+async def test_the_seven_entity_ids_are_built_from_the_pinned_english_names(
     hass: HomeAssistant, entry: MockConfigEntry
 ) -> None:
-    """The six ids of SPEC.md §19 exist, and the registry shows how.
+    """The seven ids of SPEC.md §19 and §36.7 exist, and the registry shows how.
 
     ``object_id_base`` is the name Home Assistant prefixed with the device name
     to reach the id. It has to be the pinned English name: that is what stops a
@@ -163,6 +167,7 @@ async def test_the_six_entity_ids_are_built_from_the_pinned_english_names(
         SENSOR_SCORE: ENTITY_KEY_ENERGY_SCORE,
         SENSOR_DATA_QUALITY: ENTITY_KEY_DATA_QUALITY,
         SENSOR_GRID_POWER: ENTITY_KEY_GRID_POWER,
+        SENSOR_HOME_CONSUMPTION: ENTITY_KEY_HOME_CONSUMPTION,
         SENSOR_SOLAR_SURPLUS: ENTITY_KEY_SOLAR_SURPLUS,
         SENSOR_CURRENT_ADVICE: ENTITY_KEY_CURRENT_ADVICE,
         BINARY_SENSOR_PEAK_RISK: ENTITY_KEY_PEAK_RISK,
@@ -207,7 +212,7 @@ async def test_the_pinned_names_match_the_english_translations(
 async def test_entity_ids_do_not_follow_the_user_language(
     hass: HomeAssistant, hass_storage: dict[str, Any], language: str
 ) -> None:
-    """The six ids are the same whatever language the customer runs.
+    """The ids are the same whatever language the customer runs.
 
     Home Assistant derives the object id from the *native* entity name for
     every language in ``homeassistant.generated.languages.NATIVE_ENTITY_IDS``,
@@ -239,6 +244,9 @@ async def test_entity_ids_do_not_follow_the_user_language(
         SENSOR_SCORE,
         SENSOR_DATA_QUALITY,
         SENSOR_GRID_POWER,
+        # Dutch for this one is "Thuisverbruik", so an unpinned object id would
+        # land on sensor.domotiapp_energy_thuisverbruik.
+        SENSOR_HOME_CONSUMPTION,
         SENSOR_SOLAR_SURPLUS,
         SENSOR_CURRENT_ADVICE,
         BINARY_SENSOR_PEAK_RISK,
