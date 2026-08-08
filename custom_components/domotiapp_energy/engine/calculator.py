@@ -126,6 +126,7 @@ class Calculator:
                 SOURCE_TYPE_GENERAL_CONSUMPTION
             ),
             battery_power_w=readings.values.get(SOURCE_TYPE_HOME_BATTERY),
+            device_power_w=self.read_device_power(config),
             current_price_eur_kwh=readings.values.get(SOURCE_TYPE_CURRENT_PRICE),
             market_price_eur_kwh=readings.market_price,
             feed_in_price_eur_kwh=readings.values.get(SOURCE_TYPE_FEED_IN_PRICE),
@@ -168,10 +169,16 @@ class Calculator:
         return powers
 
     def calculate(self, config: StoredConfiguration) -> EnergyMetrics:
-        """Read the sources and derive everything the advisor needs."""
-        metrics = self.derive_metrics(config, self.build_snapshot(config))
-        metrics.device_power_w = self.read_device_power(config)
-        return metrics
+        """Read the sources and derive everything the advisor needs.
+
+        **The coordinator does not call this**; it calls `build_snapshot` and
+        `derive_metrics` separately, because the hysteresis latch sits between
+        the two. So anything attached here instead of inside those two never
+        runs in the product — which is exactly what happened to the device
+        power on its first attempt, with a green suite behind it because every
+        test used this method.
+        """
+        return self.derive_metrics(config, self.build_snapshot(config))
 
     def derive_metrics(
         self, config: StoredConfiguration, snapshot: EnergySnapshot
@@ -201,6 +208,7 @@ class Calculator:
             timestamp=snapshot.timestamp,
             grid_power_w=snapshot.grid_power_w,
             solar_power_w=snapshot.solar_power_w,
+            device_power_w=dict(snapshot.device_power_w),
             home_consumption_w=consumption,
             home_consumption_unavailable_reason=consumption_reason,
             solar_surplus_w=surplus,

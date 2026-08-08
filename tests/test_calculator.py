@@ -1603,6 +1603,26 @@ async def test_the_running_count_counts_only_what_draws_power(
     assert metrics.running_device_count == 2
 
 
+async def test_device_power_reaches_the_path_the_coordinator_uses(
+    hass: HomeAssistant,
+) -> None:
+    """The production path is `build_snapshot` + `derive_metrics`, not `calculate`.
+
+    The first version attached the reading in `calculate()`, which the
+    coordinator never calls — the latch sits between the two halves. Every test
+    here used `calculate`, so 588 of them passed while the panel showed nothing
+    at all. Found by driving the real instance.
+    """
+    config = _config()
+    config.devices.append(_linked_device(hass, "sensor.vaatwasser", UNIT_W, "1150"))
+
+    calculator = Calculator(hass)
+    snapshot = calculator.build_snapshot(config)
+    metrics = calculator.derive_metrics(config, snapshot)
+
+    assert metrics.device_power_w == {"d1": 1150.0}
+
+
 async def test_device_power_survives_the_trip_to_the_panel(
     hass: HomeAssistant,
 ) -> None:

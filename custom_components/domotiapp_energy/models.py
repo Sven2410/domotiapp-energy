@@ -1294,6 +1294,10 @@ class EnergySnapshot:
     solar_power_w: float | None = None
     household_consumption_w: float | None = None
     battery_power_w: float | None = None
+    # Live power per appliance id. A reading, so it belongs in the snapshot
+    # with the others rather than being attached afterwards — see the note on
+    # `Calculator.calculate` for the bug that taught us the difference.
+    device_power_w: dict[str, float] = field(default_factory=dict)
     # Always the all-in price: the calculator normalises on reading (SPEC.md
     # §16), so nothing downstream has to know what the source reported.
     current_price_eur_kwh: float | None = None
