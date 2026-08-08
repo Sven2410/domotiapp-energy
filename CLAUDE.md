@@ -127,6 +127,33 @@ committen — dan is de ronde pas klaar na deze stappen:
 4. **Merge naar `main`** en verwijder de branch.
 5. Meld de merge, de CI-uitslag en de nieuwe stand van `main`.
 
+#### Controleer vóór elke push of je branch nog bestaat
+
+**Een `git push` zonder te kijken waar je staat kan op `main` landen.** Dat is één keer
+gebeurd, op 2026-08-08: Sven merget een PR terwijl er nog gewerkt wordt, de branch
+verdwijnt van de remote, en de volgende commit komt op `main` in plaats van in een PR.
+De code was groen, maar hij had haar niet gezien voordat zij er stond — precies wat de
+PR-route moet voorkomen.
+
+Dus vóór elke push:
+
+```powershell
+git branch --show-current    # sta ik nog op mijn branch, of op main?
+```
+
+Sta je op `main` terwijl je aan een ronde werkt, maak de branch dan opnieuw aan en zet je
+commits daarop:
+
+```powershell
+git checkout -b <ronde-naam>
+```
+
+**Push nooit rechtstreeks naar `main`** om een verdwenen branch heen te werken. Merk je
+het pas achteraf, meld het dan meteen en laat de keuze om het recht te zetten aan Sven —
+`main` herschrijven is zijn beslissing, niet die van jou. Hij meldt het voortaan wanneer
+hij merget terwijl jij bezig bent, maar de controle blijft aan jouw kant: hij weet niet
+waar jij in je ronde zit.
+
 Laat nooit een afgeronde ronde als losse branch achter. Een branch die blijft
 hangen betekent dat `main` en "wat af is" uit elkaar lopen, en dan klopt de
 aanname waarop de productie-installatie rust niet meer.
