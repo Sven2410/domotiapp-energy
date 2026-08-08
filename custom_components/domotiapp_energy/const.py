@@ -16,7 +16,7 @@ from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 
 DOMAIN: Final = "domotiapp_energy"
 INTEGRATION_NAME: Final = "DomotiApp Energy"
-VERSION: Final = "0.4.1"
+VERSION: Final = "0.4.2"
 
 MANUFACTURER: Final = "DomotiApp"
 DEVICE_MODEL: Final = "Energy Coach"
@@ -711,16 +711,32 @@ SCORE_COMPONENT_WEIGHTS: Final[dict[str, float]] = {
 # Only the first is a shortcoming: the installation is incomplete and somebody
 # can close it. The other three say there is nothing to optimise, which is a
 # true and useful answer.
+# **One code carries exactly one sentence**, which is why `nothing_right_now`
+# was split into four in 0.4.2. It was a catch-all whose sentence claimed two
+# measurements — "geen opwek" and "geen duur moment" — that it could not both
+# guarantee, so it told a home with a fixed tariff about expensive hours it
+# never has, and a home in the sun that its panels were producing nothing.
+#
+# Composing that sentence from fragments would have been the other way out. It
+# is not taken: every variant here is written as a whole and selected by a
+# situation, so each can be read, reviewed and rewritten as the sentence a
+# customer actually sees (Sven, 2026-08-08).
 SCORE_UNAVAILABLE_INCOMPLETE_SETUP: Final = "incomplete_setup"
 SCORE_UNAVAILABLE_NO_VARIABLE_SIGNAL: Final = "no_variable_signal"
 SCORE_UNAVAILABLE_NOTHING_MOVABLE: Final = "nothing_movable"
-SCORE_UNAVAILABLE_NOTHING_RIGHT_NOW: Final = "nothing_right_now"
+SCORE_UNAVAILABLE_NO_SUN_CHEAP_PRICE: Final = "no_sun_cheap_price"
+SCORE_UNAVAILABLE_NO_SUN_FIXED_TARIFF: Final = "no_sun_fixed_tariff"
+SCORE_UNAVAILABLE_CHEAP_PRICE: Final = "cheap_price"
+SCORE_UNAVAILABLE_PRICE_THRESHOLDS_MISSING: Final = "price_thresholds_missing"
 
 SCORE_UNAVAILABLE_REASONS: Final = (
     SCORE_UNAVAILABLE_INCOMPLETE_SETUP,
     SCORE_UNAVAILABLE_NO_VARIABLE_SIGNAL,
     SCORE_UNAVAILABLE_NOTHING_MOVABLE,
-    SCORE_UNAVAILABLE_NOTHING_RIGHT_NOW,
+    SCORE_UNAVAILABLE_NO_SUN_CHEAP_PRICE,
+    SCORE_UNAVAILABLE_NO_SUN_FIXED_TARIFF,
+    SCORE_UNAVAILABLE_CHEAP_PRICE,
+    SCORE_UNAVAILABLE_PRICE_THRESHOLDS_MISSING,
 )
 
 SCORE_MIN: Final = 0

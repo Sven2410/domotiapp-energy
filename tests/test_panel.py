@@ -31,10 +31,12 @@ from custom_components.domotiapp_energy.const import (
     PANEL_MODULE_URL,
     PANEL_TITLE,
     PANEL_URL_PATH,
+    SCORE_UNAVAILABLE_REASONS,
     VERSION,
 )
 from custom_components.domotiapp_energy.engine.providers import (
     _ITEM_LABELS,
+    _SCORE_UNAVAILABLE_SENTENCES,
 )
 from custom_components.domotiapp_energy.engine.reason_codes import REASON_CODES
 from custom_components.domotiapp_energy.panel import async_register_panel
@@ -197,6 +199,38 @@ def _label_keys(table_name: str) -> set[str]:
         for line in body.splitlines()
         if ":" in line and not line.strip().startswith("//")
     }
+
+
+def test_every_no_score_reason_has_a_sentence_on_both_sides() -> None:
+    """A reason with no sentence is a tile that goes silent, or a raw code.
+
+    The seven sentences exist twice by design — the tile is panel text, the
+    coach answer is composed in the backend — and nothing but this test holds
+    the two together. It deliberately compares **keys and not wording**: the
+    two are allowed to phrase the same situation differently, but neither may
+    be missing a situation the other knows about.
+
+    That is the realistic drift. Splitting `nothing_right_now` into four added
+    three codes at once; forgetting one of them on either side would have shown
+    up here rather than on a customer's screen.
+    """
+    source = (
+        Path(__file__).parent.parent
+        / "custom_components"
+        / DOMAIN
+        / FRONTEND_DIR_NAME
+        / "tabs"
+        / "overview.js"
+    ).read_text(encoding="utf-8")
+    body = source.split("const SCORE_UNAVAILABLE_TEXT = {", 1)[1].split("\n};", 1)[0]
+    panel_keys = {
+        line.split(":", 1)[0].strip()
+        for line in body.splitlines()
+        if line.startswith("  ") and line.rstrip().endswith(": {")
+    }
+
+    assert panel_keys == set(SCORE_UNAVAILABLE_REASONS)
+    assert set(_SCORE_UNAVAILABLE_SENTENCES) == set(SCORE_UNAVAILABLE_REASONS)
 
 
 def test_every_reason_code_has_a_dutch_label() -> None:

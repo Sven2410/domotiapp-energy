@@ -46,10 +46,13 @@ from custom_components.domotiapp_energy.const import (
     SCORE_COMPONENT_PRICE,
     SCORE_COMPONENT_SOLAR,
     SCORE_COMPONENT_WEIGHTS,
+    SCORE_UNAVAILABLE_CHEAP_PRICE,
     SCORE_UNAVAILABLE_INCOMPLETE_SETUP,
+    SCORE_UNAVAILABLE_NO_SUN_CHEAP_PRICE,
+    SCORE_UNAVAILABLE_NO_SUN_FIXED_TARIFF,
     SCORE_UNAVAILABLE_NO_VARIABLE_SIGNAL,
     SCORE_UNAVAILABLE_NOTHING_MOVABLE,
-    SCORE_UNAVAILABLE_NOTHING_RIGHT_NOW,
+    SCORE_UNAVAILABLE_PRICE_THRESHOLDS_MISSING,
     SOLAR_COMPONENT_MIN_PRODUCTION_W,
     SOURCE_TYPE_CURRENT_PRICE,
     SOURCE_TYPE_FEED_IN_PRICE,
@@ -170,7 +173,7 @@ class Calculator:
             score_unavailable_reason=(
                 None
                 if score is not None
-                else _score_unavailable_reason(config, data_quality)
+                else _score_unavailable_reason(config, snapshot, data_quality)
             ),
             reason_codes=reason_codes,
         )
@@ -494,6 +497,32 @@ def not_applicable_components(components: dict[str, float]) -> list[str]:
     return [key for key in SCORE_COMPONENT_WEIGHTS if key not in components]
 
 
+def _production_now(snapshot: EnergySnapshot) -> float | None:
+    """Return what the panels are producing, or None when that is nothing.
+
+    **The single definition of "the sun is doing something right now."** It was
+    inline in `_solar_component` until 0.4.2, when the tile's reason selector
+    turned out to be answering the same question from the configuration
+    instead — it checked whether a solar *row* existed, and told a customer at
+    nine in the evening that there was production he was failing to use.
+
+    That is the drop-out rule from SPEC.md §35.1 read backwards: a row is what
+    the home owns, this is what it is doing. Two callers, one function, so the
+    sentence and the component cannot disagree about which of the two they mean.
+    """
+    production = snapshot.solar_power_w
+    if production is None or production <= SOLAR_COMPONENT_MIN_PRODUCTION_W:
+        return None
+    return production
+
+
+def _price_thresholds_usable(config: StoredConfiguration) -> bool:
+    """Return whether the low and high price thresholds can be compared."""
+    low = config.home.low_price_threshold_eur_kwh
+    high = config.home.high_price_threshold_eur_kwh
+    return low is not None and high is not None and high > low
+
+
 def _solar_component(
     config: StoredConfiguration, snapshot: EnergySnapshot
 ) -> float | None:
@@ -528,8 +557,8 @@ def _solar_component(
     while the sun is out raises it. That is precisely what the coach advises,
     so the advice rule holds.
     """
-    production = snapshot.solar_power_w
-    if production is None or production <= SOLAR_COMPONENT_MIN_PRODUCTION_W:
+    production = _production_now(snapshot)
+    if production is None:
         return None
     if snapshot.grid_power_w is None or not has_movable_load(config):
         return None
@@ -575,12 +604,15 @@ def _price_component(
     if config.home.contract_type != CONTRACT_TYPE_DYNAMIC:
         return None
 
+    if not _price_thresholds_usable(config):
+        return None
+
     price = snapshot.current_price_eur_kwh
     low = config.home.low_price_threshold_eur_kwh
     high = config.home.high_price_threshold_eur_kwh
     maximum = config.home.max_grid_power_w
     grid_power = snapshot.grid_power_w
-    if price is None or low is None or high is None or high <= low:
+    if price is None or low is None or high is None:
         return None
     if maximum is None or maximum <= 0 or grid_power is None:
         return None
@@ -633,28 +665,44 @@ def _energy_score(
 
 
 def _score_unavailable_reason(
-    config: StoredConfiguration, data_quality: DataQualityResult
+    config: StoredConfiguration,
+    snapshot: EnergySnapshot,
+    data_quality: DataQualityResult,
 ) -> str:
     """Return why there is no score, so the panel can explain rather than dash.
 
-    A tile with a dash reads as a fault. Three of these four are not faults:
-    they describe a home that is doing nothing wrong and has nothing to
-    optimise at this moment (SPEC.md §35.9).
+    A tile with a dash reads as a fault. Most of these are not faults: they
+    describe a home doing nothing wrong with nothing to optimise at this
+    moment (SPEC.md §35.9).
+
+    **The snapshot is an argument because two of these sentences are about the
+    present moment**, and until 0.4.2 this function could not see it. It chose
+    `nothing_movable` — "er is nu opwek, maar geen apparaat dat verbruik kan
+    verplaatsen" — on whether a solar *row* existed, so an evening with the
+    panels at 0 W got a sentence claiming production. Configuration answers
+    "what does this home own"; only a reading answers "what is it doing".
 
     The order is precedence, from "somebody can fix this" to "there is nothing
-    to fix":
+    to fix". Each branch owns exactly one sentence, and each sentence may claim
+    only what its branch has established:
 
-    1. **the gate** — the installation is incomplete, and that is the only one
-       of the four that is a shortcoming.
-    2. **no variable signal at all** — a fixed contract and no solar row. This
-       home will never see a number, which is accepted: it has no moment that
-       is better than another, so there is nothing to measure. The coach keeps
-       working; the score is an extra, not a precondition.
-    3. **nothing movable** — panels, but no battery and no complete flexible
-       appliance. Also permanent, but it closes by configuring or adding
-       something, so it gets its own sentence.
-    4. **nothing right now** — an axis could apply, just not at this moment.
-       Night, or a cheap hour.
+    1. **the gate** — the installation is incomplete.
+    2. **no variable signal** — a fixed tariff and no panels. Never a number,
+       which is accepted; the coach keeps working.
+    3. **nothing movable** — the sun *is* producing and there is nothing to
+       shift it to. Deliberately not restricted to a fixed tariff any more: a
+       dynamic home in the sun with nothing movable used to fall through to a
+       sentence claiming its panels were idle.
+    4. **thresholds missing** — a dynamic tariff whose price cannot be judged.
+       A shortcoming, and the only one of the last four that is.
+    5-7. **nothing right now**, split by what is actually true of this home:
+       panels idle plus a cheap hour, panels idle on a fixed tariff, or a cheap
+       hour without panels. One sentence each, so none of them mentions an
+       expensive hour to a home that has no price signal.
+
+    Cases 5 to 7 all imply the panels are idle: production plus something
+    movable makes the solar component apply, which means a score, which means
+    this function is never called.
     """
     if any(
         item in data_quality.missing_items for item in COMPLETENESS_UNCONDITIONAL_ITEMS
@@ -662,9 +710,18 @@ def _score_unavailable_reason(
         return SCORE_UNAVAILABLE_INCOMPLETE_SETUP
 
     dynamic = config.home.contract_type == CONTRACT_TYPE_DYNAMIC
-    has_solar_row = any(source.type == SOURCE_TYPE_SOLAR for source in config.sources)
-    if not dynamic and not has_solar_row:
+    panels = any(source.type == SOURCE_TYPE_SOLAR for source in config.sources)
+
+    if not dynamic and not panels:
         return SCORE_UNAVAILABLE_NO_VARIABLE_SIGNAL
-    if not dynamic and not has_movable_load(config):
+    if _production_now(snapshot) is not None and not has_movable_load(config):
         return SCORE_UNAVAILABLE_NOTHING_MOVABLE
-    return SCORE_UNAVAILABLE_NOTHING_RIGHT_NOW
+    if dynamic and not _price_thresholds_usable(config):
+        return SCORE_UNAVAILABLE_PRICE_THRESHOLDS_MISSING
+    if panels:
+        return (
+            SCORE_UNAVAILABLE_NO_SUN_CHEAP_PRICE
+            if dynamic
+            else SCORE_UNAVAILABLE_NO_SUN_FIXED_TARIFF
+        )
+    return SCORE_UNAVAILABLE_CHEAP_PRICE

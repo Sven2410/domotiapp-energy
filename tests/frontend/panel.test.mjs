@@ -273,11 +273,23 @@ describe('empty and populated configurations', () => {
   // describe a home that is doing nothing wrong, so the sentence has to say
   // *why* there is nothing to measure and not merely that there is no number.
   const SCORE_REASONS = [
-    ['no_variable_signal', 'tarief is altijd gelijk', 'info'],
-    ['nothing_movable', 'verbruik kan verplaatsen', 'info'],
-    ['nothing_right_now', 'niets te verbeteren', 'info'],
+    ['no_variable_signal', 'geen zonnepanelen', 'info'],
+    ['nothing_movable', 'Er is nu opwek', 'info'],
+    ['no_sun_cheap_price', 'panelen leveren op dit moment niets', 'info'],
+    ['no_sun_fixed_tariff', 'bij een vast tarief', 'info'],
+    ['cheap_price', 'stroomprijs is op dit moment laag', 'info'],
     ['incomplete_setup', 'installatie nog niet compleet', 'warning'],
+    ['price_thresholds_missing', 'prijsdrempel', 'warning'],
   ];
+
+  // The sentence for a home with no panels may not mention panels, and the one
+  // for a fixed tariff may not mention expensive hours. That confusion is what
+  // the old catch-all sentence shipped (0.4.1).
+  const FORBIDDEN_IN = {
+    cheap_price: /panelen|opwek/,
+    no_sun_fixed_tariff: /duur (moment|verbruik)|stroomprijs/,
+    no_variable_signal: /op dit moment/,
+  };
 
   for (const [reason, fragment, tone] of SCORE_REASONS) {
     it(`explains why there is no score: ${reason}`, async () => {
@@ -295,6 +307,10 @@ describe('empty and populated configurations', () => {
       const sentence = visible.find((text) => text.includes(fragment));
 
       assert.ok(sentence, `expected a sentence explaining ${reason}`);
+      const forbidden = FORBIDDEN_IN[reason];
+      if (forbidden) {
+        assert.doesNotMatch(sentence, forbidden);
+      }
       // Only the incomplete installation is a shortcoming. The others may not
       // shout at a resident who has done nothing wrong.
       const node = [...panel.shadowRoot.querySelectorAll('.notice')].find(
