@@ -232,6 +232,83 @@ carries the advice message, reason code, confidence, severity, measurements, the
 advice list and the time of the last calculation as attributes; its state is the advice
 title, truncated to what Home Assistant allows.
 
+## A button on your own dashboard
+
+One tile that colours when something needs attention and opens the panel when you tap it.
+Core Home Assistant only — no HACS card, no `browser_mod`, nothing the customer has to
+install alongside.
+
+**Verified against Home Assistant 2026.7.** Two findings decided the shape:
+
+- **The more-info dialog does not show entity attributes.** It shows the state, the history
+  and the logbook, and nothing else. Adding attributes to make that dialog informative does
+  not work: they are simply not rendered.
+- **A more-info dialog cannot navigate to a panel.** There is no core action for it.
+
+So the tile does not open a dialog. **It navigates, and the panel is the detail view** — which
+it already is, and which no dialog was going to beat. On a wall tablet running Fully Kiosk
+that stays inside the same page: no new window, no address bar. The way *back* is the sidebar,
+so leave the sidebar visible on a kiosk dashboard, or add a tile pointing at your own
+dashboard on the panel side of the trip.
+
+### 1. The attention sensor
+
+DomotiApp Energy ships no "attention" entity of its own, so this makes one from what it does
+publish. Core `template` integration, in `configuration.yaml`:
+
+```yaml
+template:
+  - binary_sensor:
+      - name: "DomotiApp aandacht"
+        unique_id: domotiapp_aandacht
+        device_class: problem
+        state: >-
+          {{ state_attr('sensor.domotiapp_energy_current_advice', 'reason_code')
+             in ['missing_required_data', 'invalid_entity_state',
+                 'high_grid_load', 'high_grid_export'] }}
+        attributes:
+          advies: "{{ states('sensor.domotiapp_energy_current_advice') }}"
+          toelichting: "{{ state_attr('sensor.domotiapp_energy_current_advice', 'message') }}"
+```
+
+**Those four reason codes are the definition of "attention", and the choice matters.** They
+are the ones a person can act on: data is missing, an entity cannot be read, the connection is
+near its limit in either direction. `high_energy_price` is deliberately **not** among them —
+it is a warning, but it is the market twice a day, and a button that is red every evening is a
+button nobody looks at.
+
+`device_class: problem` is what makes the colour free: every core card shows a `problem`
+binary sensor red when it is on, with no template and no styling.
+
+### 2. The tile
+
+```yaml
+type: tile
+entity: binary_sensor.domotiapp_aandacht
+name: Energie
+icon: mdi:home-lightning-bolt
+state_content: advies
+tap_action:
+  action: navigate
+  navigation_path: /domotiapp-energy
+```
+
+`state_content: advies` puts the **advice title** on the second line instead of "Problem" —
+`state_content` accepts an attribute name, which is what lets one tile carry both the colour
+and the sentence.
+
+The result: grey with the current advice underneath when all is well, red with the same line
+when it is not, and one tap into the panel either way.
+
+### Why not the other shapes
+
+| Shape | Why not |
+|---|---|
+| `button` card with `state_color: true` | works and colours, but shows "Problem" rather than the advice |
+| `conditional` card around two tiles | works, needs two cards for one button, and the colour is the only difference |
+| more-info as the detail view | shows no attributes, and cannot navigate onward |
+| `browser_mod` pop-up | a dependency on every installation, for a view the panel already is |
+
 ## Services
 
 | Service | What it does |
