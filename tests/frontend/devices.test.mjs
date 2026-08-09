@@ -829,7 +829,6 @@ describe('nothing is asked of an appliance that only gets measured', () => {
 
     change(panel, { device_type: 'home_battery' });
 
-    assert.equal(form(panel).data.is_flexible, true);
     assert.ok(!fieldNames(panel).includes('ready_before'));
     assert.ok(!fieldNames(panel).includes('days_of_week'));
   });
@@ -934,11 +933,158 @@ describe('nothing is asked of an appliance that only gets measured', () => {
   });
 });
 
+describe('a switch is never hidden by the state it produced', () => {
+  it('keeps the level on an appliance that gets no advice', async () => {
+    // "Alleen adviseren" on an appliance nobody is advised about is a choice
+    // with no consequence *today* — but it is a standing statement about the
+    // day somebody ticks "verplaatsbaar", so the field stays and the helper
+    // says so (SPEC.md §38.3).
+    const { panel, tab } = await openDevicesTab();
+    buttonIn(tab, 'Apparaat toevoegen').click();
+    await settle();
+
+    change(panel, { device_type: 'generic_monitor' });
+
+    assert.ok(fieldNames(panel).includes('control_mode'));
+    const field = form(panel).schema.find((f) => f.name === 'control_mode');
+    assert.match(field.helper, /zolang het niet verplaatsbaar is/);
+  });
+
+  it('offers all four levels there, including the two that control', async () => {
+    // They stay selectable although 0.1.0 drives nothing: an agreement not to
+    // control this installation can only be contradicted — and therefore only
+    // be defended — if the contradiction can be expressed (SPEC.md §12).
+    const { panel, tab } = await openDevicesTab();
+    buttonIn(tab, 'Apparaat toevoegen').click();
+    await settle();
+
+    change(panel, { device_type: 'generic_monitor' });
+
+    const field = form(panel).schema.find((f) => f.name === 'control_mode');
+    const offered = field.selector.select.options.map((option) => option.value);
+
+    assert.deepEqual(offered, [
+      'monitor_only',
+      'advice_only',
+      'approval_required',
+      'automatic',
+    ]);
+  });
+
+  it('lets the resident back out of his own off switch', async () => {
+    // **The one-way door.** `monitor_only` is what makes this dishwasher
+    // unadvisable, so hiding the field for being unadvisable would lock him
+    // in — and the five fields he owns beside it are already gone in that
+    // state, leaving a dialog with nothing he may touch.
+    const { panel, tab } = await openDevicesTab();
+    buttonIn(tab, 'Apparaat toevoegen').click();
+    await settle();
+
+    change(panel, { control_mode: 'monitor_only' });
+
+    assert.ok(fieldNames(panel).includes('control_mode'));
+    assert.ok(!fieldNames(panel).includes('priority'));
+    const field = form(panel).schema.find((f) => f.name === 'control_mode');
+    // The way back, in words, for the one person who needs to read it.
+    assert.match(field.helper, /om het weer mee te laten doen/);
+
+    change(panel, { control_mode: 'advice_only' });
+
+    // Everything advice needs is back, so the door opens both ways.
+    for (const name of ['priority', 'is_noisy', 'days_of_week', 'ready_before']) {
+      assert.ok(fieldNames(panel).includes(name), `${name} did not come back`);
+    }
+  });
+
+  it('drops both switches only where they can switch nothing', async () => {
+    // On a battery neither moves `is_advisable` and neither moves
+    // `has_movable_load` — verified against the engine in test_calculator.py.
+    // Nothing in this form brings them back, because nothing in this form can
+    // make such an appliance advisable.
+    const { panel, tab } = await openDevicesTab();
+    buttonIn(tab, 'Apparaat toevoegen').click();
+    await settle();
+
+    change(panel, { device_type: 'home_battery' });
+
+    assert.ok(!fieldNames(panel).includes('control_mode'));
+    assert.ok(!fieldNames(panel).includes('is_flexible'));
+    // And no warning about losing them: both are the defaults the form filled
+    // in, and the backend resolves an absent value back to the same thing.
+    const warning = noticeTexts(formDialog(panel)).find((t) =>
+      t.includes('verdwijnen bij opslaan'),
+    );
+    assert.ok(!warning, `nothing should be announced, got: ${warning}`);
+  });
+
+  it('announces a level somebody chose, even on a battery', async () => {
+    const { panel, tab } = await openDevicesTab();
+    buttonIn(tab, 'Apparaat toevoegen').click();
+    await settle();
+
+    change(panel, { control_mode: 'monitor_only' });
+    change(panel, { device_type: 'home_battery' });
+
+    const warning = noticeTexts(formDialog(panel)).find((t) =>
+      t.includes('verdwijnen bij opslaan'),
+    );
+    assert.ok(warning, 'a chosen level is still something somebody chose');
+    assert.match(warning, /Bedieningsniveau/);
+  });
+});
+
 describe('the row says what the appliance is, not what it is not', () => {
   it('drops the advice words from an appliance nobody is advised about', async () => {
     // It read "Overig, alleen meten · Normaal · Alleen adviseren": a priority
     // that orders nothing, beside a control level claiming advice for an
     // appliance that gets none (SPEC.md §38.3).
+    const hass = fakeHass({
+      config: sampleConfig({
+        devices: [
+          dishwasher({
+            id: 'm1',
+            name: 'Tabletlader',
+            device_type: 'generic_monitor',
+            is_flexible: false,
+            location: 'Woonkamer',
+            nominal_power_w: 12,
+          }),
+        ],
+      }),
+    });
+    const { tab } = await openDevicesTab(hass);
+
+    const meta = rows(tab)[0].querySelector('.row-meta').textContent;
+
+    assert.equal(meta, 'Overig, alleen meten · Woonkamer · 12 W');
+  });
+
+  it('names the level when the level is the reason', async () => {
+    // The regression 0.7.1 introduced. Dropping the level wholesale fixed one
+    // lie — "Alleen adviseren" on an appliance that gets none — and made a
+    // worse one: the resident's own instruction vanished from the row, and
+    // the status line reads "Compleet." because a power sensor is linked.
+    const hass = fakeHass({
+      config: sampleConfig({
+        devices: [
+          dishwasher({
+            control_mode: 'monitor_only',
+            power_entity: 'sensor.vaatwasser',
+            location: 'Keuken',
+          }),
+        ],
+      }),
+    });
+    const { tab } = await openDevicesTab(hass);
+
+    const meta = rows(tab)[0].querySelector('.row-meta').textContent;
+
+    assert.equal(meta, 'Vaatwasser · Keuken · 2.000 W · Alleen monitoren');
+  });
+
+  it('stays silent about a level that says nothing', async () => {
+    // The other half of the same rule: on an appliance that is only measured
+    // by its type, "Alleen adviseren" promises advice that never comes.
     const hass = fakeHass({
       config: sampleConfig({
         devices: [

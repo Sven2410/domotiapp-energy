@@ -3697,14 +3697,15 @@ naar de zon verplaatst worden — en een batterij doet dat zonder dat iemand gea
 wordt. De zonne-as blijft dus aan, wat precies de reden is dat de batterij in dat predicaat
 staat (§35.4a).
 
-### 38.3 Twee soorten velden die verdwijnen, en het verschil
+### 38.3 Drie soorten velden die verdwijnen, en het verschil
 
 | Soort | Wat het is | Voorbeeld | Wanneer verborgen |
 |---|---|---|---|
-| **Adviesbegrip** | ordent, timet of dempt advies | prioriteit, maakt geluid, dagen | zodra er nooit advies komt |
+| **Adviesbegrip** | ordent, timet of dempt advies | prioriteit, maakt geluid, dagen, tijdvenster | zodra er nooit advies komt |
 | **Beschrijft niets** | geen waar antwoord voor dit type | vermogen en cyclus bij een slimme stekker | idem |
+| **Adviesschakelaar** | bepáált of er advies komt | verplaatsbaar in de tijd, bedieningsniveau | **alleen bij een type dat nooit advies krijgt** |
 
-Beide lijsten komen **terug zodra het apparaat advisable wordt**, en dat is wat de override
+De eerste twee komen **terug zodra het apparaat advisable wordt**, en dat is wat de override
 van een dood spoor redt: vink *verplaatsbaar in de tijd* aan op een slimme stekker en iemand
 heeft gezegd dat er advies moet volgen — en dan is het apparaat achter de stekker precies
 waar vermogen en cyclus over gaan. Alleen op type verbergen zou een verplicht veld hebben
@@ -3714,6 +3715,63 @@ in plaats van verplaatst.
 **De warmtepomp blijft er bewust buiten.** Zijn nominale vermogen beschrijft iets echts, ook
 al leest niemand het. Of wij daar überhaupt naar moeten vragen is een aparte open vraag
 (§37.2), en die hier beantwoorden door het veld te verbergen zou hem terloops beslissen.
+
+#### De eenrichtingsdeur
+
+De derde soort is er later bij gekomen, en hij bestaat omdat de eerste twee regels op hem
+losgelaten precies het tegenovergestelde bereiken van wat ze bedoelen.
+
+> **Een veld dat een toestand kan veranderen mag nooit door die toestand verborgen worden.**
+> Anders is het een deur die maar één kant op gaat.
+
+`control_mode = monitor_only` is niet iets wat volgt uit "dit apparaat krijgt geen advies" —
+het is er de **oorzaak** van. Verberg je het veld omdat het apparaat geen advies krijgt, dan
+kan de bewoner die zijn vaatwasser op *alleen meekijken* zette hem nooit meer aanzetten. En
+het is erger dan één vast veld: `control_mode` is één van de zes velden die de bewoner bezit
+(§33.4), en de andere vijf zijn in die toestand al verborgen volgens de eerste regel. Wat
+overblijft is een dialoog waarin hij niets mag aanraken, over zijn eigen apparaat.
+
+**Waarom `is_flexible` er nooit onder viel, en dat is het punt dat de volgende ronde anders
+opnieuw fout doet.** Hij is nooit verborgen omdat hij er nooit *voor in aanmerking kwam*: hij
+staat niet in de lijst adviesbegrippen en niet in de lijst velden zonder waar antwoord. Dat
+was geluk, geen ontwerp — beide lijsten zijn opgesteld door te kijken wat een veld *voedt*,
+en deze twee voeden niets, ze **schakelen**. Wie de volgende ronde een lijst uitbreidt met
+"alles wat alleen advies dient", pakt ze allebei mee, en dan zit de deur dicht.
+
+Vandaar dat ze een eigen soort krijgen, met een eigen regel, in plaats van een uitzondering
+in de andere twee.
+
+**Waar ze wél weggaan.** Bij een type uit `NEVER_ADVISED_DEVICE_TYPES` schakelen ze niets:
+op een thuisbatterij verandert geen van beide `is_advisable`, en geen van beide verandert
+`has_movable_load`. Er is dan ook geen handeling in dat formulier die het apparaat advisable
+maakt, dus er is geen deur om open te houden. Vastgelegd in
+`test_nothing_on_a_battery_changes_whether_it_is_advised`, zodat het verbergen aan een
+bewijs hangt in plaats van aan een redenering.
+
+#### Wat het bedieningsniveau zegt waar het blijft staan
+
+Drie hele zinnen, gekozen door de situatie — dezelfde afspraak als bij de tegelteksten
+(§35.9), want ook hier bestaat een zin die uit helften wordt opgebouwd nergens in de bron.
+
+| Situatie | Wat de hulptekst zegt |
+|---|---|
+| Advisable | *DomotiApp Energy adviseert in deze versie alleen; alles behalve "alleen monitoren" wordt als adviseren behandeld.* |
+| Niet advisable, en niet door dit veld | *Dit apparaat krijgt geen advies zolang het niet verplaatsbaar is. "Alleen monitoren" legt vast dat dat zo moet blijven, ook als dat later verandert.* |
+| Op `monitor_only` | *Op "alleen monitoren" krijgt dit apparaat geen advies. Zet het op "alleen adviseren" om het weer mee te laten doen.* |
+
+De middelste is waarom het veld op een alleen-gemeten apparaat blijft staan. De oude zin was
+waar over het product en zei niets over dít apparaat, waar sowieso niets behandeld wordt —
+dat leest als een keuze zonder gevolg, en zo werd hij ook gemeld. Goed gezegd is het een
+staande uitspraak: hij bepaalt wat er gebeurt op de dag dat iemand wél *verplaatsbaar*
+aanvinkt.
+
+De laatste is de weg terug, in woorden, voor de enige persoon die hem nodig heeft.
+
+**De vier bedieningsniveaus blijven alle vier selecteerbaar**, ook waar er niets bestuurd
+wordt. Dat is een besluit uit §12 en het staat los van deze sectie: de afspraak kan alleen
+weersproken worden — en dus verdedigd — als de tegenspraak uitgedrukt kan worden. Het
+alternatief dat overwogen is (alleen de zinloze opties weghalen) zou dat stilzwijgend
+terugdraaien, en het lost bij de batterij niets op: daar blijven er dan nul over.
 
 **Verbergen, niet tonen-en-uitschakelen.** Dat laatste is de andere afspraak in dit project
 (het bedieningsniveau op Woning, §33.4a) en die geldt voor een veld dat in een latere release
@@ -3727,11 +3785,27 @@ installateur getypt, en de backend geeft ze bij een ontbrekend veld precies zo t
 (`TYPE_DEFAULT` in `models.py`). Melden dat ze weggegooid worden, benoemt een verlies dat
 niet plaatsvindt.
 
-**De rijweergave laat de adviesbegrippen los.** Er stond *"Overig, alleen meten · Normaal ·
-Alleen adviseren"*: een prioriteit die niets ordent, naast een bedieningsniveau dat advies
-belooft aan een apparaat dat er geen krijgt. Voor zo'n apparaat blijft over wat hem
-identificeert — type, locatie, vermogen. De statusregel eronder zegt al dat hij alleen
-gemeten wordt.
+#### De rijweergave: tonen wat een gevolg heeft
+
+Er stond *"Overig, alleen meten · Normaal · Alleen adviseren"*: een prioriteit die niets
+ordent, naast een bedieningsniveau dat advies belooft aan een apparaat dat er geen krijgt.
+Voor zo'n apparaat blijft over wat hem identificeert — type, locatie, vermogen.
+
+**Het bedieningsniveau blijft staan waar het de réden is dat er geen advies komt.** Dat is
+dezelfde regel als in het formulier, van de andere kant bekeken: toon wat een gevolg heeft.
+0.7.1 liet het niveau in één keer vallen en repareerde daarmee de leugen maar maakte een
+ergere. Een vaatwasser die de bewoner op *alleen meekijken* had gezet en die een
+vermogenssensor heeft, las:
+
+```text
+Vaatwasser · Keuken · 2.000 W
+Compleet.
+```
+
+Zijn eigen instructie stond nergens meer, en de statusregel dekt het niet af: de zin *"dit
+apparaat wordt alleen gemeten"* verschijnt alleen zolang er géén vermogenssensor gekoppeld
+is. Bij `monitor_only` staat het niveau er daarom weer bij; bij *alleen adviseren* op een
+alleen-gemeten apparaat niet, want daar zegt het niets.
 
 ### 38.4 Een sectie mag alleen teruggeven wat zij toont
 
@@ -3769,8 +3843,12 @@ enige plek die hem ooit heeft aangeroepen.
   telt nog steeds als verplaatsbare last;
 - een slimme stekker vraagt geen vermogen, cyclus of duur, en vraagt ze wél zodra hij
   verplaatsbaar wordt gemaakt;
-- prioriteit en geluid verdwijnen bij een apparaat waar nooit advies over komt;
-- de rij van zo'n apparaat toont type, locatie en vermogen;
+- prioriteit, geluid en het tijdvenster verdwijnen bij een apparaat waar nooit advies over
+  komt, en komen terug zodra iemand het verplaatsbaar maakt;
+- **de twee adviesschakelaars blijven staan zolang zij iets kunnen schakelen**: een bewoner
+  die zijn vaatwasser op *alleen meekijken* zet, kan hem in datzelfde scherm weer aanzetten;
+- de rij van zo'n apparaat toont type, locatie en vermogen, plus het bedieningsniveau
+  wanneer dát de reden is dat er geen advies komt;
 - een verborgen veld overleeft een wijziging aan zijn buurveld, en een standaardwaarde wordt
   niet als verlies gemeld;
 - `validators.has_errors` bestaat niet meer.

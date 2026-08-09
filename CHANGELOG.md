@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.7.2
+
+Het staartje van de opruimronde, en het legde een regel bloot die er nog niet stond.
+
+### Fixed
+
+- **Een vaatwasser op "alleen meekijken" liet niet meer zien dat hij geen advies krijgt.**
+  0.7.1 haalde het bedieningsniveau uit de rij omdat *"Alleen adviseren"* loog bij een
+  apparaat dat nooit advies krijgt — en raakte daarmee ook het geval waarin het niveau juist
+  de réden is. Met een gekoppelde vermogenssensor las de rij *"Vaatwasser · Keuken ·
+  2.000 W"* en *"Compleet."*, met de eigen instructie van de bewoner nergens. Het niveau
+  staat er weer bij zodra het de reden is.
+
+- **Het bedieningsniveau bij een thuisbatterij is een keuze zonder gevolg.** Geen van de vier
+  niveaus verandert daar iets: een batterij wordt nooit geadviseerd, dus valt er niets uit of
+  aan te zetten. Het veld verdwijnt daar, en *verplaatsbaar in de tijd* met hem — die staat
+  in dezelfde klasse en doet er evenmin iets.
+
+### Changed
+
+- **Het bedieningsniveau zegt nu wat de keuze voor dít apparaat doet.** Drie hele zinnen in
+  plaats van één. Bij een apparaat dat nog niet verplaatsbaar is: *"Dit apparaat krijgt geen
+  advies zolang het niet verplaatsbaar is. 'Alleen monitoren' legt vast dat dat zo moet
+  blijven, ook als dat later verandert."* En op *alleen monitoren* staat de weg terug erbij.
+
+### Waarom het veld niet zomaar weg kon
+
+**Een veld dat een toestand kan veranderen mag nooit door die toestand verborgen worden.**
+`monitor_only` is niet een gevolg van "dit apparaat krijgt geen advies", het is de oorzaak.
+Verbergen omdat er geen advies komt, sluit de bewoner op in zijn eigen keuze — en de vijf
+andere velden die hij bezit zijn in die toestand al weg, dus hij houdt een scherm over waarin
+hij niets mag aanraken. Staat nu als eigen soort in SPEC §38.3.
+
 ## 0.7.1
 
 Eén thema: **het product vroeg of bood iets dat niets deed.** Daarna is die categorie leeg.
