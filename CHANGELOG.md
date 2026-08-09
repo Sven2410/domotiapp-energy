@@ -1,5 +1,19 @@
 # Changelog
 
+## Nog niet uitgebracht
+
+### Documentatie
+
+- **SPEC §44: de sturingsindeling.** Alleen papier, geen code. Waar de knoppen komen te staan
+  wanneer de aansturingsrelease er is: de toestemming blijft op Apparaten, de handeling staat
+  bij het advies dat erom vraagt, en er komt één sectie `Nu aangestuurd` op het Overzicht met
+  één stopknop per apparaat.
+
+  Twee dingen die deze sectie oplost en die anders bij het bouwen pas opvallen: wat "stoppen"
+  precies terugdraait en wat er direct daarna gebeurt (anders start hetzelfde apparaat binnen
+  één cyclus opnieuw), en dat de ratel uit §43.3 geen weergavevraag meer is zodra er
+  aangestuurd wordt — dan schakelt hardware mee met meetruis.
+
 ## 0.10.0
 
 Fase 2 van het gereed-venster: het urgentie-advies. SPEC §43.
