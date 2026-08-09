@@ -30,7 +30,7 @@ import { logbookTab } from './tabs/logbook.js';
 import { overviewTab } from './tabs/overview.js';
 import { preferencesTab } from './tabs/preferences.js';
 
-const VERSION = '0.8.0';
+const VERSION = '0.8.1';
 
 /**
  * Tab order as SPEC.md §33.6 lists it.
@@ -109,9 +109,40 @@ const STYLES = `
     --domotiapp-space-row: 14px;
     --domotiapp-space-section: 26px;
 
+    /*
+     * The four safe areas, as custom properties rather than bare env().
+     *
+     * Two reasons, and the second is the one that matters.
+     *
+     * 1. **One place to be complete.** Until 0.8.1 this stylesheet used
+     *    env(safe-area-inset-bottom) four times and the other three sides zero
+     *    times. On an iPhone the full-height dialog therefore opened with its
+     *    title behind the clock and its close button behind the battery icon —
+     *    and a full-screen dialog has no scrim left to tap and no Escape key on
+     *    a phone, so it was a trap and not a cosmetic fault (SPEC.md §40).
+     * 2. **A test can fake them.** An env() value cannot be set from a
+     *    stylesheet or from script, so the behaviour it drives can only be seen
+     *    on a device with a notch. Routed through a custom property it can be
+     *    overridden on the host, which turns "does the dialog respect the
+     *    status bar" into a check any browser can run at any window size.
+     *
+     * (No backticks in this comment. This is a template literal and one closes
+     * it — which is exactly what happened while writing this block.)
+     *
+     * The fallback is 0px, so nothing changes on a screen without insets.
+     */
+    --domotiapp-safe-top: env(safe-area-inset-top, 0px);
+    --domotiapp-safe-right: env(safe-area-inset-right, 0px);
+    --domotiapp-safe-bottom: env(safe-area-inset-bottom, 0px);
+    --domotiapp-safe-left: env(safe-area-inset-left, 0px);
+
     display: block;
-    padding: 24px 16px;
-    padding-bottom: calc(24px + env(safe-area-inset-bottom));
+    /*
+     * The panel is not full-bleed, but in landscape on a notched phone the
+     * cut-out eats into one side, and 16px of padding is less than the ~44px
+     * the system reserves. max() keeps the roomier of the two.
+     */
+    padding: 24px max(16px, var(--domotiapp-safe-right)) calc(24px + var(--domotiapp-safe-bottom)) max(16px, var(--domotiapp-safe-left));
     box-sizing: border-box;
     color: var(--primary-text-color);
     touch-action: manipulation;
@@ -498,7 +529,7 @@ const STYLES = `
     justify-content: center;
     /* On a phone the sheet fills the screen; the padding only bites on desktop. */
     padding: 16px;
-    padding-bottom: calc(16px + env(safe-area-inset-bottom));
+    padding-bottom: calc(16px + var(--domotiapp-safe-bottom));
     box-sizing: border-box;
   }
   /*
@@ -522,6 +553,26 @@ const STYLES = `
     /* The desktop maximum SPEC.md §11 asks for. */
     max-width: 640px;
     max-height: 100%;
+    /*
+     * The safe areas live here and **not** in the narrow-screen block, even
+     * though only a full-bleed sheet can collide with a notch. On a desktop
+     * every inset is 0px, so this costs nothing there — and it means the
+     * behaviour is not locked behind a viewport media query that no automated
+     * check in this project can trigger. The one rule that has to be right on a
+     * phone is the one rule that is always on (SPEC.md §40.2).
+     */
+    padding-top: var(--domotiapp-safe-top);
+    padding-right: var(--domotiapp-safe-right);
+    padding-bottom: var(--domotiapp-safe-bottom);
+    padding-left: var(--domotiapp-safe-left);
+    /*
+     * Without this the padding is added *outside* height: 100%, so the sheet
+     * becomes as much taller than the screen as the insets are deep and both
+     * ends fall off it — the header above the top, the actions below the
+     * bottom. Which is the original bug again, one layer down. Caught by the
+     * fake-inset check rather than by a second phone (SPEC.md §40.2).
+     */
+    box-sizing: border-box;
     border-radius: 8px;
     background: var(--card-background-color);
     color: var(--primary-text-color);
@@ -673,17 +724,21 @@ const STYLES = `
    */
   @media (max-width: 600px) {
     :host {
-      padding: 16px 12px;
-      padding-bottom: calc(16px + env(safe-area-inset-bottom));
+      padding: 16px max(12px, var(--domotiapp-safe-right)) calc(16px + var(--domotiapp-safe-bottom)) max(12px, var(--domotiapp-safe-left));
     }
     .dialog {
       padding: 0;
     }
+    /*
+     * Full bleed, and the insets keep doing their work: the surface paints its
+     * card background right up to the edges while the header and the actions
+     * sit clear of the status bar, the home indicator and — in landscape — the
+     * cut-out.
+     */
     .dialog-surface {
       max-width: none;
       height: 100%;
       border-radius: 0;
-      padding-bottom: env(safe-area-inset-bottom);
     }
   }
 

@@ -3971,3 +3971,131 @@ paneel niet.
 omgeving niet verkleinen — `resize_window` meldt succes en `window.innerWidth` blijft 1920.
 De containerquery is dus wel echt getoetst en de mediaquery niet. Die CSS is ongewijzigd
 sinds de ronde waarin zij wel is nagelopen.
+
+## 40. De safe areas, en hoe je ze toetst zonder telefoon
+
+**Status: gebouwd in 0.8.1.** Productiebug op Sven's iPhone, gemeld op 2026-08-09.
+
+### 40.1 Wat er misging
+
+De schermvullende dialoog opende met zijn titel achter de klok en zijn sluitknop achter het
+batterijpictogram. De oorzaak is precies wat Sven vermoedde: de stylesheet gebruikte
+`env(safe-area-inset-bottom)` **vier keer** en de andere drie zijden **nul keer**. Zodra een
+element de volle hoogte gebruikt, heb je op iOS ook `safe-area-inset-top` nodig.
+
+**Dit is geen cosmetisch gebrek maar een val.** Een dialoog heeft drie uitgangen — de
+achtergrondklik, Escape en het kruisje — en bij een schermvullende dialoog blijven er nul
+over: de achtergrond ligt volledig onder het oppervlak en een telefoon heeft geen Escape.
+Het kruisje was de enige uitweg, en die zat onder de statusbalk.
+
+Nagelopen op alle vier de zijden en op alles wat de volle hoogte of breedte gebruikt:
+
+| Plek | Was | Is |
+|---|---|---|
+| `.dialog-surface` (volle hoogte) | alleen onder | alle vier, plus `box-sizing: border-box` |
+| `:host` (het paneel zelf) | alleen onder | links en rechts via `max()`, voor de uitsparing in landschap |
+| `.dialog` (bureaublad) | alleen onder | ongewijzigd; daar raakt niets een rand |
+
+`box-sizing` is er bijgekomen omdat de eerste versie van de reparatie een tweede fout maakte:
+padding valt **buiten** `height: 100%`, dus het blad werd net zoveel hoger dan het scherm als
+de insets diep zijn, en beide uiteinden vielen eraf. Dezelfde bug, één laag lager.
+
+### 40.2 De toets: vervals de inset in plaats van hem op te wekken
+
+De vraag van Sven was de belangrijkste van deze ronde: *hoe toetsen we dit zonder dat ik elke
+mobiele wijziging op mijn eigen telefoon controleer?* Dat schaalt niet naar klanten met
+andere toestellen, en het viewport van de ontwikkelmachine liet zich niet verkleinen
+(`resize_window` meldt succes, `window.innerWidth` blijft staan).
+
+**Een env()-waarde is niet te zetten** — niet vanuit CSS, niet vanuit script. Wat je er niet
+in kunt schrijven, kun je ook niet toetsen. Dus loopt elke inset nu door een custom property:
+
+```css
+--domotiapp-safe-top: env(safe-area-inset-top, 0px);
+```
+
+Daarmee verschuift het probleem van "welk apparaat rendert dit" naar "welke waarde staat er in
+deze variabele", en dat laatste is in elke browser te zetten. De controle wordt:
+
+1. zet de vier tokens op de maten van een iPhone (59/34, of 59 links en rechts in landschap);
+2. leg de vormregels van de telefoon-mediaquery er met de hand overheen;
+3. meet: valt de kop onder de statusbalk, eindigen de knoppen boven de home-indicator, past
+   het blad binnen het scherm, en is het kruisje het bovenste element op zijn eigen midden
+   (`elementFromPoint`, want aanwezig is niet hetzelfde als aantikbaar).
+
+**Dat vond meteen de `box-sizing`-fout in de reparatie zelf**, vóór de tweede oplevering aan
+een echte telefoon. Dat is het bewijs dat de aanpak werkt en niet alleen de vorige fout
+afdekt.
+
+**Daarom staan de insets bewust buiten de mediaquery.** Alleen een schermvullend blad kan een
+uitsparing raken, dus de verleiding is om ze in `@media (max-width: 600px)` te zetten. Maar
+dan zit de enige regel die op een telefoon goed moet zijn achter de enige voorwaarde die geen
+enkele geautomatiseerde controle hier kan aanzetten. Op een bureaublad zijn alle insets `0px`,
+dus onvoorwaardelijk kost niets.
+
+**Wat de mediaquery zelf doet — breedte, hoogte, ronding — blijft ongetoetst in dit project.**
+Dat is eerlijk op te schrijven en niet op te lossen zonder een echt smal viewport; het is de
+kandidaat voor de Playwright-ronde, die viewports wél kan zetten.
+
+### 40.3 De bewaking
+
+Vier tests in de frontendlaag, op de stylesheet zelf in plaats van op de rendering — jsdom
+doet geen cascade (CLAUDE.md), dus dit is een declaratiecontrole en het zegt dat ook:
+
+- elke inset loopt door een token; **geen enkele bare `env()`** buiten de vier definities;
+- `.dialog-surface` declareert alle vier de kanten;
+- de insets staan **niet** in de mediaquery;
+- `:host` gebruikt `max()` voor links en rechts.
+
+Die vangen de terugval — iemand die een nieuw schermvullend element toevoegt zonder insets —
+en de browsercontrole met vervalste waarden vangt de geometrie.
+
+## 41. De zinneninventaris wordt gegenereerd
+
+**Status: het script en de bewaking zijn gebouwd in 0.8.1. Het herschrijven zelf is
+uitgesteld tot het einde** (besluit Sven, 2026-08-09): er komen nog zinnen bij, en nu
+herschrijven betekent het overdoen.
+
+### 41.1 Waarom generatie en niet onderhoud
+
+`TEKSTEN.md` is één keer met de hand gemaakt, bij 0.4.2, en was bij 0.8.0 drie ronden
+verouderd: tien zinnen van de scoretegel, de gesplitste exportwaarschuwing, de prognosezin en
+de drie niveauzinnen waren er allemaal bij gekomen zonder dat het document bewoog.
+
+**Een document dat stil veroudert is erger dan geen document**, want het wordt gelezen alsof
+het klopt. Dus: `scripts/extract_texts.py` schrijft het, en `tests/test_texts.py` faalt zolang
+het achterloopt. De reparatie is één commando.
+
+Het bijeffect is wat het bruikbaar maakt tussen nu en het herschrijven: **de diff van
+`TEKSTEN.md` is wat een ronde aan de klant heeft toegevoegd, in zijn woorden.**
+
+### 41.2 Wat het script wel en niet doet
+
+Alleen de standaardbibliotheek, en niets ervan raakt `custom_components/` — dezelfde regel als
+`ha_check.py`.
+
+- **Python** via `ast`: elke stringconstante en elke f-string, met de slots als `{...}`.
+  Docstrings vallen af; dat is de enige string in het pakket die niemand ooit ziet.
+- **JavaScript** via een regex over enkele aanhalingstekens, met commentaar eruit.
+- **De CSS eruit.** De stylesheet is een template literal van honderden regels waarvan elke
+  declaratie op een string lijkt. Blijft die staan, dan is twee derde van de inventaris
+  opvulling en leest niemand hem een tweede keer.
+- **Engels apart gemarkeerd**, onderaan, in plaats van weggefilterd. Een Engelse zin in de UI
+  is een fout tenzij het een identifier is — maar de logregels die daar opduiken hóren Engels
+  te zijn, en dat per regel beoordelen is precies het punt.
+
+De taalherkenning leunt op stopwoorden die de twee talen **niet** delen. Dat is geen detail:
+op de eerste draai stond `is` in de Nederlandse verzameling, en dat ene gedeelde woord zette
+elke Engelse logregel in het Nederlandse hoofdstuk.
+
+**Wat het niet doet is oordelen.** Het verzamelt en sorteert; de herschrijfronde leest. De
+redactionele indeling op zichtbaarheid — wat een bewoner dagelijks ziet vooraan, wat alleen de
+installateur ooit ziet achteraan — komt terug wanneer dat herschrijven begint. Dan is dit
+bestand de invoer en niet de uitvoer.
+
+### 41.3 Het filter is een heuristiek en zegt dat
+
+Een string telt als tekst wanneer hij lang genoeg is, geen identifier, pad, icoon,
+formaatspecificatie of CSS-declaratie is, en een spatie bevat of met een hoofdletter begint.
+Dat laat er te veel door in plaats van te weinig, en dat is de goede kant: een vals positief
+is een regel die iemand overslaat, een vals negatief is een zin die niemand nakijkt.
