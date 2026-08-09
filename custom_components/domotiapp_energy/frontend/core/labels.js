@@ -33,6 +33,7 @@ const REASON_LABELS = {
   flexible_device_available: 'Er is een verplaatsbaar apparaat beschikbaar',
   outside_allowed_window: 'Buiten het toegestane tijdvenster',
   quiet_hours_active: 'Het is nu stille uren',
+  deadline_approaching: 'De uiterste starttijd komt in zicht',
   insufficient_savings: 'De besparing is te klein om te melden',
   neutral_energy_situation: 'De situatie vraagt niet om een aanpassing',
 };

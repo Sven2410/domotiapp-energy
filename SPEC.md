@@ -4175,3 +4175,118 @@ scroll.
 bewoner een tabblad aan herkent wanneer hij zoekt naar het tabblad dat zijn installateur door
 de telefoon noemde. Dat is precies het gesprek waarvoor de zes tabbladen voor beide rollen
 gelijk zijn (§33.6).
+
+## 43. Fase 2: het urgentie-advies
+
+**Status: gebouwd in 0.10.0.** Fase 2 uit de bouwvolgorde van §32.10. `deadline_approaching`
+op rang 3 — de plek "harde tijdsgrenzen" die sinds 0.1.0 leegstond.
+
+### 43.1 De zinnen, per situatie
+
+Opgeschreven vóór de regel gebouwd werd, dezelfde afspraak als bij de tegelteksten (§35.9).
+
+| Situatie | Wat er staat |
+|---|---|
+| Nu binnen `[laatste start − 30, laatste start]` | *Start {naam} nu als hij om {tijd} klaar moet zijn.* |
+| Nog ruim op tijd | niets — "nu" zou onwaar zijn |
+| Voorbij de laatste start, deadline nog niet verstreken | niets — zie §43.2 |
+| Deadline verstreken | niets (§32.3: "je hebt het gemist" helpt niemand) |
+| Geen duur ingevuld | niets — zonder duur is er geen laatste start, en die wordt niet geraden |
+| Apparaat niet advisable of vandaag niet toegestaan | niets, via de bestaande regels |
+
+### 43.2 Twee afwijkingen van §32.3, allebei om dezelfde reden
+
+§32.3 legt vast: tekst *"Start [naam] nu om [tijd] te halen"*, severity `warning`, en het
+advies *"loopt tot de deadline"*. Twee daarvan zijn hier anders, en beide keren omdat de zin
+moet toetsen wat hij beweert.
+
+**Het venster stopt bij de laatste start, niet bij de deadline.** Voor een vaatwasser van 180
+minuten met een deadline van 07:00 is de laatste start 04:00. Om 04:30 nog zeggen *"start nu,
+dan is hij om 07:00 klaar"* is gewoon onwaar — hij is dan om 07:30 klaar. Er is op dat moment
+geen ware zin die helpt, en dan is zwijgen het antwoord dat §32.3 zelf al kiest ná de
+deadline. Deze sectie neemt dat moment een half uur naar voren, naar het punt waarop de
+deadline werkelijk onbereikbaar wordt in plaats van waarop hij formeel verloopt.
+
+**De zin is voorwaardelijk en de severity is `info`, tot fase 3.** Dit is de belangrijkste
+afwijking en de enige die ongedaan gemaakt moet worden.
+
+Fase 2 heeft **geen signaal dat er werk te doen is**: `needs_ready_flag` is fase 3. Deze regel
+kan een volle vaatwasser dus niet van een lege onderscheiden, en zou elke nacht opnieuw een
+waarschuwing geven over een machine die misschien leeg is. Een waarschuwing die de helft van
+de tijd onterecht is, leert mensen waarschuwingen negeren — en dat kost meer dan dit advies
+oplevert.
+
+Dus zegt de zin de voorwaarde die hij wél kent: *als* hij om die tijd klaar moet zijn. En de
+severity wacht op de vlag die de bewering waarmaakt:
+
+| | Fase 2 (nu) | Fase 3 (met de vlag) |
+|---|---|---|
+| Zin | *Start {naam} nu als hij om {tijd} klaar moet zijn.* | *Start {naam} nu om {tijd} te halen.* |
+| Severity | `info` | `warning` |
+| Voorwaarde | binnen het venster | binnen het venster **en** de vlag staat |
+
+**Fase 3 mag deze regel dus niet alleen aanzetten, hij moet de zin en de severity terugzetten
+naar wat §32.3 voorschrijft.** Dat staat hier zodat het niet vergeten wordt.
+
+### 43.3 Waarom dit advies niet kan pendelen
+
+Vraag van Sven, en het antwoord is dat de hysterese hier niet het juiste gereedschap is.
+
+**In fase 2 kán het niet pendelen, en dat is geen geluk.** De regel leest precies twee dingen:
+de deadline en de duur. De deadline is een constante uit de configuratie; de duur is dat in
+fase 2 ook. Er zit geen meting in, dus er is niets dat kan schommelen. **Het zonneoverschot
+komt in deze regel niet voor** — dat was de zorg, en het is precies de reden dat hij er niet
+in staat.
+
+**Wat het overschot wél doet, is de volgorde beïnvloeden, en daar is al machinerie voor.**
+`PrimaryAdviceGate` neemt een urgenter advies onmiddellijk over, dus een rang-3-advies
+doorbreekt een vastgehouden rang-4-advies zonder op de dweltimer te wachten. En omgekeerd kan
+een komend-en-gaand zonneadvies het urgentie-advies niet verdringen, want het rangeert lager.
+
+**De echte pendelkans komt met de laadpaal, en dan is een ratel het gereedschap en geen
+hysterese.** Zodra `required_duration_minutes` de laadtoestand leest, beweegt de laatste start
+mee met een meting die ruist, en kan hij heen en weer over `nu + 30` kruipen. Een drempel met
+een losmarge is daar het verkeerde antwoord: een deadline wordt één keer gepasseerd. Wat er
+dan hoort te staan is een **ratel** — eenmaal gevuurd voor dit apparaat in dit venster, blijft
+het staan tot het venster sluit.
+
+**Die ratel wordt nu niet gebouwd.** Er is niets dat hem kan bewegen, en een mechanisme voor
+een geval dat nog niet bestaat is precies het soort ongelezen machinerie dat §38 heeft
+opgeruimd. Hij hoort in de laadpaalronde, en hij staat hier opgeschreven zodat die ronde niet
+opnieuw voor hysterese kiest.
+
+### 43.4 Eén apparaat, één advies
+
+Een vaatwasser binnen zijn urgentievenster terwijl de zon schijnt leverde twee items over
+dezelfde machine: *start hem nu voor 07:00* en *er is zonneoverschot, gebruik hem nu*. Allebei
+waar, allebei hetzelfde verzoek, en één ervan is ruis.
+
+Dat is de les van het dubbele hoofdadvies (§42.1) één laag hoger: daar drukte het paneel één
+item twee keer af, hier maakte de motor twee items over één onderwerp. De rang beslist welke
+overblijft, dus de deadline wint van de zon en de zon van de prijs.
+
+**Advies zonder apparaat wordt nooit samengevoegd.** Veiligheid, piek, prijs en de neutrale
+situatie gaan over de woning, en twee daarvan kunnen tegelijk waar zijn.
+
+### 43.5 De duur komt uit een functie, niet uit een property
+
+`engine/scheduling.py`, met `required_duration_minutes` en `latest_start_minutes` — de vorm
+die §34.8 vóór deze fase heeft vastgelegd. In fase 2 geeft de eerste gewoon
+`device.duration_minutes` terug; het punt is dat het urgentie-advies zijn deadline dóór die
+functie berekent, zodat de laadpaal later één tak in één functie is en geen verbouwing van het
+advies.
+
+**Eén afwijking: de tweede parameter is de metrics, waar §34.8 "snapshot" schreef.** De
+advisor krijgt nooit een snapshot te zien — hij krijgt een `EnergyMetrics`, en daar staan de
+metingen per apparaat al (`device_power_w`). Een laadtoestand landt daar ook. Een snapshot
+door de coordinator heen trekken naar een pure functie die er verder niets mee doet, zou
+betalen voor het verkeerde zelfstandig naamwoord.
+
+### 43.6 Wat deze fase niet raakt
+
+- **De vlag, de runtime-store en `set_ready`** — dat is fase 3 (§32.10).
+- **De laadpaal** — `required_duration_minutes` heeft nog geen tak voor hem (§34.8).
+- **De datakwaliteit en de energiescore.** Geen nieuw item, geen component. Een deadline is
+  een adviesvraag.
+- **Prognose.** Dit advies vereist er geen: je hoeft de toekomst niet te kennen om te weten
+  dat later starten de deadline onhaalbaar maakt (§32.3).

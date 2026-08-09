@@ -24,6 +24,7 @@ from custom_components.domotiapp_energy.const import (
     DEVICE_TYPE_EV_CHARGER,
     DEVICE_TYPE_GENERIC_MONITOR,
     EXPLANATION_KEYS,
+    MEASUREMENT_MINUTES_LEFT,
     MEASUREMENT_PRICE,
     PRIORITY_HIGH,
     SEVERITY_INFO,
@@ -38,6 +39,7 @@ from custom_components.domotiapp_energy.engine.providers import (
     RuleBasedCoachProvider,
 )
 from custom_components.domotiapp_energy.engine.reason_codes import (
+    REASON_DEADLINE_APPROACHING,
     REASON_HIGH_ENERGY_PRICE,
     REASON_HIGH_GRID_EXPORT,
     REASON_HIGH_GRID_LOAD,
@@ -442,7 +444,13 @@ async def test_a_device_that_can_no_longer_finish_in_time_is_not_suggested(
 async def test_the_same_device_is_suggested_while_it_can_still_finish(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    """At 02:30 there is still time to run to completion before 06:00."""
+    """At 02:30 there is still time to run to completion before 06:00.
+
+    The deadline advice would otherwise take this appliance's place in the list
+    — 02:30 sits inside its urgency window — and that is the right behaviour
+    but the wrong subject for this test, which is about the ready window. A
+    deadline three hours later keeps the two apart.
+    """
     freezer.move_to(local(2, 30))
     config = _config(min_solar_surplus_w=500.0)
     # A dishwasher is noisy by default and 02:30 is inside the quiet hours, so
@@ -453,7 +461,7 @@ async def test_the_same_device_is_suggested_while_it_can_still_finish(
     config.devices.append(
         _device(
             ready_from="22:00",
-            ready_before="06:00",
+            ready_before="09:00",
             duration_minutes=180,
             is_noisy=False,
         )
@@ -1981,3 +1989,164 @@ def test_both_providers_satisfy_the_protocol() -> None:
     """The coordinator can be handed either one (dependency injection)."""
     assert isinstance(RuleBasedCoachProvider(), CoachProvider)
     assert isinstance(ExtensionCoachProvider(), CoachProvider)
+
+
+# --- The urgency advice (SPEC.md §32.3, fase 2) ------------------------------
+#
+# One row per situation, with the sentence that belongs to it written down
+# before the rule was built — the same rule the tile texts follow, and the one
+# that catches a condition testing something other than what its sentence
+# claims.
+
+
+def _deadline_home(**device_overrides: Any) -> StoredConfiguration:
+    """Return a home whose dishwasher must be done by 07:00 and runs 180 minutes.
+
+    So the last possible start is 04:00 and the urgency window is 03:30-04:00.
+    Not noisy, because the quiet hours would otherwise defer the advice and
+    this is not the test for that.
+    """
+    config = _config(min_solar_surplus_w=500.0)
+    defaults: dict[str, Any] = {
+        "name": "Vaatwasser",
+        "ready_before": "07:00",
+        "duration_minutes": 180,
+        "is_noisy": False,
+    }
+    config.devices.append(_device(**(defaults | device_overrides)))
+    return config
+
+
+async def test_the_urgency_advice_fires_inside_its_window(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """03:45 is inside 03:30-04:00, so the deadline is about to become unreachable."""
+    freezer.move_to(local(3, 45))
+    config = _deadline_home()
+
+    advice = Advisor().generate(config, _metrics(config))
+
+    assert advice[0].reason_code == REASON_DEADLINE_APPROACHING
+    assert advice[0].message == (
+        "Start Vaatwasser nu als hij om 07:00 klaar moet zijn."
+    )
+    # Fifteen minutes left before starting later makes 07:00 impossible.
+    assert advice[0].measurements[MEASUREMENT_MINUTES_LEFT] == 15
+
+
+async def test_the_urgency_advice_is_silent_before_its_window(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """At 02:00 there are two hours of slack; saying "nu" would be false."""
+    freezer.move_to(local(2, 0))
+    config = _deadline_home()
+
+    assert REASON_DEADLINE_APPROACHING not in _codes(
+        Advisor().generate(config, _metrics(config))
+    )
+
+
+async def test_the_urgency_advice_stops_once_the_deadline_is_unreachable(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """At 04:30 starting now finishes at 07:30, so the sentence would lie.
+
+    SPEC.md §32.3 says the advice runs "tot de deadline"; this stops it one
+    moment earlier, at the last start. Past that there is no true sentence left
+    that helps — the same reason §32.3 gives for going quiet after the deadline,
+    applied where the deadline actually becomes unreachable.
+    """
+    freezer.move_to(local(4, 30))
+    config = _deadline_home()
+
+    assert REASON_DEADLINE_APPROACHING not in _codes(
+        Advisor().generate(config, _metrics(config))
+    )
+
+
+async def test_the_urgency_advice_stays_silent_after_the_deadline(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """08:00 is past 07:00: "je hebt het gemist" helps nobody (SPEC.md §32.3)."""
+    freezer.move_to(local(8, 0))
+    config = _deadline_home()
+
+    assert REASON_DEADLINE_APPROACHING not in _codes(
+        Advisor().generate(config, _metrics(config))
+    )
+
+
+async def test_no_duration_means_no_deadline_advice(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """Without a duration there is no last start, and none is guessed."""
+    freezer.move_to(local(3, 45))
+    config = _deadline_home(duration_minutes=None)
+
+    assert REASON_DEADLINE_APPROACHING not in _codes(
+        Advisor().generate(config, _metrics(config))
+    )
+
+
+async def test_the_urgency_window_may_cross_midnight(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """A 01:00 deadline on a 180-minute cycle starts at 22:00, so the window is 21:30.
+
+    The normal case rather than an edge one, and the reason the comparison uses
+    the same midnight-crossing helper every other window in this engine uses.
+    """
+    freezer.move_to(local(21, 45))
+    config = _deadline_home(ready_before="01:00")
+
+    assert REASON_DEADLINE_APPROACHING in _codes(
+        Advisor().generate(config, _metrics(config))
+    )
+
+
+async def test_the_deadline_outranks_the_sun(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """Rank 3 beats rank 4: a deadline is hard, waiting for sun is an optimisation."""
+    freezer.move_to(local(3, 45))
+    config = _deadline_home()
+    metrics = _metrics(config, solar_surplus_w=1500.0)
+
+    advice = Advisor().generate(config, metrics)
+
+    assert advice[0].reason_code == REASON_DEADLINE_APPROACHING
+
+
+async def test_one_appliance_gets_one_advice(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """Two true sentences about the same machine asking for the same action.
+
+    The doubled primary advice of SPEC.md §42.1, one layer up: there the panel
+    printed one item twice, here the engine produced two items about one
+    subject. The more urgent reason survives.
+    """
+    freezer.move_to(local(3, 45))
+    config = _deadline_home()
+    metrics = _metrics(config, solar_surplus_w=1500.0)
+
+    codes = _codes(Advisor().generate(config, metrics))
+
+    assert codes.count(REASON_DEADLINE_APPROACHING) == 1
+    assert REASON_SOLAR_SURPLUS_AVAILABLE not in codes
+
+
+async def test_advice_about_the_house_is_never_deduplicated(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """Price and peak carry no appliance, so two of them may both be true."""
+    freezer.move_to(local(3, 45))
+    config = _deadline_home()
+    config.home.contract_type = CONTRACT_TYPE_DYNAMIC
+    config.home.low_price_threshold_eur_kwh = 0.15
+    metrics = _metrics(config, current_price_eur_kwh=0.10)
+
+    codes = _codes(Advisor().generate(config, metrics))
+
+    assert REASON_DEADLINE_APPROACHING in codes
+    assert REASON_LOW_ENERGY_PRICE in codes
