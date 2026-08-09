@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.8.0
+
+De visuele ronde: verfijnen, geen herontwerp. SPEC §39.
+
+### Changed
+
+- **Compacter én groter.** De lucht tussen rijen komt ongeveer een derde in en de getallen
+  gaan omhoog: een meetregel leest nu 1,2rem in plaats van 1,05, een kopgetal 3,4rem in
+  plaats van 3. De kaartkoppen gaan juist iets omlaag — de hiërarchie op een kaart hoort van
+  het getal uit te gaan, niet van de titel. Drie kaarten passen weer op één scherm.
+
+- **De apparaatdialoog opent nog twee secties in plaats van drie.** *Apparaat* en *Verbruik*
+  zijn de hele eerste doorloop; de datakwaliteit vraagt niets daarbuiten. De volgorde volgt
+  wat een installateur als eerste invult, *Koppelingen* staat nu vóór *Aansturing*, en
+  *Notities* is een eigen sectie zoals bij Energiebronnen.
+
+- **Een rij bestaat op grond van wat de woning heeft, niet van wat er nu gemeten wordt.** Een
+  woning zonder panelen zag drie regels over zonne-apparatuur, alle drie leeg en geen ervan
+  op te lossen. Die verdwijnen, net als *Apparaten die nu draaien* wanneer geen enkel
+  apparaat een vermogenssensor koppelt. Wat blijft is de andere helft van de regel: een rij
+  die deze woning wél heeft en nu niets levert, blijft staan — dat is een storing die gezien
+  moet worden, geen ruis.
+
+- **Op een telefoon delen de knoppen van een rij de volle breedte.** *Bewerken* en
+  *Verwijderen* stonden als twee etiketgrote doelen tegen de rechterrand; nu heeft een duim
+  een halve regel.
+
 ## 0.7.2
 
 Het staartje van de opruimronde, en het legde een regel bloot die er nog niet stond.

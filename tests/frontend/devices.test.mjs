@@ -1280,25 +1280,29 @@ describe('helper texts that know what type this is', () => {
 });
 
 describe('the dialog folds into sections a phone can hold', () => {
-  it('opens the three sections an installer needs on every visit', async () => {
+  it('opens the two sections a first pass actually needs', async () => {
     const { panel, tab } = await openDevicesTab();
     buttonIn(tab, 'Apparaat toevoegen').click();
     await settle();
 
+    // In the order an installer fills them in: what it is, what it uses, then
+    // when it may run, then the sensors, then the agreement, then notes.
     assert.deepEqual(sectionTitles(panel), [
       'Apparaat',
       'Verbruik',
       'Wanneer het mag draaien',
+      'Koppelingen',
       'Aansturing',
-      'Koppelingen en notities',
+      'Notities',
     ]);
 
     const open = [...formDialog(panel).querySelectorAll('.section-toggle')]
       .filter((node) => node.getAttribute('aria-expanded') === 'true')
       .map((node) => node.querySelector('.section-title').textContent);
-    // The agreement about control and the optional links stay folded: most
-    // visits do not touch them, and the scroll is what made this unusable.
-    assert.deepEqual(open, ['Apparaat', 'Verbruik', 'Wanneer het mag draaien']);
+    // Naming the appliance and stating what it uses is the whole of a first
+    // pass — the data quality checklist asks for nothing outside those two.
+    // Everything after is a second visit and costs one tap (SPEC.md §39.2).
+    assert.deepEqual(open, ['Apparaat', 'Verbruik']);
   });
 
   it('folds a section open and shut from the keyboard', async () => {

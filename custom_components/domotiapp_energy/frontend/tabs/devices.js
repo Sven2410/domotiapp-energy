@@ -914,6 +914,22 @@ function daysToStorage(value) {
  * and never defines: a field that is not mentioned here would simply not be
  * shown, which the test at the bottom of the device tests guards against.
  */
+/**
+ * The folding sections, in the order an installer fills them in.
+ *
+ * **Only the first two open.** They were three, and on a phone in a meter
+ * cupboard that is most of the screen before anything is typed: naming the
+ * appliance and stating what it uses is the whole of a first pass, and the
+ * checklist asks for nothing outside those two. What comes after is a second
+ * visit — the resident says when it may run, the installer links the sensors —
+ * so those start folded and cost one tap when they are wanted.
+ *
+ * "Wanneer het mag draaien" moved with them and that is the contestable half of
+ * this: it holds the ready window, which is worth a point on the data quality.
+ * It is not worth a point on *completeness* though (SPEC.md §16), and it is the
+ * one section a resident opens on his own screen rather than the installer at
+ * hand-over.
+ */
 const SECTIONS = [
   {
     title: 'Apparaat',
@@ -927,7 +943,7 @@ const SECTIONS = [
   },
   {
     title: 'Wanneer het mag draaien',
-    open: true,
+    open: false,
     fields: [
       'is_flexible',
       'is_noisy',
@@ -935,6 +951,11 @@ const SECTIONS = [
       'ready_from',
       'days_of_week',
     ],
+  },
+  {
+    title: 'Koppelingen',
+    open: false,
+    fields: ENTITY_LINKS.map((link) => link.name),
   },
   {
     title: 'Aansturing',
@@ -946,11 +967,7 @@ const SECTIONS = [
       'control_forbidden_reason',
     ],
   },
-  {
-    title: 'Koppelingen en notities',
-    open: false,
-    fields: [...ENTITY_LINKS.map((link) => link.name), 'notes'],
-  },
+  { title: 'Notities', open: false, fields: ['notes'] },
 ];
 
 export const devicesTab = {

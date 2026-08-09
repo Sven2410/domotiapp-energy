@@ -458,8 +458,11 @@ describe('empty and populated configurations', () => {
     assert.equal(running.querySelector('.stat-value').textContent, '1');
   });
 
-  it('leaves the running count absent when nothing links a power entity', async () => {
-    // "0 draaien" would claim a measurement of every appliance in the house.
+  it('drops the running count when nothing links a power entity', async () => {
+    // "0 draaien" would claim a measurement of every appliance in the house,
+    // and a permanently empty row reports a shortcoming that does not exist:
+    // nobody linked a power sensor, so there is nothing here this home could
+    // ever show (SPEC.md §39.3).
     const panel = await mountPanel(
       fakeHass({ coach: sampleCoach({ metrics: { device_power_w: {} } }) }),
     );
@@ -468,9 +471,76 @@ describe('empty and populated configurations', () => {
       node.querySelector('.stat-label').textContent.includes('nu draaien'),
     );
 
-    const value = running.querySelector('.stat-value');
-    assert.ok(value.classList.contains('is-empty'));
-    assert.equal(value.textContent, 'Niet beschikbaar');
+    assert.ok(!isVisible(running));
+  });
+
+  it('keeps every tap target at 44 px, at a phone-sized panel width', async () => {
+    // Measured rather than assumed, and at the width the container query
+    // actually keys on: with the Home Assistant sidebar open on a tablet the
+    // screen is roomy while the panel is not (SPEC.md §39.5).
+    const panel = await mountPanel();
+
+    const small = [...panel.shadowRoot.querySelectorAll('button')]
+      .map((node) => node.className)
+      .filter((name) => name.includes('button') || name.includes('toggle'));
+
+    // jsdom does not lay out, so the guard here is the declaration: every
+    // interactive class carries its own min-height in the stylesheet. The
+    // measurement is the browser check; this keeps the rule from being
+    // deleted by accident.
+    const styles = panel.shadowRoot.querySelector('style').textContent;
+    for (const selector of ['.tab-button', '.button', '.section-toggle']) {
+      const block = styles.split(`${selector} {`)[1].split('}')[0];
+      assert.match(block, /min-height: 44px/, `${selector} lost its tap target`);
+    }
+    assert.ok(small.length > 0);
+  });
+
+  it('drops the solar rows from a home without panels', async () => {
+    // Three lines about equipment the installer already said is not there:
+    // "Zonneproductie — Nog niet ingesteld", and two more reading "Niet
+    // beschikbaar". A shortcoming nobody can close (SPEC.md §39.3).
+    const panel = await mountPanel(
+      fakeHass({
+        config: sampleConfig({
+          sources: [{ id: 'grid', name: 'Netmeter', type: 'grid_meter', enabled: true }],
+        }),
+      }),
+    );
+
+    const labels = [...panel.shadowRoot.querySelectorAll('.stat-row')]
+      .filter(isVisible)
+      .map((node) => node.querySelector('.stat-label').textContent);
+
+    assert.ok(!labels.includes('Zonneproductie'));
+    assert.ok(!labels.includes('Zonneoverschot'));
+    assert.ok(!labels.includes('Zelfbenutting'));
+    // The rows about the connection stay: those are unconditional, and an
+    // empty one there is a fault worth seeing.
+    assert.ok(labels.includes('Netvermogen'));
+  });
+
+  it('keeps them for a home that has panels but no reading right now', async () => {
+    // The other half of the rule, and the reason existence follows the
+    // configuration rather than the value: hide a row because it is empty at
+    // this moment and an unreadable inverter disappears with it.
+    const panel = await mountPanel(
+      fakeHass({
+        config: sampleConfig({
+          sources: [
+            { id: 'grid', name: 'Netmeter', type: 'grid_meter', enabled: true },
+            { id: 'pv', name: 'Omvormer', type: 'solar', enabled: true },
+          ],
+        }),
+        coach: sampleCoach({ metrics: { solar_power_w: null, solar_surplus_w: null } }),
+      }),
+    );
+
+    const rows = [...panel.shadowRoot.querySelectorAll('.stat-row')].filter(isVisible);
+    const labels = rows.map((node) => node.querySelector('.stat-label').textContent);
+
+    assert.ok(labels.includes('Zonneproductie'));
+    assert.ok(labels.includes('Zonneoverschot'));
   });
 
   it('shows the home consumption once, as the headline and not as a row', async () => {

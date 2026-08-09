@@ -400,6 +400,34 @@ export const overviewTab = {
 
       const sources = config?.sources ?? [];
 
+      /*
+       * **A row exists because of what the home has; its value follows from
+       * what is measured right now.** Those are two different questions and
+       * running them together goes wrong in both directions (SPEC.md §39.3):
+       *
+       * - hide a row because it has no value *at this moment* and a fault
+       *   disappears with it — an unreadable grid meter would simply be gone
+       *   off the card, which is the one thing that has to be visible;
+       * - show a row this home can never fill and it reports a shortcoming
+       *   that does not exist. A home without panels read "Zonneproductie —
+       *   Nog niet ingesteld", "Zonneoverschot — Niet beschikbaar",
+       *   "Zelfbenutting — Niet beschikbaar": three lines about equipment the
+       *   installer already said is not there.
+       *
+       * So the *existence* of a row follows the configuration, which is stable
+       * and never flickers, and "Niet beschikbaar" is left to mean what it
+       * should: this home has the thing and we cannot read it now.
+       *
+       * The same reading of a source row as everywhere else — a row is the
+       * installer's statement that the home owns the thing, disabled or not
+       * (engine/completeness.py).
+       */
+      const hasSolar = sources.some((source) => source.type === 'solar');
+      for (const row of [solarPowerRow, surplusRow, selfConsumptionRow]) {
+        setVisible(row.element, hasSolar);
+      }
+      setVisible(surplusNotice.element, hasSolar);
+
       // An installation with nothing linked yet has to say what to do, not
       // show a column of empty rows (SPEC.md §8).
       setupNotice.set(
@@ -482,9 +510,12 @@ export const overviewTab = {
       );
       loadRow.set(formatNumber(metrics.grid_load_percent, { decimals: 1 }));
       // Absent, not zero, when no appliance links a power entity: "0 draaien"
-      // would claim a measurement of every appliance in the house.
+      // would claim a measurement of every appliance in the house. And the row
+      // goes with it, by the same rule as the solar rows above — nobody linked
+      // a power sensor, so there is nothing here this home could ever show.
       const linked = Object.keys(metrics.device_power_w || {}).length;
-      runningRow.set(linked ? String(metrics.running_device_count ?? 0) : null);
+      setVisible(runningRow.element, linked > 0);
+      runningRow.set(String(metrics.running_device_count ?? 0));
       updatePrice(config, metrics);
 
       // Cause and fix, not a grade. One sentence covers both figures the
