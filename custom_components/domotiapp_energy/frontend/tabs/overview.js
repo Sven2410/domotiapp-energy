@@ -369,40 +369,52 @@ export const overviewTab = {
     }
 
     /**
-     * Show the price the engine actually calculates with.
+     * Show the price a kWh costs right now, however it is known.
      *
      * Always the all-in price, because that is the only kind that exists past
-     * the calculator (SPEC.md §16). When it was derived from a bare market
-     * price the hint names that reading, so the conversion can be checked
-     * against the sensor rather than believed.
+     * the calculator (SPEC.md §16), and the backend has already decided where
+     * it came from (SPEC.md §48): a reading beats a typed-in tariff, and the
+     * entered tariff answers for a fixed contract.
      *
-     * The two empty cases are told apart on purpose: a fixed contract has no
-     * hourly price to show and never will, while a missing one is something to
-     * go and fix.
+     * **This row used to check the contract type itself**, and told a customer
+     * with a fixed contract *"Niet van toepassing bij een vast contract"* while
+     * he had both a filled-in tariff and a working price source. A fixed
+     * contract has a price; what it does not have is a price that varies. That
+     * distinction belongs to the advice, not to this row (SPEC.md §48.2).
      */
     function updatePrice(config, metrics) {
-      if (config?.home?.contract_type !== 'dynamic') {
-        priceRow.set(null, {
-          empty: 'Niet van toepassing bij een vast contract',
-        });
-        return;
-      }
-
       const allIn = metrics.current_price_eur_kwh;
       if (allIn === null || allIn === undefined) {
         priceRow.set(null, {
-          empty: 'Geen bruikbare prijsbron',
+          empty:
+            config?.home?.contract_type === 'dynamic'
+              ? 'Geen bruikbare prijsbron'
+              : 'Nog geen prijs bekend — koppel een prijsbron of vul het vaste leveringstarief in',
         });
         return;
       }
 
       const market = metrics.market_price_eur_kwh;
       priceRow.set(`${formatPrice(allIn)} per kWh`, {
-        hint:
-          market === null || market === undefined
-            ? null
-            : `All-in, afgeleid van een marktprijs van ${formatPrice(market)}.`,
+        hint: priceHint(metrics, market),
       });
+    }
+
+    /**
+     * Say where the price came from, because the two age differently.
+     *
+     * A measured price keeps itself current; a tariff someone typed in stays
+     * the same after a contract change, and only the customer knows that
+     * happened.
+     */
+    function priceHint(metrics, market) {
+      if (metrics.price_origin === 'fixed_tariff') {
+        return 'Vast leveringstarief, zoals ingevuld bij Woning.';
+      }
+      if (market === null || market === undefined) {
+        return null;
+      }
+      return `All-in, afgeleid van een marktprijs van ${formatPrice(market)}.`;
     }
 
     function update(state) {

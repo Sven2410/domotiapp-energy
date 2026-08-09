@@ -503,11 +503,9 @@ def _why_no_amount(context: _Context, device: DeviceProfile) -> str:
             f"cyclus van {device.name} — vul die in bij Apparaten."
         )
 
-    if (
-        context.metrics.current_price_eur_kwh
-        if home.contract_type == CONTRACT_TYPE_DYNAMIC
-        else home.fixed_import_price_eur_kwh
-    ) is None:
+    # The metrics already carry the price that applies, whatever the contract
+    # is (SPEC.md §48); this only has to notice that there is none.
+    if context.metrics.current_price_eur_kwh is None:
         if home.contract_type == CONTRACT_TYPE_DYNAMIC:
             return (
                 "Hoeveel dit oplevert is niet te berekenen zolang er geen "

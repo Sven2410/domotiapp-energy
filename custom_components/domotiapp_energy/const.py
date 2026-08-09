@@ -16,7 +16,7 @@ from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 
 DOMAIN: Final = "domotiapp_energy"
 INTEGRATION_NAME: Final = "DomotiApp Energy"
-VERSION: Final = "0.12.0"
+VERSION: Final = "0.13.0"
 
 MANUFACTURER: Final = "DomotiApp"
 DEVICE_MODEL: Final = "Energy Coach"
@@ -354,7 +354,7 @@ STALE_AFTER_MINUTES_RESTING: Final = 240
 # guard test walks `SOURCE_TYPES`, so leaving one out fails the suite rather
 # than silently inheriting a number that was chosen for something else. That is
 # the whole point of a mapping instead of one constant with exceptions.
-SOURCE_STALE_MINUTES: Final[dict[str, int]] = {
+SOURCE_STALE_MINUTES: Final[dict[str, int | None]] = {
     # Power, straight from a meter or inverter.
     SOURCE_TYPE_GRID_METER: STALE_AFTER_MINUTES_MEASUREMENT,
     SOURCE_TYPE_SOLAR: STALE_AFTER_MINUTES_MEASUREMENT,
@@ -363,9 +363,12 @@ SOURCE_STALE_MINUTES: Final[dict[str, int]] = {
     SOURCE_TYPE_CURRENT_PRICE: STALE_AFTER_MINUTES_PRICE,
     SOURCE_TYPE_FEED_IN_PRICE: STALE_AFTER_MINUTES_PRICE,
     SOURCE_TYPE_PRICE_FORECAST: STALE_AFTER_MINUTES_PRICE,
-    # A forecast is refreshed a few times a day; treating it as a measurement
-    # would throw away a perfectly good one every afternoon.
-    SOURCE_TYPE_SOLAR_FORECAST: STALE_AFTER_MINUTES_PRICE,
+    # A forecast does not expire at all, and that is Sven's call (SPEC.md
+    # §47.4): the forecast made this morning is still today's forecast at eight
+    # in the evening, and refusing it leaves an empty row where information
+    # belongs. The condition attached to it is that whoever shows it shows how
+    # old it is.
+    SOURCE_TYPE_SOLAR_FORECAST: None,
     # A battery that is neither charging nor discharging reports 0 W and, on a
     # report-on-change integration, says nothing more for hours.
     SOURCE_TYPE_HOME_BATTERY: STALE_AFTER_MINUTES_RESTING,
@@ -937,6 +940,14 @@ PRIMARY_ADVICE_MIN_DWELL_SECONDS: Final = 60.0
 # The default for anything read without an explicit window, and the name
 # SPEC.md §15 refers to.
 ENTITY_STALE_AFTER_MINUTES: Final = STALE_AFTER_MINUTES_MEASUREMENT
+
+# Where the price the panel shows came from (SPEC.md §48).
+#
+# The value alone is not enough: a customer who sees a price wants to know
+# whether it is being measured or whether it is the number he typed in himself,
+# because only one of the two goes stale without anyone noticing.
+PRICE_ORIGIN_SOURCE: Final = "source"
+PRICE_ORIGIN_FIXED_TARIFF: Final = "fixed_tariff"
 
 # --- Entities (SPEC.md §19) -------------------------------------------------
 

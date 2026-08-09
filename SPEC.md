@@ -4730,3 +4730,72 @@ past hij bij een meting, bij een prijs, of bij iets dat mag rusten? Past hij bij
 drieën, dan is dat het bewijs dat er een vierde venster nodig is — met zijn eigen
 verdediging in de tabel hierboven. Wat níét mag: hem stil laten erven van een getal dat
 voor iets anders gekozen is. Dat is precies hoe dit ontstond.
+
+### 47.4 Een prognose verloopt niet, maar toont zijn ouderdom
+
+**Besluit van Sven, 2026-08-09.** De zonprognose krijgt geen venster. Voor een bewoner is
+*de prognose van vanochtend* om acht uur 's avonds nog steeds de prognose van vandaag; hem
+weigeren omdat hij oud is levert een lege rij op waar informatie hoort te staan.
+
+**De voorwaarde die erbij hoort is niet optioneel:** wie de prognose toont, toont hoe oud
+hij is. Zonder dat is "de zon levert vanmiddag 4 kWh" een bewering zonder houdbaarheid, en
+dat is precies waar het verouderingsvenster tegen beschermde.
+
+In `SOURCE_STALE_MINUTES` staat daarom `None` in plaats van een getal — een expliciete
+keuze die de lezer dwingt te zien dat hier geen grens is, in plaats van een groot getal dat
+op een grens lijkt.
+
+## 48. Eén prijs, en het verschil tussen tonen en adviseren
+
+**Aanleiding: Sven op zijn eigen productie-installatie, 2026-08-09.** Op het Overzicht
+stond bij *Actuele energieprijs*: **"Niet van toepassing bij een vast contract"** — terwijl
+hij zowel een ingevuld all-in tarief (€ 0,24171) als een werkende prijsbron had. Twee
+antwoorden op de vraag "wat kost een kWh nu", en het paneel gaf er geen.
+
+### 48.1 Eén predicaat, want het waren er vier
+
+`import_price_now(home, snapshot)` is de enige plek die beslist welke prijs geldt. Daarvoor
+stond dezelfde ternary op vier plekken: de marge in de calculator, de besparing in de
+advisor, het checklistitem in de datakwaliteit, en de rij in het paneel. Dat laatste
+exemplaar is wat een klant zag.
+
+De volgorde:
+
+1. **Een meting wint van een ingetypt getal.** De bron meet wat de klant nú betaalt; het
+   tariefveld is een uitspraak van het moment waarop het is ingevuld, en het overleeft een
+   contractwijziging zonder te klagen.
+2. **Anders het ingevulde vaste tarief, en alleen bij een vast contract.** Bij een
+   dynamisch contract staat dat veld niet eens in het formulier, dus een waarde die daar
+   nog uit een eerdere contractsoort staat, zou een stil verkeerd getal zijn.
+3. **Anders: onbekend**, en de rij zegt wat het zou beantwoorden.
+
+De metrics dragen naast de prijs ook `price_origin`, want een gemeten prijs houdt zichzelf
+actueel en een ingetypt tarief niet — en alleen de klant weet dat zijn contract veranderd
+is. De rij zegt daarom welke van de twee hij toont.
+
+### 48.2 Tonen en adviseren zijn twee dingen
+
+**De contractsoort zegt niets over of er een prijs is. Hij zegt iets over of die prijs
+varieert.**
+
+| | Vast contract | Dynamisch contract |
+|---|---|---|
+| Is er een prijs per kWh? | ja | ja |
+| Wordt hij getoond? | **ja** | ja |
+| Varieert hij? | nee | ja |
+| Advies over goedkope/dure momenten? | **nee** | ja |
+| Prijs-as in de energiescore? | **niet van toepassing** | ja |
+
+De onderdrukking van het prijsadvies bij een vast contract blijft dus precies zoals hij
+was, en om de goede reden: er is geen goedkoop moment om naartoe te schuiven. Maar dat is
+een uitspraak over *variatie*, en de rij toont een *niveau*.
+
+**De vraag die de twee uit elkaar houdt, bij elk toekomstig veld:** gaat dit over hoe hoog
+iets is, of over of het verandert? Alleen het tweede hangt aan de contractsoort.
+
+### 48.3 Wat het checklistitem nu vraagt
+
+`_price_information_available` vroeg "een prijs, op de manier die dit contract nodig heeft"
+en vraagt nu simpelweg of er een prijs is. Een woning met een prijsbron mist geen
+prijsinformatie omdat zij het tariefveld leeg liet — dat was dezelfde fout als §16 over
+niet-toepasselijke eisen: een gat tonen dat de klant niet kan dichten omdat het al dicht is.

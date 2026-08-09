@@ -38,7 +38,6 @@ from custom_components.domotiapp_energy.const import (
     COMPLETENESS_ITEM_TIME_WINDOWS,
     COMPLETENESS_POINTS,
     COMPLETENESS_UNCONDITIONAL_ITEMS,
-    CONTRACT_TYPE_DYNAMIC,
     CONTRACT_TYPES,
     CONTROL_MONITOR_ONLY,
     DEVICE_TYPE_HOME_BATTERY,
@@ -51,6 +50,7 @@ from custom_components.domotiapp_energy.models import (
     DeviceProfile,
     EnergySnapshot,
     StoredConfiguration,
+    import_price_now,
 )
 
 
@@ -152,10 +152,14 @@ def _home_profile_complete(config: StoredConfiguration) -> bool:
 def _price_information_available(
     config: StoredConfiguration, snapshot: EnergySnapshot
 ) -> bool:
-    """Return whether a price is known, in the way this contract needs it."""
-    if config.home.contract_type == CONTRACT_TYPE_DYNAMIC:
-        return snapshot.current_price_eur_kwh is not None
-    return config.home.fixed_import_price_eur_kwh is not None
+    """Return whether a price per kWh is known at all.
+
+    Not "in the way this contract needs it" any more: a price source works on a
+    fixed contract too, and a home that has one is not missing price
+    information because it also left the tariff field empty (SPEC.md §48).
+    """
+    price, _origin = import_price_now(config.home, snapshot)
+    return price is not None
 
 
 def is_complete_device_profile(device: DeviceProfile) -> bool:

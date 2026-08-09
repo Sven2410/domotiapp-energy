@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.13.0
+
+Een vast contract heeft ook een prijs. SPEC §48.
+
+### Fixed
+
+- **Het Overzicht zei "Niet van toepassing bij een vast contract"** terwijl de klant zowel
+  een ingevuld all-in tarief had als een werkende prijsbron. De rij keek naar de
+  contractsoort in plaats van naar wat er beschikbaar was.
+
+  **Nu één predicaat, `import_price_now`, en het stond op vier plekken los van elkaar**: de
+  marge in de calculator, de besparing in de advisor, het checklistitem in de datakwaliteit
+  en de rij in het paneel. Een meting wint van een ingetypt tarief; het ingevulde tarief
+  vult aan bij een vast contract; anders zegt de rij wat het zou beantwoorden.
+
+- **De rij zegt er nu bij waar de prijs vandaan komt.** Een gemeten prijs houdt zichzelf
+  actueel, een ingetypt tarief overleeft een contractwijziging zonder iets te zeggen — en
+  alleen de klant weet dat dat gebeurd is.
+
+- **Het datakwaliteitsitem vraagt niet langer "een prijs op de manier die dit contract
+  nodig heeft"**, maar of er een prijs is. Een woning met een prijsbron miste dat item
+  omdat zij het tariefveld leeg liet.
+
+### Changed
+
+- **Tonen en adviseren lopen niet meer door elkaar** (SPEC §48.2). Bij een vast contract
+  wordt de prijs gétoond en er wordt niet over geádviseerd — er is immers geen goedkoop
+  moment om naartoe te schuiven. De contractsoort zegt iets over *variatie*, niet over of
+  er een prijs bestaat.
+
+- **De zonprognose verloopt niet meer** (SPEC §47.4, besluit van Sven): de prognose van
+  vanochtend is 's avonds nog steeds die van vandaag. De voorwaarde die erbij hoort: wie
+  hem toont, toont hoe oud hij is. In de mapping staat daarom `None` en geen groot getal
+  dat op een grens lijkt.
+
 ## 0.12.0
 
 Een installateur kwam bij een vreemde woning niet voorbij de netmeter. SPEC §47.

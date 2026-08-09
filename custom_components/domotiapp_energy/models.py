@@ -39,6 +39,7 @@ from .const import (
     COMPONENT_UNAVAILABLE_REASONS,
     CONFIDENCE_LEVELS,
     CONFIDENCE_LOW,
+    CONTRACT_TYPE_DYNAMIC,
     CONTRACT_TYPES,
     CONTROL_ADVICE_ONLY,
     CONTROL_LEVEL_0_1_0,
@@ -85,6 +86,8 @@ from .const import (
     PRICE_BASES,
     PRICE_BASIS_ALL_IN,
     PRICE_BASIS_MARKET,
+    PRICE_ORIGIN_FIXED_TARIFF,
+    PRICE_ORIGIN_SOURCE,
     PRIORITIES,
     SCHEMA_VERSION,
     SCORE_COMPONENT_WEIGHTS,
@@ -1407,6 +1410,43 @@ class DataQualityResult:
         )
 
 
+def import_price_now(
+    home: HomeProfile, snapshot: EnergySnapshot
+) -> tuple[float | None, str | None]:
+    """Return the all-in price of a kWh right now, and where it came from.
+
+    **One predicate, because there were four** (SPEC.md §48). The calculator's
+    margin, the advisor's saving, the data quality checklist and the panel each
+    carried their own `dynamic ? source : entered tariff`, and the panel's copy
+    is what a customer noticed: a fixed contract showed *"Niet van toepassing
+    bij een vast contract"* while he had both a filled-in tariff and a working
+    price source.
+
+    The order is the point:
+
+    1. **A reading beats a typed number.** The source measures what the customer
+       pays now; the tariff field is a statement from whenever it was typed,
+       and it survives a contract change without complaining.
+    2. **The entered tariff, and only on a fixed contract.** On a dynamic one
+       the field is not even shown in the form, so a value left behind from an
+       earlier contract type would be a silent wrong number.
+
+    The contract type therefore says nothing about *whether there is a price* —
+    only about whether there is a price to fall back on. What it does decide is
+    something else entirely, and SPEC.md §48.2 keeps the two apart: a fixed
+    contract has a price **level** and no **variation**, so the price is shown
+    and never advised about.
+    """
+    if snapshot.current_price_eur_kwh is not None:
+        return snapshot.current_price_eur_kwh, PRICE_ORIGIN_SOURCE
+    if (
+        home.contract_type != CONTRACT_TYPE_DYNAMIC
+        and home.fixed_import_price_eur_kwh is not None
+    ):
+        return home.fixed_import_price_eur_kwh, PRICE_ORIGIN_FIXED_TARIFF
+    return None, None
+
+
 @dataclass(slots=True)
 class EnergyMetrics:
     """Everything the calculator derived from a snapshot (SPEC.md §16)."""
@@ -1452,6 +1492,8 @@ class EnergyMetrics:
     # so it stays a pure function of its input.
     solar_surplus_sufficient: bool | None = None
     current_price_eur_kwh: float | None = None
+    # Where that price came from: measured or typed in (SPEC.md §48).
+    price_origin: str | None = None
     # Carried through from the snapshot so the Overzicht can show where the
     # all-in price came from (SPEC.md §8). Only set for a market source.
     market_price_eur_kwh: float | None = None
@@ -1544,6 +1586,7 @@ class EnergyMetrics:
             "peak_risk": self.peak_risk,
             "solar_surplus_sufficient": self.solar_surplus_sufficient,
             "current_price_eur_kwh": self.current_price_eur_kwh,
+            "price_origin": self.price_origin,
             "market_price_eur_kwh": self.market_price_eur_kwh,
             "feed_in_price_eur_kwh": self.feed_in_price_eur_kwh,
             "market_feed_in_price_eur_kwh": self.market_feed_in_price_eur_kwh,
@@ -1590,6 +1633,7 @@ class EnergyMetrics:
                 else None
             ),
             current_price_eur_kwh=_as_optional_float(data.get("current_price_eur_kwh")),
+            price_origin=_as_optional_str(data.get("price_origin")),
             market_price_eur_kwh=_as_optional_float(data.get("market_price_eur_kwh")),
             feed_in_price_eur_kwh=_as_optional_float(data.get("feed_in_price_eur_kwh")),
             market_feed_in_price_eur_kwh=_as_optional_float(
