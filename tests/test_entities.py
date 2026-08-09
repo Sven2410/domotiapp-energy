@@ -26,10 +26,12 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components import domotiapp_energy
 from custom_components.domotiapp_energy.const import (
+    ATTENTION_ADVICE_REASON_CODES,
     ATTR_ADVICE_CONFIDENCE,
     ATTR_ADVICE_ITEMS,
     ATTR_ADVICE_MESSAGE,
     ATTR_ADVICE_REASON_CODE,
+    ATTR_ADVICE_TITLE,
     CONF_HOME_NAME,
     CONF_MANUAL_SETUP_ACKNOWLEDGED,
     CONFIDENCE_HIGH,
@@ -37,6 +39,7 @@ from custom_components.domotiapp_energy.const import (
     DEVICE_MODEL,
     DEVICE_TYPE_DISHWASHER,
     DOMAIN,
+    ENTITY_KEY_ATTENTION,
     ENTITY_KEY_CURRENT_ADVICE,
     ENTITY_KEY_DATA_QUALITY,
     ENTITY_KEY_ENERGY_SCORE,
@@ -44,6 +47,7 @@ from custom_components.domotiapp_energy.const import (
     ENTITY_KEY_HOME_CONSUMPTION,
     ENTITY_KEY_PEAK_RISK,
     ENTITY_KEY_SOLAR_SURPLUS,
+    ENTITY_KEYS,
     ENTITY_OBJECT_ID_NAMES,
     INTEGRATION_NAME,
     MANUFACTURER,
@@ -52,6 +56,7 @@ from custom_components.domotiapp_energy.const import (
     METER_MODE_SINGLE_SIGNED,
     POSITIVE_MEANS_IMPORT,
     SEVERITY_INFO,
+    SOURCE_TYPE_GENERAL_CONSUMPTION,
     SOURCE_TYPE_GRID_METER,
     SOURCE_TYPE_SOLAR,
     STORAGE_KEY,
@@ -81,6 +86,7 @@ SENSOR_HOME_CONSUMPTION = "sensor.domotiapp_energy_home_consumption"
 SENSOR_SOLAR_SURPLUS = "sensor.domotiapp_energy_solar_surplus"
 SENSOR_CURRENT_ADVICE = "sensor.domotiapp_energy_current_advice"
 BINARY_SENSOR_PEAK_RISK = "binary_sensor.domotiapp_energy_peak_risk"
+BINARY_SENSOR_ATTENTION = "binary_sensor.domotiapp_energy_attention"
 
 
 def _stored_configuration() -> dict[str, Any]:
@@ -150,10 +156,10 @@ async def entry_fixture(
     return entry
 
 
-async def test_the_seven_entity_ids_are_built_from_the_pinned_english_names(
+async def test_the_eight_entity_ids_are_built_from_the_pinned_english_names(
     hass: HomeAssistant, entry: MockConfigEntry
 ) -> None:
-    """The seven ids of SPEC.md §19 and §36.7 exist, and the registry shows how.
+    """The eight ids of SPEC.md §19, §36.7 and §45 exist, and the registry shows how.
 
     ``object_id_base`` is the name Home Assistant prefixed with the device name
     to reach the id. It has to be the pinned English name: that is what stops a
@@ -171,7 +177,12 @@ async def test_the_seven_entity_ids_are_built_from_the_pinned_english_names(
         SENSOR_SOLAR_SURPLUS: ENTITY_KEY_SOLAR_SURPLUS,
         SENSOR_CURRENT_ADVICE: ENTITY_KEY_CURRENT_ADVICE,
         BINARY_SENSOR_PEAK_RISK: ENTITY_KEY_PEAK_RISK,
+        BINARY_SENSOR_ATTENTION: ENTITY_KEY_ATTENTION,
     }
+
+    # Every key has a row: an entity added to the package without a row here
+    # would otherwise ship unguarded, which is how the eighth one nearly did.
+    assert set(expected.values()) == set(ENTITY_KEYS)
 
     for entity_id, key in expected.items():
         registry_entry = registry.async_get(entity_id)
@@ -250,6 +261,9 @@ async def test_entity_ids_do_not_follow_the_user_language(
         SENSOR_SOLAR_SURPLUS,
         SENSOR_CURRENT_ADVICE,
         BINARY_SENSOR_PEAK_RISK,
+        # Dutch for this one is "Aandacht", and a customer points a dashboard
+        # tile straight at the id.
+        BINARY_SENSOR_ATTENTION,
     ):
         assert hass.states.get(entity_id) is not None, (
             f"{entity_id} is missing with language {language!r}"
@@ -510,3 +524,165 @@ async def test_advice_sensor_is_unknown_without_advice(
     state = hass.states.get(SENSOR_CURRENT_ADVICE)
     assert state is not None
     assert state.state == STATE_UNKNOWN
+
+
+# --- The attention sensor (SPEC.md §45) --------------------------------------
+#
+# One row per situation, and the situation comes first. The question each row
+# answers is the one an installer asks in front of a customer's dashboard:
+# *given this house right now, should the tile be red?* — not "which state
+# reaches this branch", which is how a selector gets tested backwards.
+
+
+async def _setup_with(
+    hass: HomeAssistant,
+    hass_storage: dict[str, Any],
+    states: dict[str, str],
+    config: dict[str, Any] | None = None,
+) -> None:
+    """Set the given entity states, then start the integration."""
+    for entity_id, value in states.items():
+        hass.states.async_set(entity_id, value)
+    hass_storage[STORAGE_KEY] = {
+        "version": STORAGE_VERSION,
+        "minor_version": 1,
+        "key": STORAGE_KEY,
+        "data": config if config is not None else _stored_configuration(),
+    }
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_HOME_NAME: DEFAULT_HOME_NAME,
+            CONF_MANUAL_SETUP_ACKNOWLEDGED: True,
+        },
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+
+def _configuration_with_a_dead_submeter() -> dict[str, Any]:
+    """Return a home whose grid meter is fine and whose submeter is dead.
+
+    Deliberately not a broken grid meter or solar sensor: both of those are
+    checklist items, so they also raise `missing_required_data` — an advice
+    code — and the tile would light through the advice half, proving nothing
+    about the metrics half. A general consumption source is read by the engine
+    and asked for by no checklist item, so it isolates exactly one branch.
+    """
+    config = _stored_configuration()
+    config["sources"].append(
+        {
+            "id": "submeter",
+            "name": "Groepenkast",
+            "type": SOURCE_TYPE_GENERAL_CONSUMPTION,
+            "entity_id": "sensor.groep",
+            "unit": UNIT_W,
+        }
+    )
+    return config
+
+
+async def test_attention_is_on_when_a_source_cannot_be_read(
+    hass: HomeAssistant, hass_storage: dict[str, Any]
+) -> None:
+    """The case a list of advice reasons alone would miss (SPEC.md §45.2).
+
+    `invalid_entity_state` never becomes an advice reason — it only ever
+    reaches the metrics. A tile keyed on the advice would stay grey while a
+    configured sensor is dead, which is the one failure an installer is
+    actually called about.
+    """
+    await _setup_with(
+        hass,
+        hass_storage,
+        {GRID_ENTITY: "500", "sensor.groep": "kapot"},
+        _configuration_with_a_dead_submeter(),
+    )
+
+    state = hass.states.get(BINARY_SENSOR_ATTENTION)
+    assert state is not None
+    assert state.state == STATE_ON
+    # And it is the metrics that light it: the advice is an ordinary one.
+    assert state.attributes[ATTR_ADVICE_REASON_CODE] not in (
+        ATTENTION_ADVICE_REASON_CODES
+    )
+
+
+async def test_attention_is_on_when_the_home_is_missing_data(
+    hass: HomeAssistant, hass_storage: dict[str, Any]
+) -> None:
+    """An unreadable grid meter leaves the engine without its required input."""
+    await _setup_with(hass, hass_storage, {GRID_ENTITY: "kapot"})
+
+    state = hass.states.get(BINARY_SENSOR_ATTENTION)
+    assert state is not None
+    assert state.state == STATE_ON
+    assert state.attributes[ATTR_ADVICE_REASON_CODE] == "missing_required_data"
+
+
+async def test_attention_is_off_on_a_quiet_healthy_home(
+    hass: HomeAssistant, hass_storage: dict[str, Any]
+) -> None:
+    """Everything readable and nothing wrong: the tile stays grey."""
+    await _setup_with(hass, hass_storage, {GRID_ENTITY: "500"})
+
+    state = hass.states.get(BINARY_SENSOR_ATTENTION)
+    assert state is not None
+    assert state.state == STATE_OFF
+
+
+async def test_attention_is_on_when_the_connection_is_near_its_limit(
+    hass: HomeAssistant, hass_storage: dict[str, Any]
+) -> None:
+    """5600 W of 5750: somebody in the house can still switch something off."""
+    await _setup_with(hass, hass_storage, {GRID_ENTITY: "5600"})
+
+    state = hass.states.get(BINARY_SENSOR_ATTENTION)
+    assert state is not None
+    assert state.state == STATE_ON
+
+
+async def test_attention_carries_what_a_tile_needs_to_say(
+    hass: HomeAssistant, hass_storage: dict[str, Any]
+) -> None:
+    """`advice_title` is what `state_content` puts on the second line.
+
+    Without it a dashboard reads "Probleem", which is true and useless next to
+    a house that has an actual reason (SPEC.md §45.3).
+    """
+    await _setup_with(hass, hass_storage, {GRID_ENTITY: "5600"})
+
+    state = hass.states.get(BINARY_SENSOR_ATTENTION)
+    assert state is not None
+    assert state.attributes[ATTR_ADVICE_TITLE]
+    assert state.attributes[ATTR_ADVICE_MESSAGE]
+    assert state.attributes[ATTR_ADVICE_REASON_CODE] == "high_grid_load"
+
+
+async def test_attention_is_on_right_after_installation(
+    hass: HomeAssistant, hass_storage: dict[str, Any]
+) -> None:
+    """A fresh install with nothing configured is exactly what it should flag.
+
+    This is the state a customer's dashboard is in between the installer
+    adding the integration and finishing it, and the tile saying so is the
+    point of the tile.
+    """
+    await _setup_with(hass, hass_storage, {}, StoredConfiguration().to_dict())
+
+    state = hass.states.get(BINARY_SENSOR_ATTENTION)
+    assert state is not None
+    assert state.state == STATE_ON
+    assert state.attributes[ATTR_ADVICE_REASON_CODE] == "missing_required_data"
+
+
+def test_a_high_price_is_a_warning_and_not_attention() -> None:
+    """The exclusion that keeps the tile worth looking at (SPEC.md §45.2).
+
+    A high price is severity `warning`, and it is also the market twice a day.
+    A tile that is red every evening is a tile nobody looks at, so the bar is
+    "can a person do something about it", not "is it a warning".
+    """
+    assert "high_energy_price" not in ATTENTION_ADVICE_REASON_CODES
+    assert len(ATTENTION_ADVICE_REASON_CODES) == 3

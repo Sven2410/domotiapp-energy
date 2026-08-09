@@ -49,6 +49,9 @@
     "binary_sensor": {
       "peak_risk": {
         "name": "Peak risk"
+      },
+      "attention": {
+        "name": "Attention"
       }
     }
   },

@@ -16,7 +16,7 @@ from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 
 DOMAIN: Final = "domotiapp_energy"
 INTEGRATION_NAME: Final = "DomotiApp Energy"
-VERSION: Final = "0.10.0"
+VERSION: Final = "0.11.0"
 
 MANUFACTURER: Final = "DomotiApp"
 DEVICE_MODEL: Final = "Energy Coach"
@@ -887,6 +887,10 @@ ENTITY_KEY_PEAK_RISK: Final = "peak_risk"
 # Added in 0.5.0. A seventh entity is an addition, not a change: the six above
 # keep their ids, so no dashboard and no statistics series breaks (rule 11).
 ENTITY_KEY_HOME_CONSUMPTION: Final = "home_consumption"
+# Added in 0.11.0, on the same terms. This one exists for a dashboard rather
+# than for the panel: one tile that colours when something needs a person
+# (SPEC.md §45).
+ENTITY_KEY_ATTENTION: Final = "attention"
 
 ENTITY_KEYS: Final[tuple[str, ...]] = (
     ENTITY_KEY_ENERGY_SCORE,
@@ -896,6 +900,7 @@ ENTITY_KEYS: Final[tuple[str, ...]] = (
     ENTITY_KEY_CURRENT_ADVICE,
     ENTITY_KEY_PEAK_RISK,
     ENTITY_KEY_HOME_CONSUMPTION,
+    ENTITY_KEY_ATTENTION,
 )
 
 # The English entity name each object id is built from, whatever language the
@@ -915,6 +920,7 @@ ENTITY_OBJECT_ID_NAMES: Final[dict[str, str]] = {
     ENTITY_KEY_CURRENT_ADVICE: "Current advice",
     ENTITY_KEY_PEAK_RISK: "Peak risk",
     ENTITY_KEY_HOME_CONSUMPTION: "Home consumption",
+    ENTITY_KEY_ATTENTION: "Attention",
 }
 
 # Home Assistant rejects a state longer than 255 characters.
@@ -931,6 +937,34 @@ ATTR_ADVICE_SEVERITY: Final = "severity"
 ATTR_ADVICE_MEASUREMENTS: Final = "measurements"
 ATTR_ADVICE_ITEMS: Final = "advice"
 ATTR_LAST_CALCULATED: Final = "last_calculated"
+# On the attention sensor, so a dashboard tile can put the advice on its second
+# line with `state_content` and no template of its own (SPEC.md §45.3).
+#
+# English and fixed, for the reason the entity ids are: customers point cards at
+# these names, and a rename breaks every one of them silently. Distinct from
+# `advice` on the advice sensor, which is the *list* — the same word for a
+# string here and a list there is how somebody ends up rendering "[object
+# Object]" on a wall tablet.
+ATTR_ADVICE_TITLE: Final = "advice_title"
+
+# The reasons that put the attention sensor on, and the whole of them.
+#
+# **Every code added here makes the button mean less.** A tile that is red every
+# evening is a tile nobody looks at, so the bar is not "is this a warning" but
+# **"can a person do something about it, and is it wrong rather than merely
+# happening"**. That rules out `high_energy_price`, which is a warning and is
+# also just the market twice a day — the same reasoning that keeps the urgency
+# advice at info until it knows there is work to do (SPEC.md §43.2).
+#
+# `invalid_entity_state` is deliberately **not** in this tuple: it is never an
+# advice reason, only a metrics one, so matching it here would be a line that
+# can never fire. The attention sensor reads it from the metrics instead, which
+# is where it lives (SPEC.md §45.2).
+ATTENTION_ADVICE_REASON_CODES: Final[tuple[str, ...]] = (
+    "missing_required_data",
+    "high_grid_load",
+    "high_grid_export",
+)
 
 # --- Advice ordering (SPEC.md §16 "Sorteervolgorde") ------------------------
 
