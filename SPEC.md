@@ -2675,8 +2675,8 @@ kan. Dat is adviesvorming en geen datamodel, en het kan zonder migratie later.
 
 ## 35. De energiescore: benut / benutbaar
 
-**Status: ontwerp, nog niet gebouwd.** Deze sectie vervangt "Energiescore (0–100)" uit §16
-in zijn geheel. Zij is bewust vóór de code geschreven, omdat de twee vorige herzieningen
+**Status: gebouwd tot en met §35.9; §35.4d, §35.8b en §35.9b zijn ontwerp en nog niet
+gebouwd.** Deze sectie vervangt "Energiescore (0–100)" uit §16 in zijn geheel. Zij is bewust vóór de code geschreven, omdat de twee vorige herzieningen
 juist daaraan zijn bezweken: er werd per ronde één component gerepareerd tegen een principe
 dat nergens stond, en de ronde daarna vond het volgende component dat er niet aan voldeed.
 
@@ -2724,7 +2724,8 @@ Dat getal heeft nu al twee keer iets verkeerds beweerd, en dat kost meer dan een
 
 #### Regel 2 — de adviesregel
 
-> **Volgt de bewoner het advies van de coach op, dan mag de score daar niet door dalen.**
+> **Volgt de bewoner het advies van de coach op, dan mag de score daar niet door dalen —
+> en negeert hij het, dan mag de score daar niet door stijgen.**
 
 De coach en de score kijken naar dezelfde meting op hetzelfde moment. Wijzen ze
 verschillende kanten op, dan is er per definitie één van de twee fout — en het is niet de
@@ -2737,8 +2738,17 @@ Zakt hij, dan hoort de component die zakte er niet in — hoe verdedigbaar zijn 
 redenering ook is. Zo is `peak_component` eruit gegaan (§35.4b), en zo moet elke volgende
 kandidaat beoordeeld worden.
 
-De acceptatiecriteria in §35.13 eisen daarom een test **per adviesregel**, niet één test
-voor de score als geheel.
+**De tweede helft is er later bij gekomen, omdat de eerste helft alleen niet genoeg bleek**
+(Sven, productie, 2026-08-09). Bij een negatieve zelfverbruikmarge raadt de coach aan te
+wáchten met het overschot. Doet de bewoner dat, dan blijft `solar_component` staan waar hij
+stond — hij dáált niet, dus de regel zoals zij eerst luidde was niet overtreden. De
+overtreding zat in de spiegel: zet de bewoner de vaatwasser tóch aan, dan **stijgt** de
+score. Een score die het negeren van het advies beloont is even fout als een score die het
+opvolgen ervan afstraft, en alleen de tweede vorm stond er.
+
+Beide helften worden per adviesregel getest, en dat is een andere toets dan de score als
+geheel: de acceptatiecriteria in §35.13 eisen een test **per adviesregel**, in beide
+richtingen.
 
 ### 35.2 Wat de score níét is
 
@@ -2769,9 +2779,9 @@ voldoet er één aan het principe.
 Vier van de vijf meten een eigenschap van de woning of van het weer, en niet iets wat de
 bewoner op dit moment beïnvloedt. Samen dragen ze 0,80 van het gewicht.
 
-### 35.4 De drie schuurgevallen
+### 35.4 De vier schuurgevallen
 
-Alle drie zijn ze in de praktijk gevonden, niet bedacht.
+Alle vier zijn ze in de praktijk gevonden, niet bedacht.
 
 #### (a) Panelen zonder verplaatsbare last
 
@@ -2852,6 +2862,87 @@ opzoeken is dat alleen wanneer je iets te draaien hád. Een woning die om 03:00 
 straffen omdat zij goedkope stroom niet benut, zou de score laten eisen dat er een droger
 aangaat. Daarom meet deze as alleen de vermijdkant.
 
+#### (d) Terugleveren levert meer op dan zelf verbruiken
+
+**Gevonden op productie (Sven, 2026-08-09), en de aanleiding voor de tweede helft van
+regel 2.** Een zonnige ochtend: 4.654 W opwek, 1.635 W thuisverbruik, dus 3.019 W terug
+naar het net. `solar_component` zou 35 zijn. Alleen ligt de terugleververgoeding op dat
+moment hóger dan de importprijs, dus elke kWh die deze woning zelf verbruikt kost haar
+geld. 35% is dan geen matige benutting maar een neutraal feit, en de handeling die het
+getal verhoogt is precies de handeling die de bewoner geld kost.
+
+De coach weet dit al en zegt het ook — *"Wachten tot de terugleververgoeding lager ligt is
+voordeliger"* — maar de score doet er niets mee.
+
+##### De marge, en waarom hij naar de woning verhuist
+
+De grootheid die dit beslist staat al in de motor, verstopt in de besparingssom van de
+advisor (§16):
+
+```text
+besparing = energie_per_cyclus × (importprijs − effectieve terugleververgoeding + terugleverkosten)
+```
+
+De haakjes zijn **apparaatonafhankelijk**; het apparaat levert alleen de schaal. Dat is de
+**zelfverbruikmarge** in EUR/kWh, en zij hoort in `EnergyMetrics` te staan met de
+besparingssom als vermenigvuldiging erbovenop — dezelfde afspraak als bij
+`has_movable_load` en §34.4, zodat score, tegel en advies niet uiteen kunnen lopen.
+
+Dat zij nu in de advisor zit, is niet alleen onnetjes maar aantoonbaar schadelijk: de zin
+over wachten hangt aan een apparaat met een energie per cyclus. Precies de woning uit dit
+voorbeeld heeft er geen — dat is de reden dat `solar_component` daar al wegvalt op
+`has_movable_load` — dus **de coach kent de situatie alleen in de tak die deze klant niet
+krijgt.**
+
+##### Wegvallen, niet omdraaien
+
+**Voorstel: `solar_component` geldt niet wanneer de zelfverbruikmarge aantoonbaar negatief
+is.** Geen straf, geen omkering: niet van toepassing, net als bij nacht of bij niets
+verplaatsbaars.
+
+De verleiding is om de as om te draaien zodra terugleveren loont. Drie redenen om dat niet
+te doen:
+
+1. **De betekenis van "hoog" kantelt dan op iets dat niet in het getal zit.** Zelfde tegel,
+   zelfde label, zelfde 0–100, en 70 's ochtends zou tegengesteld gedrag beschrijven aan 70
+   's middags. Dat is erger dan geen getal — het is de vorm van fout waar §35.1 tegen
+   geschreven is.
+2. **Regel 1: wat kan de bewoner doen om de omgekeerde as te verhogen? Minder verbruiken.**
+   De as meet zelfbenutting van *al* het verbruik, niet alleen van het verplaatsbare deel;
+   de oven telt mee en die is niet te verplaatsen. Omgedraaid wordt hij letterlijk de
+   zuinigheidsmeter die §35.2 drie herzieningen lang geweigerd heeft.
+3. **Er valt op dat moment niets naartoe te verplaatsen.** Het advies is wachten. Een as
+   waarvan de aanbevolen handeling "niets doen" is, is geen benuttingsas.
+
+##### De grens, en wat er bij een onbekende marge gebeurt
+
+| Marge | `solar_component` | Waarom |
+|---|---|---|
+| positief | geldt | zelf verbruiken levert geld op; de as wijst dezelfde kant op als het advies |
+| **nul** | **geldt** | saldering met terugleverkosten 0. De coach adviseert daar nog steeds zelf verbruiken (*"blijft de meest efficiënte keuze"*), dus score en advies blijven het eens. Besluit Sven, 2026-08-09 |
+| negatief | vervalt | terugleveren levert meer op; de as zou het negeren van het advies belonen |
+| onbekend | geldt | zie hieronder |
+
+**De as vervalt alleen wanneer de marge aantoonbaar negatief is.** Een onbekende marge laat
+hem staan zoals vandaag. Dat is geen gok over het onbekende maar een regel over het
+bewezene, en het voorkomt dat een leeg veld van de installateur het cijfer van de bewoner
+wegneemt — precies wat §35.7 opruimde.
+
+**Als beperking te noemen, want zij is echt:** een woning waarvan de terugleververgoeding
+of de terugleverkosten niet ingevuld zijn, kan op een negatieve marge draaien zonder dat de
+score het merkt. Het gat is kleiner dan het lijkt — onder saldering is de marge gelijk aan
+de terugleverkosten en dus nooit negatief, zodat het geval alleen kan optreden bij een
+woning zonder saldering, en juist daar zijn de velden ingevuld die de coach toch al nodig
+heeft — maar het is er.
+
+##### Bijvangst: de exportwaarschuwing verkoopt een voordeel dat er niet is
+
+`high_grid_export` zegt *"Schakel indien mogelijk juist extra verbruikers in om het
+overschot zelf te benutten."* Het argument eronder is de zekering en dat blijft kloppen,
+maar de tweede helft van de zin belooft voordeel. Bij een negatieve marge is dat onwaar.
+De zin hoort in dezelfde ronde te worden gesplitst in het capaciteitsargument, dat altijd
+geldt, en het voordeelargument, dat aan de marge hangt.
+
 ### 35.5 De toets: wat kan de bewoner concreet doen?
 
 Dit is regel 1 en regel 2 samen, in de vorm van één vraag per component:
@@ -2913,7 +3004,7 @@ poort:  de drie onvoorwaardelijke checklistitems compleet   → anders None
 
 | Component | Gewicht | Geldt wanneer |
 |---|---|---|
-| `solar_component` | 0,50 | er is opwek op dit moment, het netvermogen is leesbaar, én de woning heeft iets te verplaatsen |
+| `solar_component` | 0,50 | er is opwek op dit moment, het netvermogen is leesbaar, de woning heeft iets te verplaatsen, én de zelfverbruikmarge is niet aantoonbaar negatief (§35.4d) |
 | `price_component` | 0,50 | dynamisch contract, prijs en beide drempels bekend, `max_grid_power_w` bekend, én de prijs staat boven de lage drempel |
 
 De rekenregel blijft ongewijzigd — het aandeel van wat van toepassing is:
@@ -2941,11 +3032,76 @@ items in de poort.
 `not_applicable_components[]` blijft bestaan en blijft door het paneel genoemd worden. Een
 score uit één component in plaats van twee ziet er anders uit alsof er iets is overgeslagen.
 
+### 35.8b De meting en het oordeel zijn twee dingen
+
+**Toegevoegd 2026-08-09, en het herstelt een fout die vanaf het begin in dit ontwerp zat.**
+
+`solar_component` is tegelijk een *meting* — welk deel van de opwek deze woning zelf
+gebruikt — en een *oordeel*, want hij gaat als cijfer de score in waar hoog goed is. Zolang
+die twee samenvallen valt dat niet op. Zodra ze uiteenlopen gooit het ontwerp de meting weg
+omdat het oordeel oneerlijk zou zijn:
+
+> 4.654 W opwek, 1.635 W zelf gebruikt. De woning heeft niets verplaatsbaars, dus de as
+> vervalt, dus er staat geen cijfer — terwijl 35% een waar, bewegend en begrijpelijk getal
+> is dat de bewoner precies vertelt wat zijn panelen op dat moment doen.
+
+Het oordeel hoorde weg te vallen. De meting niet. Daarom scheidt deze subsectie ze:
+
+| | De meting | Het oordeel |
+|---|---|---|
+| Wat het is | zelfbenutting, thuisverbruik, prijs, netvermogen | de energiescore |
+| Wanneer het er is | zodra de invoer leesbaar is | alleen wanneer er iets te benutten valt |
+| Waar het staat | als regel in `Actuele situatie` | in de scoretegel |
+| Richting | geen. Een meting is geen doel | hoog is goed, en dat moet waar zijn |
+
+**Zelfbenutting wordt daarom een gewone meetregel**, zichtbaar zodra er opwek én een
+leesbaar netvermogen is — ongeacht de poort, ongeacht verplaatsbare last, ongeacht de
+marge. Dat is dezelfde waarde die `solar_component` gebruikt wanneer hij geldt, dus één
+berekening met twee lezers en geen kans op twee getallen die verschillen.
+
+**De naam is hier geen detail.** Twee ware breuken over dezelfde minuut geven een
+tegengestelde indruk:
+
+| | Formule | Het voorbeeld hierboven |
+|---|---|---|
+| **Zelfbenutting** (dit getal, en de score-as) | zelf gebruikt / opwek | 1.635 / 4.654 = **35%** |
+| **Zelfvoorziening** | zelf opgewekt / eigen verbruik | 1.635 / 1.635 = **100%** |
+
+Op dat moment draait de woning volledig op zon. Een tegel die 35% "zelfvoorziening" noemt
+liegt zonder één verkeerd cijfer — dezelfde faalmodus als de zinnen in §35.9, maar dan in
+het label. Het getal heet **zelfbenutting**, overal.
+
+**Een niet-score-getal komt nooit op de plek van de score.** Voor de bewoner is het getal
+dat in de scoretegel staat de score, welk label er ook boven hangt. De meting hoort tussen
+de meterstanden, waar zij niet als rapportcijfer te lezen is.
+
+**Dat is ook het antwoord op "de tegel mag niet leeg zijn".** Dat is een indelingsvraag en
+geen scorevraag. Er is altijd een getal op het scherm — 's nachts bij een vast contract
+zonder panelen is dat het thuisverbruik (§36) — en het **kopgetal van het Overzicht wordt
+het thuisverbruik in plaats van de energiescore** (besluit Sven, 2026-08-09; §36.5 noemde
+het al als kandidaat voor de visuele ronde). De eerste en grootste plek op het scherm is
+dan nooit leeg, en een afwezige score is een regel eronder in plaats van een gat bovenaan.
+
+**Waarom de score zelf géén altijd-getal wordt.** benut/benutbaar is een breuk en
+*benutbaar* is soms werkelijk nul. Alle drie de manieren om die nul te omzeilen kosten meer
+dan een afwezige score:
+
+1. **de noemer een bodem geven** — een verzonnen "wat je had kunnen verplaatsen" bij een
+   woning die niets te verplaatsen heeft. Dat is de aanname over een gemiddelde woning die
+   §35.1 in zijn eerste alinea verbiedt;
+2. **leegte als 100 lezen** — dan scoort elke woning 's nachts 100, wordt de zaagtand van
+   §35.10 groter in plaats van kleiner, en beweert het cijfer een prestatie op een moment
+   waarop er geen gedrag was;
+3. **de laatst bekende waarde vasthouden** — dat is de score over een venster, en dus de
+   historie-ronde (§35.10). Legitiem, maar het vraagt opslag van een reeks en een eigen
+   ontwerp; halverwege inbouwen is de losse reparatie waar §35 tegen geschreven is.
+
 ### 35.9 Wanneer een woning een cijfer krijgt, en wat daarvoor nodig is
 
 Uit §35.8 volgt dat een deel van de klanten **nooit** een cijfer ziet. Dat is de keuze van
 §35.1 concreet gemaakt en het is geaccepteerd (Sven, 2026-08-08): liever geen getal dan een
-getal dat iets beweert wat niet waar is.
+getal dat iets beweert wat niet waar is. Sinds §35.8b betekent dat niet langer een scherm
+zonder getallen: de metingen staan er, alleen het oordeel ontbreekt.
 
 Deze subsectie legt vast wat een woning nodig heeft om wél een cijfer te krijgen, zodat de
 installateur die vraag aan de keukentafel kan beantwoorden zonder te gokken.
@@ -2956,6 +3112,7 @@ installateur die vraag aan de keukentafel kan beantwoorden zonder te gokken.
 | Panelen **en** ≥1 bruikbaar, flexibel, compleet apparaat | `solar_component` | zodra er opwek is |
 | Panelen **en** een thuisbatterij | `solar_component` | zodra er opwek is |
 | Panelen zonder verplaatsbare last | geen | nooit, tot er iets verplaatsbaars bijkomt |
+| Panelen, maar terugleveren loont meer (§35.4d) | `solar_component` staat uit | zolang de marge negatief is niet uit de zon; wel uit de prijs, wanneer die as geldt |
 | Vast contract, geen panelen | geen | nooit |
 
 **De goedkoopste route naar een cijfer is bijna nooit iets kopen**, en dat hoort in dit
@@ -2989,20 +3146,29 @@ storing; een tegel met een reden leest als een antwoord. Per geval, in het panee
 | Poort dicht (§35.7) | `incomplete_setup` | *Er is nog geen cijfer, omdat de installatie nog niet compleet is. Het tabblad Energiecoach laat zien wat er ontbreekt.* |
 | Dynamisch, drempels niet ingevuld | `price_thresholds_missing` | *Zolang de lage en de hoge prijsdrempel niet zijn ingevuld, is niet te bepalen of dit een duur moment is. Vul ze in bij Installatie.* |
 | Vast tarief, geen panelen | `no_variable_signal` | *Het tarief is altijd gelijk en er zijn geen zonnepanelen, dus er is geen moment dat beter is dan een ander. Er valt daarom niets te optimaliseren. Het advies blijft gewoon werken.* |
+| Er ís opwek, terugleveren loont meer (§35.4d) | `feed_in_pays_better` | *Je panelen leveren op dit moment, maar terugleveren levert je meer op dan de stroom je kost. Zelf verbruiken zou je nu geld kosten, dus er valt aan je opwek niets te benutten. De coach zegt hetzelfde: wachten is voordeliger.* |
 | Er ís opwek, niets verplaatsbaars | `nothing_movable` | *Er is nu opwek, maar geen apparaat of batterij die verbruik kan verplaatsen. Er valt daarom niets te benutten dat nu niet al gebeurt.* |
 | Panelen stil, dynamisch, prijs laag | `no_sun_cheap_price` | *Je panelen leveren op dit moment niets en de stroomprijs is laag. Er is nu dus geen overschot om te benutten en geen duur verbruik om te vermijden.* |
 | Panelen stil, vast tarief | `no_sun_fixed_tariff` | *Je panelen leveren op dit moment niets, en bij een vast tarief is het ene moment niet beter dan het andere. Er is nu dus niets te verbeteren.* |
 | Geen panelen, dynamisch, prijs laag | `cheap_price` | *De stroomprijs is op dit moment laag, dus er is geen duur verbruik om te vermijden.* |
 
-**Twee van de zeven zijn een tekortkoming** — de gesloten poort en de ontbrekende
-drempels — en die twee dragen een waarschuwingstoon. De andere vijf beschrijven een
-woning die niets fout doet: geen waarschuwingskleur, geen uitroepteken. Deze teksten staan
-in de frontendbestanden, niet in `translations/` (§26).
+**Twee van de acht zijn een tekortkoming** — de gesloten poort en de ontbrekende
+drempels — en die twee dragen een waarschuwingstoon. De andere zes beschrijven een
+woning die niets fout doet: geen waarschuwingskleur, geen uitroepteken. `feed_in_pays_better`
+hoort nadrukkelijk bij die zes — daar verdient de bewoner geld, en een waarschuwingskleur
+zou daar een probleem van maken. Deze teksten staan in de frontendbestanden, niet in
+`translations/` (§26).
+
+**Wanneer twee redenen tegelijk waar zijn, wint de reden die blijft staan als de andere
+wordt opgelost.** Daarom staat `feed_in_pays_better` vóór `nothing_movable`: een woning met
+opwek, niets verplaatsbaars én een negatieve marge heeft niets aan de zin over een apparaat
+dat ze mist, want ook mét dat apparaat zou zij het nu niet moeten aanzetten. De woning uit
+§35.4d is precies dat geval.
 
 **Elke variant is als geheel geschreven en wordt door een situatie gekozen** (besluit
 0.4.2). De verleiding is om er één zin van te maken die zijn helften aan- en uitzet, maar
 dan bestaat de zin die de klant leest nergens in de broncode en kan niemand hem nalezen.
-Zeven hele zinnen zijn te lezen, te herschrijven en op te nemen in de zinneninventaris;
+Acht hele zinnen zijn te lezen, te herschrijven en op te nemen in de zinneninventaris;
 een sjabloon met gaten is dat niet.
 
 **De voorwaarde moet toetsen wat de zin beweert.** Dat ging mis in 0.4.1: `nothing_movable`
@@ -3011,6 +3177,29 @@ een woning kreeg 's avonds te horen dat haar panelen leverden. De selector krijg
 snapshot en gebruikt dezelfde `_production_now` als `solar_component`. Configuratie
 beantwoordt "wat heeft deze woning", alleen een meting beantwoordt "wat doet zij nu" — regel
 1 van §35.1, toegepast op de teksten in plaats van op de componenten.
+
+### 35.9b Ook mét een cijfer hoort de tegel te zeggen wat er niet meetelt
+
+De zinnen uit §35.9 verschijnen **alleen wanneer er géén cijfer is**. Dat was houdbaar
+zolang een wegvallende component betekende dat er niets te melden viel, en §35.4d haalt dat
+onderuit: een dynamische woning in de zon met een negatieve marge krijgt een score uit
+alleen de prijs-as. De bewoner leest 88 en er staat nergens dat zijn zonneoverschot buiten
+beschouwing bleef, laat staan waarom.
+
+`not_applicable_components[]` bestaat al voor precies dit doel — §35.8 zegt dat het paneel
+ze noemt — maar **de frontend leest het veld nergens.** Het wordt berekend, meegestuurd en
+weggegooid; hetzelfde patroon als de velden uit §37.2, nu tussen backend en paneel in
+plaats van tussen formulier en motor.
+
+Daarom: **een reden per component, niet één reden per tegel.** Naast het cijfer staat per
+niet-geldende as dezelfde zin die hij zou hebben gehad als hij de enige was. Bijvoorbeeld:
+
+> **88** — Je vermijdt duur verbruik goed. Je zonneoverschot telt nu niet mee: terugleveren
+> levert je meer op dan het zelf gebruiken.
+
+Dat is een cijfer mét uitleg, en de uitleg zegt niet dat de bewoner het slecht doet. De
+bestaande tegelzin blijft wat hij is voor het geval dat er helemaal geen cijfer is; deze
+komt ernaast, niet in de plaats.
 
 ### 35.10 Bekende beperking: de zaagtand
 
@@ -3046,14 +3235,22 @@ geschreven is.
   en het paneel niet uit elkaar kunnen lopen. Dezelfde afspraak als §34.4.
 - **`engine/calculator.py`** — `_peak_component` en `_flexibility_component` verdwijnen;
   `_grid_load_percent` en `_peak_risk` blijven ongewijzigd, want de waarschuwing blijft.
+- **`EnergyMetrics`** — twee velden erbij: `self_consumption_margin_eur_kwh` (§35.4d) en
+  `self_consumption_percent` (§35.8b), allebei `None` wanneer de invoer ontbreekt. Beide
+  hebben een lezer vóórdat ze bestaan: de eerste de score en de advisor, de tweede het
+  paneel. Zie de audit in §37.2 voor waarom die volgorde vaststaat.
+- **`engine/advisor.py`** — `_solar_savings` wordt `energie × marge` en rekent de marge niet
+  langer zelf uit; de zin van `high_grid_export` splitst het capaciteitsargument van het
+  voordeelargument (§35.4d).
 - **De sensor `energy_score`** — wordt vaker `unknown`. Dat is zichtbaar in de
   langetermijnstatistieken als een gat in de reeks, en dat hoort in de README onder
   Limitations: een gemiddelde over een dag is voor deze sensor niet zinvol.
 - **Het paneel** — de tegel krijgt de teksten uit §35.9, noemt welke componenten niet van
-  toepassing zijn en waarom, en toont bij een gesloten poort welk onvoorwaardelijk item
-  ontbreekt.
+  toepassing zijn en waarom (§35.9b), en toont bij een gesloten poort welk onvoorwaardelijk
+  item ontbreekt. `Actuele situatie` krijgt de regel **Zelfbenutting** (§35.8b), en het
+  thuisverbruik wordt het kopgetal van het Overzicht in plaats van de score.
 - **README** — de beschrijving van de score, de tabel uit §35.9 zodat een installateur haar
-  bij de hand heeft, en de twee beperkingen uit §35.9 en §35.10.
+  bij de hand heeft, en de drie beperkingen uit §35.4d, §35.9 en §35.10.
 
 ### 35.12 Wat deze ronde niet raakt
 
@@ -3070,21 +3267,36 @@ geschreven is.
 - geen enkele configuratiehandeling van de installateur verhoogt of verlaagt de
   energiescore, en een test bewijst dat voor de datakwaliteit en voor het toevoegen van een
   apparaat;
-- **regel 2 is per adviesregel getest**: het opvolgen van elk advies dat de coach kan geven,
-  verhoogt de score of laat hem gelijk — nooit lager;
+- **regel 2 is per adviesregel in beide richtingen getest**: het opvolgen van elk advies dat
+  de coach kan geven verhoogt de score of laat hem gelijk — nooit lager — én het negeren
+  ervan verlaagt de score of laat hem gelijk, nooit hoger;
 - een woning met panelen zonder verplaatsbare last krijgt geen `solar_component`, en het
   toevoegen van een batterij zet hem aan;
 - een dynamische woning bij een lage prijs krijgt geen `price_component`; bij een hoge
   prijs zakt hij zichtbaar wanneer het importvermogen stijgt;
+- **een negatieve zelfverbruikmarge zet `solar_component` uit en een positieve zet hem aan**;
+  bij een marge van precies nul geldt hij, en bij een onbekende marge ook (§35.4d). Getoetst
+  als tabel van situaties met de verwachte uitkomst ernaast, niet als vier losse takken;
+- **de zelfverbruikmarge komt uit `EnergyMetrics` en wordt door de coordinator gevuld**, niet
+  alleen door `Calculator.calculate()`; het aanroeppad is teruggelopen tot de coordinator
+  (CLAUDE.md, zevende variant);
+- **zelfbenutting staat op `Actuele situatie` zodra er opwek en een leesbaar netvermogen is**,
+  óók wanneer er geen score is, en het getal is exact dat van `solar_component` wanneer die
+  geldt;
 - een woning die één van de drie onvoorwaardelijke items mist, krijgt `None` en het paneel
   noemt welk item;
-- elk van de vier gevallen uit de tabel in §35.9 levert de bijbehorende zin op, en niet een
-  streepje;
-- de zaagtand is niet opgelost en staat als beperking in de README.
+- elk van de acht gevallen uit de tabel in §35.9 levert de bijbehorende zin op, en niet een
+  streepje. Getoetst vanuit de situatie — één rij per situatie met de verwachte zin ernaast —
+  en niet door per zin een toestand te zoeken die hem oplevert;
+- **de browsercontrole vertrekt van de situatie, niet van de tak**: de avondtegel wordt
+  bekeken met de panelen werkelijk stil en de negatieve-margetegel met een
+  terugleververgoeding die werkelijk boven de importprijs ligt (CLAUDE.md, zesde variant);
+- de zaagtand is niet opgelost en staat als beperking in de README, net als de onbekende
+  marge uit §35.4d.
 
 ## 36. Thuisverbruik: het getal dat er als eerste hoort te staan
 
-**Status: ontwerp, nog niet gebouwd.** Bevinding 3 uit de eerste productie-installatie.
+**Status: gebouwd.** Bevinding 3 uit de eerste productie-installatie.
 
 ### 36.1 Waarom dit ontbreekt en waarom dat opvalt
 
@@ -3205,6 +3417,11 @@ Percentage van maximum · Actuele energieprijs
 
 **Voor de visuele ronde**, niet nu: dit is de sterkste kandidaat om van een gewone regel
 een kopgetal te worden. Dat is een vormbeslissing en hoort daar thuis.
+
+> **Ingehaald door §35.8b (2026-08-09).** Het thuisverbruik wordt het kopgetal, en het
+> besluit valt daar in plaats van in de visuele ronde omdat het daar geen vormvraag is maar
+> een gevolg: de energiescore mag afwezig zijn, dus de grootste plek op het scherm kan niet
+> van hem zijn.
 
 ### 36.6 De zinnen, per situatie
 
