@@ -7,10 +7,15 @@ checklist and energy score.
 """
 
 import math
+from collections.abc import Callable
+from dataclasses import dataclass
+from datetime import date
 from typing import Any
 
 import pytest
+from freezegun.api import FrozenDateTimeFactory
 from homeassistant.core import HomeAssistant
+from homeassistant.util import dt as dt_util
 
 from custom_components.domotiapp_energy.const import (
     COMPLETENESS_ITEM_DEVICE_PROFILE,
@@ -21,6 +26,11 @@ from custom_components.domotiapp_energy.const import (
     COMPLETENESS_ITEM_TIME_WINDOWS,
     COMPLETENESS_UNCONDITIONAL_ITEMS,
     COMPONENT_MAX,
+    COMPONENT_UNAVAILABLE_PRICE_CHEAP,
+    COMPONENT_UNAVAILABLE_PRICE_FIXED_TARIFF,
+    COMPONENT_UNAVAILABLE_SOLAR_FEED_IN_PAYS_BETTER,
+    COMPONENT_UNAVAILABLE_SOLAR_NO_PANELS,
+    COMPONENT_UNAVAILABLE_SOLAR_NO_PRODUCTION,
     CONFIDENCE_HIGH,
     CONFIDENCE_LOW,
     CONFIDENCE_MEDIUM,
@@ -41,6 +51,7 @@ from custom_components.domotiapp_energy.const import (
     SCORE_COMPONENT_PRICE,
     SCORE_COMPONENT_SOLAR,
     SCORE_UNAVAILABLE_CHEAP_PRICE,
+    SCORE_UNAVAILABLE_FEED_IN_PAYS_BETTER,
     SCORE_UNAVAILABLE_INCOMPLETE_SETUP,
     SCORE_UNAVAILABLE_NO_SUN_CHEAP_PRICE,
     SCORE_UNAVAILABLE_NO_SUN_FIXED_TARIFF,
@@ -58,13 +69,18 @@ from custom_components.domotiapp_energy.const import (
     UNIT_KW,
     UNIT_W,
 )
+from custom_components.domotiapp_energy.engine.advisor import Advisor
 from custom_components.domotiapp_energy.engine.calculator import Calculator
 from custom_components.domotiapp_energy.engine.completeness import (
     evaluate_completeness,
 )
 from custom_components.domotiapp_energy.engine.reason_codes import (
+    REASON_HIGH_ENERGY_PRICE,
+    REASON_HIGH_GRID_LOAD,
     REASON_INVALID_ENTITY_STATE,
+    REASON_LOW_ENERGY_PRICE,
     REASON_MISSING_REQUIRED_DATA,
+    REASON_SOLAR_SURPLUS_AVAILABLE,
 )
 from custom_components.domotiapp_energy.models import (
     DataQualityResult,
@@ -2197,18 +2213,31 @@ def _situation(
     dynamic: bool,
     movable: bool,
     thresholds: bool = True,
+    feed_in_pays: bool = False,
 ) -> StoredConfiguration:
     """Build a home the gate lets through, varying only what the table varies.
 
     The grid meter and a price answer are always present because without them
     the gate shuts and every row would come back `incomplete_setup` — which is
     a real case, tested separately, and would hide every other row here.
+
+    **`feed_in_pays` is off by default and the margin is then unknown**, not
+    positive: `feed_in_cost_eur_kwh` has no default, so the sum cannot be
+    completed. That is deliberately the same state the rest of this file has
+    always been in, and it is the state in which the margin changes nothing —
+    only a *proven* negative margin removes the solar axis (SPEC.md §35.4d).
     """
     hass.states.async_set("sensor.grid", "500")
     hass.states.async_set("sensor.pv", "2000" if producing else "0")
     hass.states.async_set("sensor.price", "0.10")
 
     overrides: dict[str, Any] = {"fixed_import_price_eur_kwh": 0.30}
+    if feed_in_pays:
+        # Every term known, and the feed-in tariff above the import price: a
+        # kWh used at home costs this house 0.15 more than feeding it in.
+        overrides["net_metering_until"] = None
+        overrides["feed_in_price_eur_kwh"] = 0.45
+        overrides["feed_in_cost_eur_kwh"] = 0.0
     if dynamic:
         overrides["contract_type"] = CONTRACT_TYPE_DYNAMIC
         if thresholds:
@@ -2244,6 +2273,44 @@ def _situation(
         (
             {"panels": True, "producing": True, "dynamic": True, "movable": False},
             SCORE_UNAVAILABLE_NOTHING_MOVABLE,
+        ),
+        # Sun, and feeding it in pays better than using it (SPEC.md §35.4d).
+        # The sentence about a missing appliance would be useless here: with
+        # this margin the home should not be running one either, so the reason
+        # that survives fixing the other one goes first.
+        (
+            {
+                "panels": True,
+                "producing": True,
+                "dynamic": False,
+                "movable": False,
+                "feed_in_pays": True,
+            },
+            SCORE_UNAVAILABLE_FEED_IN_PAYS_BETTER,
+        ),
+        # Same margin, and this home *does* have something movable. Still no
+        # score: there is nothing worth shifting to this moment.
+        (
+            {
+                "panels": True,
+                "producing": True,
+                "dynamic": False,
+                "movable": True,
+                "feed_in_pays": True,
+            },
+            SCORE_UNAVAILABLE_FEED_IN_PAYS_BETTER,
+        ),
+        # Evening, same contract. The margin is still negative, but the panels
+        # are idle, so the sentence claiming production would be false.
+        (
+            {
+                "panels": True,
+                "producing": False,
+                "dynamic": False,
+                "movable": True,
+                "feed_in_pays": True,
+            },
+            SCORE_UNAVAILABLE_NO_SUN_FIXED_TARIFF,
         ),
         # **The production bug.** Evening, panels idle, nothing movable. The
         # old condition read the solar *row* and claimed there was production.
@@ -2357,10 +2424,198 @@ async def test_a_home_without_a_variable_signal_never_gets_a_number(
 
 # --- The advice rule (SPEC.md §35.1, regel 2) -------------------------------
 #
-# Following the coach may never lower the score. These tests take an advice the
-# coach can give, apply it to the readings, and compare the score before and
-# after. It is the falsifiable half of the principle, and it is what removed
-# `peak_component`: no re-anchoring of its slope could satisfy it.
+# Following the coach may never lower the score, **and ignoring it may never
+# raise the score.** These tests take an advice the coach can give, apply it to
+# the readings, and compare the score before and after. It is the falsifiable
+# half of the principle, and it is what removed `peak_component`: no
+# re-anchoring of its slope could satisfy it.
+#
+# The second half arrived on 2026-08-09 from a home where feeding in paid more
+# than self-consumption. There the coach says to wait, so *following* it changes
+# no reading at all and the first half is silent — the score moved when the
+# advice was **ignored**. See `test_the_advice_rule_holds_in_both_directions`,
+# which is the table over both halves; the three tests under it are the
+# individual cases worth spelling out.
+
+
+def _grid_home(**home_overrides: Any) -> StoredConfiguration:
+    """Return a dynamic home with a grid meter and a live price."""
+    home_overrides.setdefault("contract_type", CONTRACT_TYPE_DYNAMIC)
+    home_overrides.setdefault("low_price_threshold_eur_kwh", 0.15)
+    home_overrides.setdefault("high_price_threshold_eur_kwh", 0.35)
+    config = _config(**home_overrides)
+    config.sources.append(_grid_meter())
+    config.sources.append(_price_source())
+    return config
+
+
+def _dynamic_solar_home(**home_overrides: Any) -> StoredConfiguration:
+    """Return a solar home on a dynamic contract, with usable thresholds."""
+    home_overrides.setdefault("contract_type", CONTRACT_TYPE_DYNAMIC)
+    home_overrides.setdefault("low_price_threshold_eur_kwh", 0.15)
+    home_overrides.setdefault("high_price_threshold_eur_kwh", 0.35)
+    config = _solar_home(**home_overrides)
+    config.sources.append(_price_source())
+    return config
+
+
+def _feed_in_home() -> StoredConfiguration:
+    """Return a home in the sun where feeding in pays better than using it.
+
+    Every term of the margin is known and the feed-in tariff sits above the
+    import price, so the margin is a proven -0.15 EUR/kWh. That is the home
+    from SPEC.md §35.4d, and the only shape in which the second half of the
+    advice rule has anything to say.
+    """
+    return _solar_home(
+        net_metering_until=None,
+        feed_in_price_eur_kwh=0.45,
+        feed_in_cost_eur_kwh=0.0,
+    )
+
+
+@dataclass(frozen=True)
+class _AdviceCase:
+    """One advice the coach gives, and the reading either choice produces.
+
+    `prompt` is the reading in which the coach actually gives this advice, and
+    it is stated separately because it is not always the same as `ignored`. For
+    "use your surplus" the unchanged reading is the one that prompts it; for
+    "wait, feeding in pays better" the unchanged reading is what *following* it
+    looks like. Folding the two together is what made the first attempt at this
+    table assert that the coach advises waiting in the reading where the
+    resident had already stopped waiting.
+    """
+
+    advice: str
+    build: Callable[[], StoredConfiguration]
+    prompt: dict[str, str]
+    followed: dict[str, str]
+    ignored: dict[str, str]
+    reason: str
+
+
+def _read(hass: HomeAssistant, states: dict[str, str]) -> None:
+    """Put one reading on the state machine."""
+    for entity_id, state in states.items():
+        hass.states.async_set(entity_id, state)
+
+
+# **Rows are situations, not branches**: each row states what the coach says
+# and the test checks that it really says it there, so a row cannot quietly
+# come to describe advice the product no longer gives.
+#
+# The surplus rows export 2500 W against a 2000 W dishwasher on purpose. An
+# appliance that does not fit the surplus is not advised on at all
+# (`_fits_in_surplus`), and a row whose advice never fires would prove nothing
+# — which is the trap the 2000 W fixture set once before.
+_EXPORTING = {"sensor.pv": "3000", "sensor.grid": "-2500"}
+_USING_IT = {"sensor.pv": "3000", "sensor.grid": "-500"}
+
+_ADVICE_CASES = [
+    _AdviceCase(
+        "run the dishwasher while power is cheap",
+        _grid_home,
+        {"sensor.price": "0.10", "sensor.grid": "300"},
+        {"sensor.price": "0.10", "sensor.grid": "2500"},
+        {"sensor.price": "0.10", "sensor.grid": "300"},
+        REASON_LOW_ENERGY_PRICE,
+    ),
+    _AdviceCase(
+        "wait out an expensive hour",
+        _grid_home,
+        {"sensor.price": "0.35", "sensor.grid": "3000"},
+        {"sensor.price": "0.35", "sensor.grid": "300"},
+        {"sensor.price": "0.35", "sensor.grid": "3000"},
+        REASON_HIGH_ENERGY_PRICE,
+    ),
+    _AdviceCase(
+        "shed load when the connection is nearly full",
+        _grid_home,
+        {"sensor.price": "0.30", "sensor.grid": "5600"},
+        {"sensor.price": "0.30", "sensor.grid": "1000"},
+        {"sensor.price": "0.30", "sensor.grid": "5600"},
+        REASON_HIGH_GRID_LOAD,
+    ),
+    _AdviceCase(
+        "charge the car now, on the 1x25 A connection of SPEC.md §35.4b",
+        _grid_home,
+        {"sensor.price": "0.10", "sensor.grid": "400"},
+        {"sensor.price": "0.10", "sensor.grid": "4100"},
+        {"sensor.price": "0.10", "sensor.grid": "400"},
+        REASON_LOW_ENERGY_PRICE,
+    ),
+    _AdviceCase(
+        "use the surplus instead of exporting it",
+        _solar_home,
+        _EXPORTING,
+        _USING_IT,
+        _EXPORTING,
+        REASON_SOLAR_SURPLUS_AVAILABLE,
+    ),
+    _AdviceCase(
+        # The row the first half of the rule cannot see. Following this advice
+        # means changing nothing, so the two readings sit the other way round
+        # and it is the *ignoring* side that used to lift the score.
+        "wait, because feeding in pays better",
+        _feed_in_home,
+        _EXPORTING,
+        _EXPORTING,
+        _USING_IT,
+        REASON_SOLAR_SURPLUS_AVAILABLE,
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    "case", _ADVICE_CASES, ids=[case.advice for case in _ADVICE_CASES]
+)
+async def test_the_advice_rule_holds_in_both_directions(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory, case: _AdviceCase
+) -> None:
+    """Doing what the coach asks may never score worse than not doing it.
+
+    One assertion covering both halves: `score(followed) >= score(ignored)`.
+    Reading it that way is what makes the rule symmetrical — the first half
+    forbids a drop for acting, the second forbids a rise for not acting, and
+    both are the same comparison seen from either end.
+
+    A score that is absent in only one of the two readings is not a pass: an
+    axis that disappeared exactly where it would have contradicted the advice
+    would otherwise satisfy an inequality between two absent numbers.
+    """
+    # One in the afternoon, because the default quiet hours silence appliance
+    # advice at night and the suite would otherwise prove different things
+    # depending on the hour it ran at. A reading is taken at a moment; saying
+    # which moment is part of stating the situation.
+    freezer.move_to(dt_util.now().replace(hour=13, minute=0, second=0, microsecond=0))
+    config = case.build()
+
+    _read(hass, case.prompt)
+    prompted = Calculator(hass).calculate(config)
+    codes = [item.reason_code for item in Advisor().generate(config, prompted)]
+    assert case.reason in codes, (
+        f"the coach does not advise {case.advice!r} in this reading"
+    )
+
+    _read(hass, case.ignored)
+    ignored = Calculator(hass).calculate(config)
+    _read(hass, case.followed)
+    followed = Calculator(hass).calculate(config)
+
+    if ignored.energy_score is None and followed.energy_score is None:
+        # Nothing applies either way, so the score cannot move at all. Asserted
+        # on the components rather than returning quietly, so a component that
+        # starts applying here has to be looked at rather than slipping past.
+        assert followed.score_components == ignored.score_components
+        return
+
+    assert ignored.energy_score is not None, f"no score to compare for {case.advice!r}"
+    assert followed.energy_score is not None, f"no score to compare for {case.advice!r}"
+    assert followed.energy_score >= ignored.energy_score, (
+        f"following {case.advice!r} scored {followed.energy_score}, "
+        f"ignoring it scored {ignored.energy_score}"
+    )
 
 
 async def test_charging_when_the_coach_says_so_does_not_lower_the_score(
@@ -2440,6 +2695,224 @@ async def test_waiting_out_an_expensive_hour_raises_the_score(
     assert waited.energy_score is not None
     assert running.energy_score is not None
     assert waited.energy_score > running.energy_score
+
+
+# --- The self-consumption margin (SPEC.md §35.4d) ---------------------------
+#
+# One composition, three readers: the score's solar axis, the tile's sentence
+# and the advisor's per-cycle saving. It used to be computed inside the saving,
+# where the fact it establishes could only ever be stated about an appliance.
+
+
+@pytest.mark.parametrize(
+    ("home", "expected"),
+    [
+        # Feeding in is worth less than importing costs, so using a kWh at home
+        # is worth the difference. The ordinary case.
+        (
+            {"feed_in_price_eur_kwh": 0.05, "feed_in_cost_eur_kwh": 0.0},
+            0.25,
+        ),
+        # A supplier charging to feed in raises what self-consumption is worth.
+        (
+            {"feed_in_price_eur_kwh": 0.05, "feed_in_cost_eur_kwh": 0.11},
+            0.36,
+        ),
+        # Sven's home: the feed-in tariff sits above the import price, so every
+        # kWh used at home costs money. The number that removes the solar axis.
+        (
+            {"feed_in_price_eur_kwh": 0.45, "feed_in_cost_eur_kwh": 0.0},
+            -0.15,
+        ),
+        # Exactly break-even. Not negative, so the axis stays on.
+        (
+            {"feed_in_price_eur_kwh": 0.30, "feed_in_cost_eur_kwh": 0.0},
+            0.0,
+        ),
+    ],
+)
+async def test_what_a_kwh_used_at_home_is_worth(
+    hass: HomeAssistant, home: dict[str, float], expected: float
+) -> None:
+    """One row per contract, asserting the margin the home implies."""
+    hass.states.async_set("sensor.grid", "500")
+    config = _config(fixed_import_price_eur_kwh=0.30, net_metering_until=None, **home)
+    config.sources.append(_grid_meter())
+
+    metrics = Calculator(hass).calculate(config)
+
+    assert metrics.self_consumption_margin_eur_kwh == pytest.approx(expected)
+
+
+async def test_net_metering_leaves_only_the_feed_in_cost(hass: HomeAssistant) -> None:
+    """A fed-in kWh comes back at the same price, so the tariff cancels out.
+
+    The consequence worth stating: under net metering the margin is the feed-in
+    cost, which is never negative — so the case that removes the solar axis can
+    only arise for a home that has left the scheme, and those are the homes
+    where the feed-in fields are filled in (SPEC.md §35.4d).
+    """
+    hass.states.async_set("sensor.grid", "500")
+    config = _config(
+        fixed_import_price_eur_kwh=0.30,
+        net_metering_until=date(2027, 1, 1),
+        # Deliberately above the import price: if the tariff were entering the
+        # sum, this would come out negative.
+        feed_in_price_eur_kwh=0.45,
+        feed_in_cost_eur_kwh=0.02,
+    )
+    config.sources.append(_grid_meter())
+
+    metrics = Calculator(hass).calculate(config)
+
+    assert metrics.self_consumption_margin_eur_kwh == pytest.approx(0.02)
+
+
+async def test_an_unknown_term_leaves_the_margin_unknown(hass: HomeAssistant) -> None:
+    """No feed-in cost on file means the sum cannot be completed.
+
+    And unknown is *not* treated as a negative margin: only a proven negative
+    one removes the solar axis, so an empty field on the installer's form never
+    takes the resident's number away (SPEC.md §35.4d).
+    """
+    hass.states.async_set("sensor.grid", "-1500")
+    hass.states.async_set("sensor.pv", "2000")
+    config = _solar_home(net_metering_until=None, feed_in_price_eur_kwh=0.45)
+
+    metrics = Calculator(hass).calculate(config)
+
+    assert metrics.self_consumption_margin_eur_kwh is None
+    assert SCORE_COMPONENT_SOLAR in metrics.score_components
+
+
+async def test_a_negative_margin_removes_the_solar_axis(hass: HomeAssistant) -> None:
+    """The axis drops out; it is never inverted (SPEC.md §35.4d).
+
+    Inverting it would make "hoog" mean the opposite of what it meant an hour
+    earlier, and it would score self-consumption of *all* load — including the
+    oven nobody can move — so raising it would come down to using less.
+    """
+    hass.states.async_set("sensor.pv", "3000")
+    hass.states.async_set("sensor.grid", "-2500")
+    config = _feed_in_home()
+
+    metrics = Calculator(hass).calculate(config)
+
+    assert metrics.self_consumption_margin_eur_kwh == pytest.approx(-0.15)
+    assert SCORE_COMPONENT_SOLAR not in metrics.score_components
+    assert (
+        metrics.component_unavailable_reasons[SCORE_COMPONENT_SOLAR]
+        == COMPONENT_UNAVAILABLE_SOLAR_FEED_IN_PAYS_BETTER
+    )
+
+
+# --- Self-consumption: the measurement, apart from the verdict (§35.8b) ------
+
+
+async def test_self_consumption_is_there_when_the_score_is_not(
+    hass: HomeAssistant,
+) -> None:
+    """Sven's morning: 4.654 W in, 1.635 W used at home, and no score at all.
+
+    The home has panels and nothing movable, so the solar axis is a discount
+    rather than a meter and drops out — but 35% is a true, moving, readable
+    number, and the old design threw it away with the verdict over it.
+    """
+    hass.states.async_set("sensor.pv", "4654")
+    hass.states.async_set("sensor.grid", "-3019")
+    config = _config(fixed_import_price_eur_kwh=0.30)
+    config.sources.append(_grid_meter())
+    config.sources.append(_source(SOURCE_TYPE_SOLAR, "sensor.pv"))
+
+    metrics = Calculator(hass).calculate(config)
+
+    assert metrics.energy_score is None
+    assert metrics.self_consumption_percent == pytest.approx(35.1, abs=0.1)
+
+
+async def test_the_measurement_and_the_axis_are_one_arithmetic(
+    hass: HomeAssistant,
+) -> None:
+    """Where the axis applies, the row and the component are the same number.
+
+    Two arithmetics would be two numbers on one screen that disagree, and the
+    panel shows both.
+    """
+    hass.states.async_set("sensor.pv", "2000")
+    hass.states.async_set("sensor.grid", "-1500")
+    config = _solar_home()
+
+    metrics = Calculator(hass).calculate(config)
+
+    assert metrics.self_consumption_percent == 25.0
+    assert metrics.score_components[SCORE_COMPONENT_SOLAR] == 25.0
+
+
+async def test_no_grid_reading_leaves_no_self_consumption(
+    hass: HomeAssistant,
+) -> None:
+    """Without the export there is no share to compute, and zero would lie."""
+    hass.states.async_set("sensor.pv", "2000")
+    config = _solar_home()
+
+    metrics = Calculator(hass).calculate(config)
+
+    assert metrics.self_consumption_percent is None
+
+
+# --- Why an axis sat out, while the other still gave a number (§35.9b) -------
+
+
+@pytest.mark.parametrize(
+    ("states", "build", "component", "expected"),
+    [
+        (
+            {"sensor.grid": "500", "sensor.price": "0.30"},
+            _grid_home,
+            SCORE_COMPONENT_SOLAR,
+            COMPONENT_UNAVAILABLE_SOLAR_NO_PANELS,
+        ),
+        (
+            {"sensor.grid": "500", "sensor.price": "0.30", "sensor.pv": "0"},
+            _dynamic_solar_home,
+            SCORE_COMPONENT_SOLAR,
+            COMPONENT_UNAVAILABLE_SOLAR_NO_PRODUCTION,
+        ),
+        (
+            {"sensor.grid": "-1500", "sensor.pv": "2000"},
+            _solar_home,
+            SCORE_COMPONENT_PRICE,
+            COMPONENT_UNAVAILABLE_PRICE_FIXED_TARIFF,
+        ),
+        (
+            {"sensor.grid": "-1500", "sensor.pv": "2000", "sensor.price": "0.10"},
+            _dynamic_solar_home,
+            SCORE_COMPONENT_PRICE,
+            COMPONENT_UNAVAILABLE_PRICE_CHEAP,
+        ),
+    ],
+)
+async def test_why_the_other_axis_did_not_count(
+    hass: HomeAssistant,
+    states: dict[str, str],
+    build: Callable[[], StoredConfiguration],
+    component: str,
+    expected: str,
+) -> None:
+    """There is a number, and the tile still has to say what it left out.
+
+    One row per situation. Every row keeps a score on purpose: without one the
+    tile's own sentence covers the ground and these would never be read.
+    """
+    for entity_id, state in states.items():
+        hass.states.async_set(entity_id, state)
+    config = build()
+
+    metrics = Calculator(hass).calculate(config)
+
+    assert metrics.energy_score is not None
+    assert metrics.not_applicable_components == [component]
+    assert metrics.component_unavailable_reasons[component] == expected
 
 
 async def test_metrics_serialise_for_the_frontend(hass: HomeAssistant) -> None:

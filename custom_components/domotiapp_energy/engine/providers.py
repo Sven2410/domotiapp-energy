@@ -25,6 +25,15 @@ from custom_components.domotiapp_energy.const import (
     COMPLETENESS_ITEM_PRICE,
     COMPLETENESS_ITEM_SOLAR,
     COMPLETENESS_ITEM_TIME_WINDOWS,
+    COMPONENT_UNAVAILABLE_PRICE_CHEAP,
+    COMPONENT_UNAVAILABLE_PRICE_FIXED_TARIFF,
+    COMPONENT_UNAVAILABLE_PRICE_NO_READING,
+    COMPONENT_UNAVAILABLE_PRICE_THRESHOLDS_MISSING,
+    COMPONENT_UNAVAILABLE_SOLAR_FEED_IN_PAYS_BETTER,
+    COMPONENT_UNAVAILABLE_SOLAR_NO_GRID_READING,
+    COMPONENT_UNAVAILABLE_SOLAR_NO_PANELS,
+    COMPONENT_UNAVAILABLE_SOLAR_NO_PRODUCTION,
+    COMPONENT_UNAVAILABLE_SOLAR_NOTHING_MOVABLE,
     EXPLANATION_KEY_MISSING_DATA,
     EXPLANATION_KEY_PEAK_RISK,
     EXPLANATION_KEY_SCORE_BREAKDOWN,
@@ -38,6 +47,7 @@ from custom_components.domotiapp_energy.const import (
     SCORE_COMPONENT_PRICE,
     SCORE_COMPONENT_SOLAR,
     SCORE_UNAVAILABLE_CHEAP_PRICE,
+    SCORE_UNAVAILABLE_FEED_IN_PAYS_BETTER,
     SCORE_UNAVAILABLE_INCOMPLETE_SETUP,
     SCORE_UNAVAILABLE_NO_SUN_CHEAP_PRICE,
     SCORE_UNAVAILABLE_NO_SUN_FIXED_TARIFF,
@@ -121,6 +131,12 @@ _SCORE_UNAVAILABLE_SENTENCES: dict[str, str] = {
         "moment dat beter is dan een ander. Er valt daarom niets te optimaliseren. "
         "Het advies blijft gewoon werken."
     ),
+    SCORE_UNAVAILABLE_FEED_IN_PAYS_BETTER: (
+        "Je panelen leveren op dit moment, maar terugleveren levert je meer op "
+        "dan de stroom je kost. Zelf verbruiken zou je nu geld kosten, dus er "
+        "valt aan je opwek niets te benutten. De coach zegt hetzelfde: wachten "
+        "is voordeliger."
+    ),
     SCORE_UNAVAILABLE_NOTHING_MOVABLE: (
         "Er is nu opwek, maar geen apparaat of batterij die verbruik kan "
         "verplaatsen. Er valt daarom niets te benutten dat nu niet al gebeurt."
@@ -141,6 +157,52 @@ _SCORE_UNAVAILABLE_SENTENCES: dict[str, str] = {
     SCORE_UNAVAILABLE_CHEAP_PRICE: (
         "De stroomprijs is op dit moment laag, dus er is geen duur verbruik om "
         "te vermijden."
+    ),
+}
+
+# Why one axis was left out while the other still produced a number. The panel
+# carries the same nine on the tile; this is the coach's answer to "Hoe is mijn
+# energiescore berekend?" (SPEC.md §35.9b).
+#
+# These read as qualifications of a number that *is* there, where the block
+# above explains a number that is not, so neither set can be reused for the
+# other. None of them is a shortcoming except the missing thresholds, and none
+# of them apologises.
+_COMPONENT_UNAVAILABLE_SENTENCES: dict[str, str] = {
+    COMPONENT_UNAVAILABLE_SOLAR_NO_PANELS: (
+        "Zonnebenutting telt niet mee, want deze woning heeft geen zonnepanelen."
+    ),
+    COMPONENT_UNAVAILABLE_SOLAR_NO_PRODUCTION: (
+        "Zonnebenutting telt niet mee, want je panelen leveren op dit moment niets."
+    ),
+    COMPONENT_UNAVAILABLE_SOLAR_NO_GRID_READING: (
+        "Zonnebenutting telt niet mee, want zonder netmeting is niet te zien "
+        "hoeveel van je opwek je zelf gebruikt."
+    ),
+    COMPONENT_UNAVAILABLE_SOLAR_NOTHING_MOVABLE: (
+        "Zonnebenutting telt niet mee, want er is geen apparaat of batterij die "
+        "verbruik naar dit moment kan verplaatsen."
+    ),
+    COMPONENT_UNAVAILABLE_SOLAR_FEED_IN_PAYS_BETTER: (
+        "Zonnebenutting telt niet mee: terugleveren levert je op dit moment "
+        "meer op dan de stroom je kost, dus je opwek zelf gebruiken zou je geld "
+        "kosten."
+    ),
+    COMPONENT_UNAVAILABLE_PRICE_FIXED_TARIFF: (
+        "Het prijsmoment telt niet mee, want bij een vast tarief is het ene "
+        "moment niet duurder dan het andere."
+    ),
+    COMPONENT_UNAVAILABLE_PRICE_THRESHOLDS_MISSING: (
+        "Het prijsmoment telt niet mee zolang de lage en de hoge prijsdrempel "
+        "niet zijn ingevuld. Vul ze in bij Installatie."
+    ),
+    COMPONENT_UNAVAILABLE_PRICE_NO_READING: (
+        "Het prijsmoment telt niet mee, want de actuele prijs is op dit moment "
+        "niet uit te lezen."
+    ),
+    COMPONENT_UNAVAILABLE_PRICE_CHEAP: (
+        "Het prijsmoment telt niet mee, want de stroom is nu goedkoop en er is "
+        "dus geen duur verbruik om te vermijden."
     ),
 }
 
@@ -361,14 +423,18 @@ def _score_breakdown(metrics: EnergyMetrics) -> str:
         f"De score op dit moment is {metrics.energy_score}, opgebouwd uit: {parts}."
     )
 
+    # Why, not only which. Naming the axis — "niet meegewogen: zonnebenutting"
+    # — answers half a question and raises the other half, and with the margin
+    # axis in play (SPEC.md §35.4d) the unanswered half is the one that matters:
+    # a resident whose solar axis sat out because feeding in pays better is not
+    # looking at a shortcoming. Whole sentences, one per axis, appended rather
+    # than folded into the sentence above (SPEC.md §35.9b).
     skipped = [
-        label
+        text
         for key in metrics.not_applicable_components
-        if (label := _COMPONENT_LABELS.get(key)) is not None
+        if (reason := metrics.component_unavailable_reasons.get(key)) is not None
+        and (text := _COMPONENT_UNAVAILABLE_SENTENCES.get(reason)) is not None
     ]
     if skipped:
-        sentence += (
-            f" Niet van toepassing op deze woning, en dus niet meegewogen: "
-            f"{', '.join(skipped)}."
-        )
+        sentence += " " + " ".join(skipped)
     return sentence

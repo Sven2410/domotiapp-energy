@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.7.0
+
+### Fixed
+
+- **De score beloonde het negeren van het advies.** Ligt de terugleververgoeding hoger dan
+  de importprijs, dan raadt de coach aan te wáchten met je zonneoverschot — en ging de
+  zonnebenutting omhoog zodra je dat advies naast je neerlegde. De as vervalt nu zolang die
+  marge negatief is. Niet omgedraaid: omgedraaid zou hij "verbruik minder" gaan meten, en
+  dat is de zuinigheidsmeter die de score nooit heeft willen zijn.
+
+- **De coach kon dat alleen zeggen over een apparaat.** De zin *"wachten is voordeliger"*
+  hing aan een apparaat met een energie per cyclus, dus juist een woning met panelen en
+  geen zo'n apparaat hoorde het nooit — terwijl dat de woning is waarvan de zonne-as toch
+  al wegvalt. De marge is nu een gegeven van de woning, dat de score, de tegel en het
+  advies alle drie lezen.
+
+- **De waarschuwing bij hoge teruglevering beloofde voordeel dat er niet was.** Bij een
+  negatieve marge zegt zij nu dat extra verbruik de belasting verlaagt én dat het je geld
+  kost. Het argument eronder blijft de zekering; die trekt zich van tarieven niets aan.
+
+### Added
+
+- **Zelfbenutting staat op het Overzicht, ook als er geen cijfer is.** Welk deel van je
+  opwek je zelf gebruikt is een meting, geen oordeel: hij staat er zodra je netmeter en je
+  omvormer uitleesbaar zijn. Een woning die 4.654 W opwekt en 1.635 W zelf gebruikt las
+  eerst niets en leest nu 35%.
+
+- **De tegel zegt ook bij een cijfer wat er niet meetelde.** Negen zinnen, één per reden.
+  Zonder dat las je 88 zonder te weten dat je zonneoverschot buiten beschouwing bleef.
+
+### Changed
+
+- **Het thuisverbruik is het kopgetal van het Overzicht geworden**, en de energiescore
+  staat ernaast. De score mag met opzet afwezig zijn, en dan hoort de grootste plek op het
+  scherm niet van hem te zijn. Het thuisverbruik verhuist daarmee uit `Actuele situatie`;
+  het staat er niet twee keer.
+
 ## 0.6.1
 
 ### Fixed

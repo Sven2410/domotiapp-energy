@@ -140,7 +140,7 @@ describe('notices and the banner', () => {
     );
 
     const notices = [...panel.shadowRoot.querySelectorAll('.notice')];
-    assert.equal(notices.length, 7);
+    assert.equal(notices.length, 8);
 
     for (const node of notices.filter(isVisible)) {
       assert.notEqual(
@@ -225,14 +225,38 @@ describe('empty and populated configurations', () => {
     assert.doesNotMatch(text, /Configuratie/);
   });
 
+  /** The headline figure carrying this label, by label rather than by index. */
+  const headline = (panel, label) =>
+    [...panel.shadowRoot.querySelectorAll('.display-metric')].find(
+      (node) => node.querySelector('.label').textContent === label,
+    );
+
+  it('leads with the home consumption, not with the score', async () => {
+    // SPEC.md §35.8b. The score may be absent by design, so the largest place
+    // on the screen cannot belong to it. The home consumption is there
+    // whenever the meters can be read, which is exactly when the score is not.
+    const panel = await mountPanel(
+      fakeHass({
+        coach: sampleCoach({
+          metrics: { energy_score: null, home_consumption_w: 1635 },
+        }),
+      }),
+    );
+
+    const [first] = [...panel.shadowRoot.querySelectorAll('.display-metric')];
+
+    assert.equal(first.querySelector('.label').textContent, 'Thuisverbruik');
+    assert.equal(first.querySelector('.display-value').textContent, '1.635');
+    assert.ok(isVisible(first.querySelector('.display-value')));
+  });
+
   it('gives the score its own headline figure, apart from its label', async () => {
     // The house style asks the number to dominate; a score and its label at
     // the same weight read as two equal facts. Structure is what carries that,
     // so this asserts the structure rather than the font size.
     const panel = await mountPanel();
-    const [score] = [...panel.shadowRoot.querySelectorAll('.display-metric')];
+    const score = headline(panel, 'Energiescore');
 
-    assert.equal(score.querySelector('.label').textContent, 'Energiescore');
     assert.equal(score.querySelector('.display-value').textContent, '46');
     // "van 100" read as a report card on the household. The score is a reading
     // of this moment: at night components drop out because there is nothing to
@@ -263,7 +287,7 @@ describe('empty and populated configurations', () => {
         coach: sampleCoach({ metrics: { energy_score: null } }),
       }),
     );
-    const [score] = [...panel.shadowRoot.querySelectorAll('.display-metric')];
+    const score = headline(panel, 'Energiescore');
 
     assert.ok(!isVisible(score.querySelector('.display-value')));
     assert.equal(score.querySelector('.display-empty').textContent, 'Geen cijfer');
@@ -278,6 +302,9 @@ describe('empty and populated configurations', () => {
     ['no_sun_cheap_price', 'panelen leveren op dit moment niets', 'info'],
     ['no_sun_fixed_tariff', 'bij een vast tarief', 'info'],
     ['cheap_price', 'stroomprijs is op dit moment laag', 'info'],
+    // SPEC.md §35.4d. Informative and not a warning: this resident is earning
+    // money, and a warning colour would turn that into a problem.
+    ['feed_in_pays_better', 'terugleveren levert je meer op', 'info'],
     ['incomplete_setup', 'installatie nog niet compleet', 'warning'],
     ['price_thresholds_missing', 'prijsdrempel', 'warning'],
   ];
@@ -321,6 +348,94 @@ describe('empty and populated configurations', () => {
     });
   }
 
+  // SPEC.md §35.9b. The mirror case: there *is* a number, reached over one
+  // axis instead of two, and until now nothing on the screen said so. Reading
+  // 88 with the solar axis excluded because feeding in pays better is not the
+  // same as reading 88 with everything counted, and the resident could not
+  // tell the two apart.
+  const COMPONENT_REASONS = [
+    ['solar_no_panels', 'geen zonnepanelen'],
+    ['solar_no_production', 'panelen leveren op dit moment niets'],
+    ['solar_no_grid_reading', 'zonder netmeting'],
+    ['solar_nothing_movable', 'geen apparaat of batterij'],
+    ['solar_feed_in_pays_better', 'terugleveren levert je op dit moment meer op'],
+    ['price_fixed_tariff', 'bij een vast tarief'],
+    ['price_thresholds_missing', 'prijsdrempel'],
+    ['price_no_reading', 'niet uit te lezen'],
+    ['price_cheap', 'de stroom is nu goedkoop'],
+  ];
+
+  for (const [reason, fragment] of COMPONENT_REASONS) {
+    it(`says why an axis did not count: ${reason}`, async () => {
+      const component = reason.startsWith('solar')
+        ? 'solar_component'
+        : 'price_component';
+      const panel = await mountPanel(
+        fakeHass({
+          coach: sampleCoach({
+            metrics: {
+              energy_score: 88,
+              not_applicable_components: [component],
+              component_unavailable_reasons: { [component]: reason },
+            },
+          }),
+        }),
+      );
+
+      const visible = [...panel.shadowRoot.querySelectorAll('.notice')]
+        .filter(isVisible)
+        .map((node) => node.querySelector('.notice-text').textContent);
+
+      assert.ok(
+        visible.some((text) => text.includes(fragment)),
+        `expected a sentence explaining ${reason}`,
+      );
+    });
+  }
+
+  it('does not explain an axis when there is no score to qualify', async () => {
+    // Without a number the tile's own sentence already covers the ground, and
+    // two explanations of the same silence read as a fault.
+    const panel = await mountPanel(
+      fakeHass({
+        coach: sampleCoach({
+          metrics: {
+            energy_score: null,
+            score_unavailable_reason: 'cheap_price',
+            not_applicable_components: ['solar_component'],
+            component_unavailable_reasons: { solar_component: 'solar_no_panels' },
+          },
+        }),
+      }),
+    );
+
+    const visible = [...panel.shadowRoot.querySelectorAll('.notice')]
+      .filter(isVisible)
+      .map((node) => node.querySelector('.notice-text').textContent);
+
+    assert.ok(!visible.some((text) => text.includes('telt niet mee')));
+  });
+
+  it('shows the self-consumption as a measurement, without a score', async () => {
+    // SPEC.md §35.8b: a measurement has no direction, so it belongs among the
+    // meter readings and is there whenever it can be read — including when the
+    // verdict over it is not.
+    const panel = await mountPanel(
+      fakeHass({
+        coach: sampleCoach({
+          metrics: { energy_score: null, self_consumption_percent: 35.1 },
+        }),
+      }),
+    );
+
+    const row = [...panel.shadowRoot.querySelectorAll('.stat-row')].find((node) =>
+      node.querySelector('.stat-label').textContent.includes('Zelfbenutting'),
+    );
+
+    assert.ok(row, 'expected a Zelfbenutting row');
+    assert.equal(row.querySelector('.stat-value').textContent, '35%');
+  });
+
   // SPEC.md §16 and the 0.4.1 decision: the surplus figure no longer carries a
   // confidence grade. The one level that meant something became this sentence,
   // which names the cause and the fix instead of grading the customer's data.
@@ -358,9 +473,10 @@ describe('empty and populated configurations', () => {
     assert.equal(value.textContent, 'Niet beschikbaar');
   });
 
-  it('puts the home consumption above the grid power', async () => {
-    // SPEC.md §36.5: the grid power is a consequence of consumption minus
-    // production, so it used to sit above its own causes.
+  it('shows the home consumption once, as the headline and not as a row', async () => {
+    // It was the first row of Actuele situatie (SPEC.md §36.5) and became the
+    // headline figure in §35.8b. Moved, not repeated: the same number twice on
+    // one screen invites the question which of the two is the real one.
     const panel = await mountPanel(
       fakeHass({ coach: sampleCoach({ metrics: { home_consumption_w: 600 } }) }),
     );
@@ -368,8 +484,8 @@ describe('empty and populated configurations', () => {
     const labels = [...panel.shadowRoot.querySelectorAll('.stat-row .stat-label')]
       .map((node) => node.textContent);
 
-    assert.ok(labels.indexOf('Thuisverbruik') >= 0, 'expected a Thuisverbruik row');
-    assert.ok(labels.indexOf('Thuisverbruik') < labels.indexOf('Netvermogen'));
+    assert.equal(labels.indexOf('Thuisverbruik'), -1);
+    assert.ok(headline(panel, 'Thuisverbruik'), 'expected a Thuisverbruik figure');
   });
 
   it('explains an unreadable inverter instead of leaving the row blank', async () => {

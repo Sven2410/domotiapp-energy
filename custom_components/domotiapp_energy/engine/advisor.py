@@ -187,15 +187,32 @@ def _advise_peak_risk(context: _Context) -> list[AdviceItem]:
     }
 
     if grid_power < 0:
+        # Two whole sentences, and which one is true depends on the margin
+        # (SPEC.md §35.4d). The capacity argument holds either way — the fuse
+        # does not care what a kWh is worth — but the second half of the
+        # original sentence promised a benefit, and with feeding in paying
+        # better than self-consumption that promise is simply false. The
+        # resident is still told to switch something on, because the limit is
+        # the limit; they are told what it costs rather than what it saves.
+        margin = context.metrics.self_consumption_margin_eur_kwh
+        message = (
+            "De teruglevering ligt dicht bij de ingestelde maximale "
+            "woningbelasting. Schakel indien mogelijk juist extra verbruikers "
+            "in om het overschot zelf te benutten."
+        )
+        if margin is not None and margin < 0:
+            message = (
+                "De teruglevering ligt dicht bij de ingestelde maximale "
+                "woningbelasting. Schakel indien mogelijk juist extra "
+                "verbruikers in om de belasting te verlagen. Let op: "
+                "terugleveren levert je op dit moment meer op dan zelf "
+                "verbruiken, dus dit kost je geld."
+            )
         return [
             AdviceItem(
                 id=REASON_HIGH_GRID_EXPORT,
                 title="Teruglevering hoog",
-                message=(
-                    "De teruglevering ligt dicht bij de ingestelde maximale "
-                    "woningbelasting. Schakel indien mogelijk juist extra "
-                    "verbruikers in om het overschot zelf te benutten."
-                ),
+                message=message,
                 severity=SEVERITY_WARNING,
                 reason_code=REASON_HIGH_GRID_EXPORT,
                 confidence=CONFIDENCE_HIGH,
@@ -692,40 +709,25 @@ def _solar_savings(context: _Context, device: DeviceProfile) -> float | None:
     calculator normalised it on reading, the fixed tariff and the feed-in
     amounts because the form asks for them that way (SPEC.md §16). Mixing a bare
     market price into this sum would overstate the saving by the energy tax.
+
+    **The bracket is no longer computed here.** It never depended on the
+    appliance — only the scale did — and keeping it inside this function meant
+    the one fact it establishes, that feeding in currently pays better, could
+    only ever be stated about an appliance. A home with panels and no complete
+    flexible appliance could not be told, which is exactly the home whose solar
+    axis drops out for having nothing movable. It is now
+    `EnergyMetrics.self_consumption_margin_eur_kwh`, read by the score, the tile
+    and this sum alike (SPEC.md §35.4d).
     """
     energy = device.energy_per_cycle_kwh
     if energy is None:
         return None
 
-    home = context.config.home
-    import_price = (
-        context.metrics.current_price_eur_kwh
-        if home.contract_type == CONTRACT_TYPE_DYNAMIC
-        else home.fixed_import_price_eur_kwh
-    )
-    if import_price is None:
+    margin = context.metrics.self_consumption_margin_eur_kwh
+    if margin is None:
         return None
 
-    if context.net_metering:
-        # Fed in and taken back at the same price, so only the feed-in cost is
-        # avoided. No feed-in tariff is needed to work this out.
-        effective_feed_in = import_price
-    else:
-        # A linked feed-in source wins over the fixed amount: creating that row
-        # is an explicit statement that this home's feed-in tariff varies, the
-        # same reading the checklist gives a source row (SPEC.md §16). The fixed
-        # field stays on file and the panel disables rather than clears it, so
-        # removing the source restores it.
-        effective_feed_in = _feed_in_tariff(context)
-        if effective_feed_in is None:
-            return None
-
-    feed_in_cost = home.feed_in_cost_eur_kwh
-    if feed_in_cost is None:
-        return None
-
-    saving = energy * (import_price - effective_feed_in + feed_in_cost)
-    return round(saving, 2)
+    return round(energy * margin, 2)
 
 
 def _filter_by_savings(
