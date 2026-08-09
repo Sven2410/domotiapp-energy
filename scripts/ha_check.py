@@ -91,7 +91,7 @@ from typing import Any
 REPO_ROOT = Path(__file__).resolve().parent.parent
 ENV_FILE = REPO_ROOT / ".env"
 
-# The six entity ids SPEC.md §19 fixes. Hard-coded rather than imported from
+# The eight entity ids SPEC.md §19 fixes. Hard-coded rather than imported from
 # const.py: this script has to notice when the running instance disagrees with
 # what we think we ship, and importing our own expectation would hide exactly
 # that.
@@ -99,14 +99,17 @@ EXPECTED_ENTITIES = (
     "sensor.domotiapp_energy_score",
     "sensor.domotiapp_energy_data_quality",
     "sensor.domotiapp_energy_grid_power",
+    "sensor.domotiapp_energy_home_consumption",
     "sensor.domotiapp_energy_solar_surplus",
     "sensor.domotiapp_energy_current_advice",
     "binary_sensor.domotiapp_energy_peak_risk",
+    "binary_sensor.domotiapp_energy_attention",
 )
 
 # Attributes worth showing per entity; anything else is noise in a terminal.
 INTERESTING_ATTRIBUTES = (
     "friendly_name",
+    "advice_title",
     "unit_of_measurement",
     "device_class",
     "grid_load_percent",
