@@ -44,6 +44,7 @@ from custom_components.domotiapp_energy.engine.reason_codes import (
     REASON_LOW_ENERGY_PRICE,
     REASON_MISSING_REQUIRED_DATA,
     REASON_NEUTRAL_ENERGY_SITUATION,
+    REASON_QUIET_HOURS_ACTIVE,
     REASON_SOLAR_SURPLUS_AVAILABLE,
 )
 from custom_components.domotiapp_energy.models import (
@@ -445,10 +446,17 @@ async def test_the_same_device_is_suggested_while_it_can_still_finish(
     freezer.move_to(local(2, 30))
     config = _config(min_solar_surplus_w=500.0)
     # A dishwasher is noisy by default and 02:30 is inside the quiet hours, so
-    # without this the test would pass or fail on the wrong rule.
-    config.preferences = UserPreferences(allow_advice_during_quiet_hours=True)
+    # without a quiet appliance the test would pass or fail on the wrong rule.
+    # It used to switch the quiet hours off with a preference; that preference
+    # is gone, and saying "this one makes no noise" is the truer way to say
+    # "this test is about the window" anyway.
     config.devices.append(
-        _device(ready_from="22:00", ready_before="06:00", duration_minutes=180)
+        _device(
+            ready_from="22:00",
+            ready_before="06:00",
+            duration_minutes=180,
+            is_noisy=False,
+        )
     )
     metrics = _metrics(solar_surplus_w=1500.0)
 
@@ -466,8 +474,9 @@ async def test_without_a_duration_the_deadline_degrades_to_the_old_meaning(
     """
     freezer.move_to(local(5, 55))
     config = _config(min_solar_surplus_w=500.0)
-    config.preferences = UserPreferences(allow_advice_during_quiet_hours=True)
-    config.devices.append(_device(ready_from="22:00", ready_before="06:00"))
+    config.devices.append(
+        _device(ready_from="22:00", ready_before="06:00", is_noisy=False)
+    )
     metrics = _metrics(solar_surplus_w=1500.0)
 
     assert REASON_SOLAR_SURPLUS_AVAILABLE in _codes(Advisor().generate(config, metrics))
@@ -520,8 +529,9 @@ async def test_a_midnight_window_covers_the_evening(
     """A 22:00-06:00 device is eligible at 23:30 (SPEC.md §16)."""
     freezer.move_to(local(23, 30))
     config = _config(min_solar_surplus_w=500.0)
-    config.preferences = UserPreferences(allow_advice_during_quiet_hours=True)
-    config.devices.append(_device(ready_from="22:00", ready_before="06:00"))
+    config.devices.append(
+        _device(ready_from="22:00", ready_before="06:00", is_noisy=False)
+    )
     metrics = _metrics(solar_surplus_w=1500.0)
 
     assert REASON_SOLAR_SURPLUS_AVAILABLE in _codes(Advisor().generate(config, metrics))
@@ -533,8 +543,9 @@ async def test_a_midnight_window_covers_the_small_hours(
     """The same window still applies after midnight."""
     freezer.move_to(local(3, 0))
     config = _config(min_solar_surplus_w=500.0)
-    config.preferences = UserPreferences(allow_advice_during_quiet_hours=True)
-    config.devices.append(_device(ready_from="22:00", ready_before="06:00"))
+    config.devices.append(
+        _device(ready_from="22:00", ready_before="06:00", is_noisy=False)
+    )
     metrics = _metrics(solar_surplus_w=1500.0)
 
     assert REASON_SOLAR_SURPLUS_AVAILABLE in _codes(Advisor().generate(config, metrics))
@@ -649,21 +660,35 @@ async def test_just_outside_the_quiet_window_is_allowed(
     assert REASON_SOLAR_SURPLUS_AVAILABLE in _codes(Advisor().generate(config, metrics))
 
 
-async def test_quiet_hours_can_be_overridden(
+async def test_quiet_hours_defer_the_advice_instead_of_hiding_it(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    """The installer may allow advice during quiet hours anyway."""
+    """The advice is deferred, not suppressed, and it says until when.
+
+    The quiet hours used to remove the advice altogether, with a preference to
+    switch that off again. Both are gone (finding 12): the resident keeps the
+    advice, and it tells him what to do with it — which is the one thing a
+    silent panel could never do.
+    """
     freezer.move_to(local(23, 30))
     config = _config(min_solar_surplus_w=500.0)
     config.preferences = UserPreferences(
         quiet_hours_start="22:00",
         quiet_hours_end="07:00",
-        allow_advice_during_quiet_hours=True,
     )
-    config.devices.append(_device())
-    metrics = _metrics(solar_surplus_w=1500.0)
+    config.devices.append(_device(name="Vaatwasser"))
+    metrics = _metrics(config, solar_surplus_w=1500.0)
 
-    assert REASON_SOLAR_SURPLUS_AVAILABLE in _codes(Advisor().generate(config, metrics))
+    advice = Advisor().generate(config, metrics)
+
+    assert REASON_QUIET_HOURS_ACTIVE in _codes(advice)
+    assert REASON_SOLAR_SURPLUS_AVAILABLE not in _codes(advice)
+    message = advice[0].message
+    assert "Vaatwasser" in message
+    # The time the resident needs, in the sentence rather than in a setting.
+    assert "07:00" in message
+    # No euro amount beside a deferral: it would read as a reason to ignore it.
+    assert advice[0].estimated_savings_eur is None
 
 
 async def test_a_quiet_device_is_not_silenced(

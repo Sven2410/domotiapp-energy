@@ -4099,3 +4099,79 @@ Een string telt als tekst wanneer hij lang genoeg is, geen identifier, pad, icoo
 formaatspecificatie of CSS-declaratie is, en een spatie bevat of met een hoofdletter begint.
 Dat laat er te veel door in plaats van te weinig, en dat is de goede kant: een vals positief
 is een regel die iemand overslaat, een vals negatief is een zin die niemand nakijkt.
+
+## 42. Ronde A: wat er zichtbaar mankeerde
+
+**Status: gebouwd in 0.9.0.** Drie kleine dingen die een klant vandaag zag, samen in één
+ronde omdat ze alle drie klein zijn en alle drie zichtbaar. Daarna is de visuele ronde echt
+dicht en kan fase 2 er nieuwe schermen bijzetten.
+
+### 42.1 Het hoofdadvies stond er twee keer
+
+Op het Overzicht staat het hoofdadvies bovenaan de Advieskaart en daaronder de lijst
+waarschuwingen. Is het hoofdadvies zélf een waarschuwing — en dat is het bij elke woning die
+nog niet compleet is — dan las de klant hem twee keer op één kaart.
+
+Het Energiecoach-tabblad doet dit al goed sinds het gebouwd is (*"lists everything after the
+primary one, without repeating it"*), dus er lag een precedent en de reparatie is één filter.
+
+**De lastige helft is de lege staat.** *"Er zijn op dit moment geen waarschuwingen"* is alleen
+waar wanneer er geen enkele is. Staat het hoofdadvies er als waarschuwing en verder niets, dan
+is het juiste antwoord **niets zeggen**: de waarschuwing staat er, direct erboven. Die zin
+alsnog tonen zou de regel erboven tegenspreken.
+
+| Situatie | Wat de kaart doet |
+|---|---|
+| hoofdadvies is een waarschuwing, verder geen | alleen het hoofdadvies; geen lijst, geen zin |
+| hoofdadvies is een waarschuwing, plus andere | de andere in de lijst, zonder het hoofdadvies |
+| niets is een waarschuwing | *Er zijn op dit moment geen waarschuwingen.* |
+
+### 42.2 Stille uren stellen uit, ze zwijgen niet
+
+Bevinding 12 uit de eerste productie-installatie, en het gebruikt eindelijk een reason code
+die gedefinieerd was en nooit werd uitgestuurd.
+
+Tot 0.9.0 haalde het stille-urenvenster een lawaaiig apparaat uit de kandidatenlijst, en
+verdween het advies. De bewoner zag niets en wist niet waarom — de stilte was niet te
+onderscheiden van "er is geen overschot".
+
+**Nu blijft het advies staan en verandert het van vorm:**
+
+> *Er is momenteel zonneoverschot beschikbaar. Vaatwasser maakt geluid en het zijn stille uren
+> tot 18:00. Wacht daarmee tot na 18:00, of pas de stille uren aan bij Mijn voorkeuren.*
+
+Reason code `quiet_hours_active`, dezelfde rang als het gewone overschotadvies: het gaat over
+hetzelfde moment en dezelfde meting, alleen de aanbevolen handeling verschilt. Het **vervangt**
+het overschotadvies en komt er niet naast.
+
+**Een stil apparaat wint, en dat is de volgorde die telt.** De regel vraagt eerst om een
+kandidaat zonder de stille-urenvoorwaarde en pas als die er niet is met. Andersom zou een
+bruikbaar advies ingeruild worden voor een uitstel, terwijl er een vaatwasser in de garage
+staat waar niemand last van heeft.
+
+**Geen bedrag onder een uitstel.** Het euro-bedrag beantwoordt "wat levert het op om dit nu te
+doen", en het advies is om het nu niet te doen; een bedrag ernaast leest als een argument om
+het uitstel te negeren.
+
+**`allow_advice_during_quiet_hours` is weg.** Die schakelde het hele advies uit, en in de
+uitstellende vorm is er niets meer om uit te schakelen. Een opgeslagen waarde wordt door
+`from_dict` genegeerd in plaats van gemigreerd: niets leest hem, dus er is niets over te
+zetten. Wie het niet eens is met het venster, verzet het venster — en de zin zegt waar.
+
+De hulptekst bij de stille uren zei *"krijgen lawaaiige apparaten geen advies"*. Dat
+beschreef het oude gedrag; hij zegt nu wat er werkelijk gebeurt. Een hulptekst die het vorige
+gedrag uitlegt, leert de installateur iets aan dat niet meer waar is.
+
+### 42.3 De tabbalk paste niet op een telefoon
+
+Zes tabbladen met een icoon en een label wikkelden op 358px naar **drie regels**: een derde
+van het scherm was tabbalk voordat er iets gelezen was.
+
+Twee regels nu, door de tussenruimte, de letterspatiëring en het icoon elk een beetje te laten
+inleveren. Gemeten: 87px in plaats van ongeveer 130, elk tikdoel nog 44px, geen horizontale
+scroll.
+
+**De iconen blijven.** Ze weglaten had dezelfde breedte opgeleverd, en ze zijn waar een
+bewoner een tabblad aan herkent wanneer hij zoekt naar het tabblad dat zijn installateur door
+de telefoon noemde. Dat is precies het gesprek waarvoor de zes tabbladen voor beide rollen
+gelijk zijn (§33.6).

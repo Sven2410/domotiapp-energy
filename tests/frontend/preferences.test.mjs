@@ -73,8 +73,10 @@ describe('the Voorkeuren tab', () => {
       form.schema.map((field) => field.name),
     );
 
+    // `allow_advice_during_quiet_hours` is gone since 0.9.0: the quiet hours
+    // defer the advice instead of suppressing it, so there is nothing left for
+    // that toggle to switch (finding 12, SPEC.md §42.2).
     assert.deepEqual(names.sort(), [
-      'allow_advice_during_quiet_hours',
       'max_advice_count',
       'min_savings_eur',
       'prefer_low_price',

@@ -31,9 +31,14 @@ const QUIET_SCHEMA = [
   {
     name: 'quiet_hours_start',
     label: 'Stille uren van',
+    // The old wording — "krijgen lawaaiige apparaten geen advies" — described
+    // what the quiet hours did until 0.9.0: they suppressed the advice. They
+    // defer it now, and the sentence has to follow the behaviour or it teaches
+    // the installer something that is no longer true (SPEC.md §42.2).
     helper:
-      'Tussen deze tijden krijgen lawaaiige apparaten geen advies. Een venster ' +
-      'over middernacht is het normale geval: 22:00 tot 07:00.',
+      'Tussen deze tijden raadt DomotiApp Energy aan om te wachten met ' +
+      'lawaaiige apparaten. Het advies verdwijnt niet, het zegt tot hoe laat. ' +
+      'Een venster over middernacht is het normale geval: 22:00 tot 07:00.',
     // Home Assistant's own time selector takes no_second, and uses it in its
     // own schemas. Quiet hours to the second is a precision nobody has.
     selector: { time: { no_second: true } },
@@ -42,12 +47,6 @@ const QUIET_SCHEMA = [
     name: 'quiet_hours_end',
     label: 'Stille uren tot',
     selector: { time: { no_second: true } },
-  },
-  {
-    name: 'allow_advice_during_quiet_hours',
-    label: 'Toch adviseren tijdens de stille uren',
-    helper: 'Zet aan wanneer de bewoner er geen last van heeft.',
-    selector: { boolean: {} },
   },
 ];
 

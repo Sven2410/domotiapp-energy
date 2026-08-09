@@ -55,6 +55,7 @@ from .reason_codes import (
     REASON_LOW_ENERGY_PRICE,
     REASON_MISSING_REQUIRED_DATA,
     REASON_NEUTRAL_ENERGY_SITUATION,
+    REASON_QUIET_HOURS_ACTIVE,
     REASON_SOLAR_SURPLUS_AVAILABLE,
 )
 
@@ -70,6 +71,10 @@ _ADVICE_RANKS: dict[str, int] = {
     REASON_HIGH_GRID_LOAD: ADVICE_RANK_PEAK,
     REASON_HIGH_GRID_EXPORT: ADVICE_RANK_PEAK,
     REASON_SOLAR_SURPLUS_AVAILABLE: ADVICE_RANK_SOLAR,
+    # The deferred form of the same advice, so the same rank. It replaces the
+    # surplus item rather than joining it, and it says the same thing about the
+    # same moment — only the recommended action differs.
+    REASON_QUIET_HOURS_ACTIVE: ADVICE_RANK_SOLAR,
     REASON_LOW_ENERGY_PRICE: ADVICE_RANK_PRICE,
     REASON_HIGH_ENERGY_PRICE: ADVICE_RANK_PRICE,
 }
@@ -257,21 +262,33 @@ def _advise_solar_surplus(context: _Context) -> list[AdviceItem]:
     can be false.
     """
     surplus = context.metrics.solar_surplus_w
-    if surplus is None:
-        return []
-    if context.metrics.solar_surplus_may_be_overstated:
-        return []
-    sufficient = context.metrics.solar_surplus_sufficient
-    if sufficient is None:
-        sufficient = surplus >= context.config.home.min_solar_surplus_w
-    if not sufficient:
-        return []
-    if not context.config.preferences.prefer_solar:
+    if surplus is None or not _surplus_worth_advising(context, surplus):
         return []
 
+    # Quiet hours defer, they do not silence (SPEC.md §42.2). A quiet appliance
+    # wins when there is one, and only when every candidate is noisy does the
+    # advice change into "wait, and here is until when".
     device = _best_device_for_now(context, surplus)
+    deferred = False
+    if device is None:
+        device = _best_device_for_now(context, surplus, include_silenced=True)
+        deferred = device is not None
     if device is None:
         return []
+
+    if deferred:
+        return [
+            AdviceItem(
+                id=f"{REASON_QUIET_HOURS_ACTIVE}:{device.id}",
+                title="Zonneoverschot, maar het zijn stille uren",
+                message=_quiet_hours_message(context, device),
+                severity=SEVERITY_INFO,
+                reason_code=REASON_QUIET_HOURS_ACTIVE,
+                confidence=CONFIDENCE_HIGH,
+                related_device_ids=[device.id],
+                measurements={MEASUREMENT_SOLAR_SURPLUS_W: round(surplus, 1)},
+            )
+        ]
 
     savings = _solar_savings(context, device)
 
@@ -288,6 +305,46 @@ def _advise_solar_surplus(context: _Context) -> list[AdviceItem]:
             measurements={MEASUREMENT_SOLAR_SURPLUS_W: round(surplus, 1)},
         )
     ]
+
+
+def _surplus_worth_advising(context: _Context, surplus: float) -> bool:
+    """Return whether there is a surplus this home wants to hear about.
+
+    Split out of the rule so the rule itself stays a sequence of *decisions*
+    rather than a sequence of guards. Every condition here is about the
+    measurement; everything left in the rule is about which appliance and which
+    sentence.
+    """
+    if context.metrics.solar_surplus_may_be_overstated:
+        return False
+    if not context.config.preferences.prefer_solar:
+        return False
+    sufficient = context.metrics.solar_surplus_sufficient
+    if sufficient is None:
+        sufficient = surplus >= context.config.home.min_solar_surplus_w
+    return sufficient
+
+
+def _quiet_hours_message(context: _Context, device: DeviceProfile) -> str:
+    """Say that the surplus is real, that this appliance is noisy, and until when.
+
+    **No estimated saving on this one.** The euro amount answers "what does
+    running it now earn", and the advice is not to run it now; an amount beside
+    a deferral reads as an argument to ignore the deferral.
+
+    The last clause replaces a preference rather than a fact. Until 0.9.0 there
+    was a toggle — *toch adviseren tijdens de stille uren* — which suppressed
+    the whole advice when off. In the deferring form there is nothing left for
+    it to switch, so it is gone (finding 12); the resident who disagrees with
+    the window moves the window, and the sentence says where.
+    """
+    return (
+        f"Er is momenteel zonneoverschot beschikbaar. {device.name} maakt "
+        f"geluid en het zijn stille uren tot "
+        f"{context.config.preferences.quiet_hours_end}. Wacht daarmee tot na "
+        f"{context.config.preferences.quiet_hours_end}, of pas de stille uren "
+        f"aan bij Mijn voorkeuren."
+    )
 
 
 def _surplus_confidence(context: _Context, device: DeviceProfile) -> str:
@@ -519,13 +576,23 @@ def _neutral_advice() -> AdviceItem:
 
 
 def _best_device_for_now(
-    context: _Context, surplus: float | None = None
+    context: _Context,
+    surplus: float | None = None,
+    *,
+    include_silenced: bool = False,
 ) -> DeviceProfile | None:
     """Return the device to suggest right now, or None when there is none.
 
     A device qualifies when it is **advisable**, allowed on today's weekday,
     inside its own time window, not silenced by the quiet hours, and — when a
     surplus is given — small enough for that surplus to actually run it.
+
+    ``include_silenced`` drops the quiet-hours condition, and the caller asks
+    for it only after asking without it. That order is the whole point of the
+    deferring form (SPEC.md §42.2): a resident with a quiet appliance available
+    gets advice he can act on, and only a resident with nothing but a noisy one
+    gets told to wait. Asking with the flag first would trade a usable advice
+    for a deferral.
 
     **`is_advisable` replaced "usable and flexible" in 0.6.1**, and the third
     condition inside it is the fix: `control_mode = monitor_only` had no reader
@@ -544,8 +611,8 @@ def _best_device_for_now(
         if is_advisable(device)
         and _allowed_today(device, context)
         and _within_window(device, context.now_minutes)
-        and not _silenced_by_quiet_hours(device, context)
         and _fits_in_surplus(device, surplus)
+        and (include_silenced or not _silenced_by_quiet_hours(device, context))
     ]
     if not candidates:
         return None
@@ -649,10 +716,17 @@ def _within_window(device: DeviceProfile, now_minutes: int) -> bool:
 
 
 def _silenced_by_quiet_hours(device: DeviceProfile, context: _Context) -> bool:
-    """Return whether the quiet hours rule suppresses advice for this device."""
-    if not device.is_noisy or not context.quiet_hours:
-        return False
-    return not context.config.preferences.allow_advice_during_quiet_hours
+    """Return whether the quiet hours defer advice for this appliance.
+
+    Named for what it does to the *candidate list*, not to the advice: a
+    silenced appliance is passed over while another one is available, and only
+    when none is does it come back with a deferring sentence (SPEC.md §42.2).
+
+    There is no preference beside this any more. `allow_advice_during_quiet
+    _hours` switched the whole advice off, and in the deferring form there is
+    nothing left for it to switch (finding 12).
+    """
+    return device.is_noisy and context.quiet_hours
 
 
 def _in_quiet_hours(config: StoredConfiguration, hour: int, minute: int) -> bool:

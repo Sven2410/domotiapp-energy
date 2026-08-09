@@ -319,11 +319,26 @@ export const overviewTab = {
     /** Keyed by advice id, so warnings are added and removed, never rebuilt. */
     const warningBlocks = new Map();
 
-    function updateWarnings(advice) {
+    /**
+     * The warnings, minus the one already shown in full above it.
+     *
+     * The Energiecoach tab has done this since it was built — "lists everything
+     * after the primary one, without repeating it" — and this tab did not, so a
+     * home whose only advice is a warning read it twice on one card: once as
+     * the advice, once as the warning underneath it (SPEC.md §42.1).
+     *
+     * The empty state follows the same split, and it is the half that is easy
+     * to get wrong. "Er zijn op dit moment geen waarschuwingen" is only true
+     * when nothing is a warning; with the primary being one and nothing else
+     * beside it, the honest thing is to say nothing at all, because the warning
+     * is right there above.
+     */
+    function updateWarnings(advice, primary) {
       const warnings = advice.filter((item) => item.severity === 'warning');
+      const others = warnings.filter((item) => item.id !== primary?.id);
       const seen = new Set();
 
-      for (const item of warnings) {
+      for (const item of others) {
         seen.add(item.id);
         let block = warningBlocks.get(item.id);
         if (!block) {
@@ -345,11 +360,10 @@ export const overviewTab = {
         }
       }
 
-      const hasWarnings = warnings.length > 0;
-      setVisible(warningsTitle, hasWarnings);
-      setVisible(warningsHost, hasWarnings);
+      setVisible(warningsTitle, others.length > 0);
+      setVisible(warningsHost, others.length > 0);
       noWarnings.set(
-        hasWarnings ? '' : 'Er zijn op dit moment geen waarschuwingen.',
+        warnings.length === 0 ? 'Er zijn op dit moment geen waarschuwingen.' : '',
         { tone: 'success' },
       );
     }
@@ -564,7 +578,7 @@ export const overviewTab = {
         primary?.message ||
         'Zodra er een energiebron gekoppeld is, verschijnt hier het hoofdadvies.';
 
-      updateWarnings(live.advice || []);
+      updateWarnings(live.advice || [], primary);
     }
 
     return { element, update };

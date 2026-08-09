@@ -30,7 +30,7 @@ import { logbookTab } from './tabs/logbook.js';
 import { overviewTab } from './tabs/overview.js';
 import { preferencesTab } from './tabs/preferences.js';
 
-const VERSION = '0.8.1';
+const VERSION = '0.9.0';
 
 /**
  * Tab order as SPEC.md §33.6 lists it.
@@ -670,9 +670,26 @@ const STYLES = `
   }
 
   @container panel (max-width: 600px) {
+    /*
+     * Six tabs with an icon and a label wrapped onto three lines at 358px, so
+     * a third of the screen was tab bar before anything was read. Nothing is
+     * hidden and nothing scrolls sideways: the gap, the letterspacing and the
+     * icon each give up a little, which is enough for two lines.
+     *
+     * The icons stay. They are what a resident recognises a tab by when he is
+     * looking for the one his installer named over the phone, and the labels
+     * alone would have saved the same width at that cost.
+     */
     .tabs {
-      gap: 0 16px;
+      gap: 0 10px;
       margin-bottom: var(--domotiapp-space-row);
+    }
+    .tab-button {
+      gap: 5px;
+      letter-spacing: 0.06em;
+    }
+    .tab-button ha-icon {
+      --mdc-icon-size: 16px;
     }
     .tab-content {
       gap: var(--domotiapp-space-row);

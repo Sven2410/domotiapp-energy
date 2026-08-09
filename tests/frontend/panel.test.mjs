@@ -267,18 +267,72 @@ describe('empty and populated configurations', () => {
     );
   });
 
+  /** A second warning beside the primary one, which is shown above the list. */
+  const peakWarning = {
+    id: 'high_grid_load',
+    title: 'Netbelasting hoog',
+    message: 'Stel extra grootverbruikers indien mogelijk uit.',
+    severity: 'warning',
+    reason_code: 'high_grid_load',
+    confidence: 'high',
+  };
+
   it('shows a warning as a block with a marker, not as a bullet', async () => {
-    const panel = await mountPanel();
+    const coach = sampleCoach();
+    const panel = await mountPanel(
+      fakeHass({
+        coach: sampleCoach({ advice: [coach.primary_advice, peakWarning] }),
+      }),
+    );
     const items = [...panel.shadowRoot.querySelectorAll('.advice-item')];
 
     assert.equal(items.length, 1);
     assert.equal(items[0].querySelector('.label').textContent, 'Waarschuwing');
     assert.match(
       items[0].querySelector('.advice-item-title').textContent,
-      /Aanvullende gegevens nodig/,
+      /Netbelasting hoog/,
     );
     // A bullet list is what made these read as an error log.
     assert.equal(panel.shadowRoot.querySelectorAll('.advice-list ul').length, 0);
+  });
+
+  it('does not repeat the primary advice among the warnings', async () => {
+    // A home whose only advice is a warning read it twice on one card: once as
+    // the advice, once as the warning underneath it. The Energiecoach tab has
+    // never done that (SPEC.md §42.1).
+    const panel = await mountPanel();
+
+    const titles = [...panel.shadowRoot.querySelectorAll('.advice-item-title')]
+      .map((node) => node.textContent);
+
+    assert.deepEqual(titles, []);
+    assert.match(panel.shadowRoot.textContent, /Aanvullende gegevens nodig/);
+  });
+
+  it('says there are no warnings only when nothing is one', async () => {
+    // The half that is easy to get wrong: with the primary being a warning and
+    // nothing beside it, "geen waarschuwingen" would contradict the line above.
+    const quiet = await mountPanel(
+      fakeHass({
+        coach: sampleCoach({
+          primary_advice: {
+            id: 'neutral_energy_situation',
+            title: 'Niets te doen',
+            message: 'De situatie vraagt niet om een aanpassing.',
+            severity: 'info',
+            reason_code: 'neutral_energy_situation',
+            confidence: 'high',
+          },
+          advice: [],
+        }),
+      }),
+    );
+    assert.match(quiet.shadowRoot.textContent, /geen waarschuwingen/);
+
+    // And with a warning as the primary, the panel says nothing rather than
+    // claiming there are none.
+    const warned = await mountPanel();
+    assert.doesNotMatch(warned.shadowRoot.textContent, /geen waarschuwingen/);
   });
 
   it('shows an empty score as words, not as a dash or a blank', async () => {
