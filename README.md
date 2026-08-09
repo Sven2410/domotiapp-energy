@@ -118,7 +118,7 @@ does not own is shown greyed out, with a line saying who manages it.
 
 | Tab | What it is for |
 |---|---|
-| Overzicht | Status, data quality, energy score, **home consumption**, current grid power, solar production and surplus, percentage of the configured maximum, the current all-in price, the primary advice and any warnings. |
+| Overzicht | **Home consumption** as the headline figure, with the energy score and the data quality beside it; then current grid power, solar production and surplus, self-consumption, percentage of the configured maximum, the current all-in price, the primary advice and any warnings. |
 | Energiecoach | The primary advice, further advice with their reasons and measurements, what data is still missing, and the five fixed questions. |
 | Apparaten | Add, edit and remove appliances, with their power, energy per cycle, ready window, behaviour flags and optional entity links. A resident sets how each appliance should behave; the rest is the installer's. |
 | Mijn voorkeuren | Quiet hours, what weighs in the advice, the savings threshold and what is displayed. Entirely the resident's. |
@@ -183,7 +183,24 @@ is nothing to measure.
 | Panels **and** at least one usable, flexible appliance with a power and an energy per cycle | solar | whenever there is production |
 | Panels **and** a home battery | solar | whenever there is production |
 | Panels without anything movable | none | never, until something movable is added |
+| Panels, but feeding in currently pays better than self-consumption | solar switches off | not from the sun while that lasts; from the price axis if it applies |
 | A fixed contract and no panels | none | never |
+
+**An axis switches off when the advice points the other way.** If the feed-in tariff plus
+the avoided feed-in cost exceeds the import price, every kWh this home uses itself costs
+it money, and the coach says to wait. The solar axis then drops out rather than being
+inverted: an inverted axis would score self-consumption of *all* load, including the oven
+nobody can move, so raising it would come down to using less electricity — which is
+exactly what this score refuses to measure.
+
+The axis is only removed when that margin is **known** to be negative. With a feed-in
+tariff or feed-in cost missing the sum cannot be completed, and the axis stays on rather
+than a blank field on the installer's form taking the resident's number away.
+
+**Self-consumption is shown either way.** What share of this moment's production the home
+uses itself is a measurement, not a verdict, so it appears among the meter readings on
+`Overzicht` whenever the grid meter and the inverter can be read — including on the
+evenings and in the situations where the score itself is absent.
 
 **The cheapest route to a score is usually not to buy anything.** A dynamic contract
 switches the price axis on without changing a thing in the house. Completing an appliance

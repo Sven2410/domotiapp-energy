@@ -31,6 +31,7 @@ from custom_components.domotiapp_energy.const import (
     SOURCE_TYPE_FEED_IN_PRICE,
 )
 from custom_components.domotiapp_energy.engine.advisor import Advisor
+from custom_components.domotiapp_energy.engine.calculator import self_consumption_margin
 from custom_components.domotiapp_energy.engine.providers import (
     CoachProvider,
     ExtensionCoachProvider,
@@ -51,6 +52,7 @@ from custom_components.domotiapp_energy.models import (
     DataQualityResult,
     DeviceProfile,
     EnergyMetrics,
+    EnergySnapshot,
     EnergySource,
     HomeProfile,
     StoredConfiguration,
@@ -85,8 +87,22 @@ def _config(**home_overrides: Any) -> StoredConfiguration:
     return StoredConfiguration(home=HomeProfile(**(defaults | home_overrides)))
 
 
-def _metrics(**overrides: Any) -> EnergyMetrics:
+def _metrics(
+    config: StoredConfiguration | None = None, **overrides: Any
+) -> EnergyMetrics:
     """Return metrics with a complete checklist and no problems.
+
+    **Pass `config` whenever the test is about a euro amount.** The saving is
+    `energie per cyclus x marge`, and the margin is composed by the calculator
+    from the contract, the feed-in tariff and the feed-in cost (SPEC.md §35.4d).
+    Handing that composition to the same function the product uses keeps this
+    fixture from drifting away from it — writing the number in by hand would
+    let a test keep passing while the composition changed underneath it, which
+    is how `feed_in_cost_eur_kwh` once made every saving test quietly assume
+    "unknown = 0".
+
+    A test that states a margin explicitly is describing a home the composition
+    cannot reach from here, and says so at the call site.
 
     **`solar_surplus_confidence` is stated here on purpose.** The model default
     is `low`, which is right for metrics that carry no surplus at all, and
@@ -107,7 +123,17 @@ def _metrics(**overrides: Any) -> EnergyMetrics:
         "energy_score": 80,
         "solar_surplus_confidence": CONFIDENCE_HIGH,
     }
-    return EnergyMetrics(**(defaults | overrides))
+    metrics = EnergyMetrics(**(defaults | overrides))
+    if config is not None and "self_consumption_margin_eur_kwh" not in overrides:
+        metrics.self_consumption_margin_eur_kwh = self_consumption_margin(
+            config,
+            EnergySnapshot(
+                timestamp=metrics.timestamp,
+                current_price_eur_kwh=metrics.current_price_eur_kwh,
+                feed_in_price_eur_kwh=metrics.feed_in_price_eur_kwh,
+            ),
+        )
+    return metrics
 
 
 def _device(**overrides: Any) -> DeviceProfile:
@@ -839,7 +865,7 @@ async def test_a_dynamic_contract_prices_the_saving_at_the_live_price(
         feed_in_price_eur_kwh=0.05,
     )
     config.devices.append(_device(energy_per_cycle_kwh=2.0))
-    metrics = _metrics(solar_surplus_w=1500.0, current_price_eur_kwh=0.30)
+    metrics = _metrics(config, solar_surplus_w=1500.0, current_price_eur_kwh=0.30)
 
     advice = Advisor().generate(config, metrics)
 
@@ -865,7 +891,7 @@ async def test_a_saving_that_works_out_negative_is_reported_as_it_stands(
         feed_in_price_eur_kwh=0.30,
     )
     config.devices.append(_device())
-    metrics = _metrics(solar_surplus_w=1500.0)
+    metrics = _metrics(config, solar_surplus_w=1500.0)
 
     advice = Advisor().generate(config, metrics)
 
@@ -970,7 +996,7 @@ async def test_a_feed_in_cost_of_zero_is_a_calculated_zero(
         feed_in_cost_eur_kwh=0.0,
     )
     config.devices.append(_device())
-    metrics = _metrics(solar_surplus_w=1500.0)
+    metrics = _metrics(config, solar_surplus_w=1500.0)
 
     advice = Advisor().generate(config, metrics)
 
@@ -995,7 +1021,7 @@ async def test_a_live_feed_in_tariff_beats_the_fixed_amount(
         feed_in_price_eur_kwh=0.20,
     )
     config.devices.append(_device())
-    metrics = _metrics(solar_surplus_w=1500.0, feed_in_price_eur_kwh=0.05)
+    metrics = _metrics(config, solar_surplus_w=1500.0, feed_in_price_eur_kwh=0.05)
 
     advice = Advisor().generate(config, metrics)
 
@@ -1014,7 +1040,7 @@ async def test_the_fixed_amount_applies_without_a_feed_in_source(
         feed_in_price_eur_kwh=0.20,
     )
     config.devices.append(_device())
-    metrics = _metrics(solar_surplus_w=1500.0)
+    metrics = _metrics(config, solar_surplus_w=1500.0)
 
     advice = Advisor().generate(config, metrics)
 
@@ -1036,7 +1062,7 @@ async def test_a_negative_feed_in_tariff_makes_self_consumption_worth_more(
         fixed_import_price_eur_kwh=0.30,
     )
     config.devices.append(_device())
-    metrics = _metrics(solar_surplus_w=1500.0, feed_in_price_eur_kwh=-0.05)
+    metrics = _metrics(config, solar_surplus_w=1500.0, feed_in_price_eur_kwh=-0.05)
 
     advice = Advisor().generate(config, metrics)
 
@@ -1089,7 +1115,9 @@ async def test_a_charger_caps_its_confidence_at_medium(hass: HomeAssistant) -> N
     config.devices.append(
         _device(device_type=DEVICE_TYPE_EV_CHARGER, energy_per_cycle_kwh=10.0)
     )
-    metrics = _metrics(solar_surplus_w=1500.0, solar_surplus_confidence=CONFIDENCE_HIGH)
+    metrics = _metrics(
+        config, solar_surplus_w=1500.0, solar_surplus_confidence=CONFIDENCE_HIGH
+    )
 
     advice = Advisor().generate(config, metrics)
 
@@ -1140,7 +1168,7 @@ async def test_net_metering_leaves_nothing_extra_to_earn(hass: HomeAssistant) ->
     customer never sees on their bill while netting applies.
     """
     config = _net_metering_config()
-    metrics = _metrics(solar_surplus_w=1500.0)
+    metrics = _metrics(config, solar_surplus_w=1500.0)
 
     advice = Advisor().generate(config, metrics)
 
@@ -1151,7 +1179,7 @@ async def test_net_metering_leaves_nothing_extra_to_earn(hass: HomeAssistant) ->
 async def test_net_metering_still_saves_the_feed_in_cost(hass: HomeAssistant) -> None:
     """A supplier that charges for feeding in makes self-consumption pay again."""
     config = _net_metering_config(feed_in_cost_eur_kwh=0.11)
-    metrics = _metrics(solar_surplus_w=1500.0)
+    metrics = _metrics(config, solar_surplus_w=1500.0)
 
     # 2 kWh x EUR 0.11 avoided feed-in cost.
     assert Advisor().generate(config, metrics)[0].estimated_savings_eur == 0.22
@@ -1160,15 +1188,21 @@ async def test_net_metering_still_saves_the_feed_in_cost(hass: HomeAssistant) ->
 async def test_the_same_home_earns_the_full_difference_after_the_changeover(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    """One day later the regime flips by itself, with no setting changed."""
+    """One day later the regime flips by itself, with no setting changed.
+
+    The metrics are rebuilt after each jump because the margin is composed from
+    the date: on the last day of netting a fed-in kWh is still worth the retail
+    price, and on the first day after it is worth the feed-in tariff.
+    """
     config = _net_metering_config()
-    metrics = _metrics(solar_surplus_w=1500.0)
 
     freezer.move_to(local_on(date(2026, 12, 31)))
+    metrics = _metrics(config, solar_surplus_w=1500.0)
     assert Advisor().generate(config, metrics)[0].estimated_savings_eur == 0.0
 
     # 2 kWh x (0.30 - 0.05) = EUR 0.50.
     freezer.move_to(local_on(date(2027, 1, 1)))
+    metrics = _metrics(config, solar_surplus_w=1500.0)
     assert Advisor().generate(config, metrics)[0].estimated_savings_eur == 0.50
 
 
@@ -1177,7 +1211,7 @@ async def test_net_metering_needs_no_feed_in_tariff_to_calculate(
 ) -> None:
     """While netting applies the feed-in tariff does not enter the sum at all."""
     config = _net_metering_config(feed_in_price_eur_kwh=None, feed_in_cost_eur_kwh=0.05)
-    metrics = _metrics(solar_surplus_w=1500.0)
+    metrics = _metrics(config, solar_surplus_w=1500.0)
 
     assert Advisor().generate(config, metrics)[0].estimated_savings_eur == 0.10
 
@@ -1185,7 +1219,7 @@ async def test_net_metering_needs_no_feed_in_tariff_to_calculate(
 async def test_a_zero_saving_says_why_it_is_zero(hass: HomeAssistant) -> None:
     """A "gunstig moment" beside EUR 0,00 contradicts itself unless explained."""
     config = _net_metering_config()
-    metrics = _metrics(solar_surplus_w=1500.0)
+    metrics = _metrics(config, solar_surplus_w=1500.0)
 
     message = Advisor().generate(config, metrics)[0].message
 
@@ -1511,7 +1545,7 @@ async def test_savings_below_the_threshold_are_filtered(
     )
     config.preferences = UserPreferences(min_savings_eur=1.00)
     config.devices.append(_device(energy_per_cycle_kwh=1.0))
-    metrics = _metrics(solar_surplus_w=1500.0)
+    metrics = _metrics(config, solar_surplus_w=1500.0)
 
     # 1.0 kWh x (0.30 - 0.25) = EUR 0.05, well under the EUR 1.00 threshold.
     assert _codes(Advisor().generate(config, metrics)) == [
@@ -1540,7 +1574,7 @@ async def test_a_saving_above_the_threshold_survives(hass: HomeAssistant) -> Non
     )
     config.preferences = UserPreferences(min_savings_eur=1.00)
     config.devices.append(_device(energy_per_cycle_kwh=10.0))
-    metrics = _metrics(solar_surplus_w=1500.0)
+    metrics = _metrics(config, solar_surplus_w=1500.0)
 
     advice = Advisor().generate(config, metrics)
 

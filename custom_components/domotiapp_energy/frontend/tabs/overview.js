@@ -74,6 +74,17 @@ const SCORE_UNAVAILABLE_TEXT = {
     tone: 'info',
     icon: 'mdi:information-outline',
   },
+  feed_in_pays_better: {
+    text:
+      'Je panelen leveren op dit moment, maar terugleveren levert je meer op ' +
+      'dan de stroom je kost. Zelf verbruiken zou je nu geld kosten, dus er ' +
+      'valt aan je opwek niets te benutten. De coach zegt hetzelfde: wachten ' +
+      'is voordeliger.',
+    // Deliberately not a warning. The resident is earning money; a warning
+    // colour would turn that into a problem (SPEC.md §35.9).
+    tone: 'info',
+    icon: 'mdi:information-outline',
+  },
   nothing_movable: {
     text:
       'Er is nu opwek, maar geen apparaat of batterij die verbruik kan ' +
@@ -105,6 +116,51 @@ const SCORE_UNAVAILABLE_TEXT = {
   },
 };
 
+/**
+ * Why one axis sat this one out, while the other one still produced a number.
+ *
+ * The sentences above only appear when there is *no* score. That was enough
+ * while a missing axis meant nothing was worth saying, and SPEC.md §35.4d ends
+ * that: a home in the sun whose feed-in tariff beats its import price gets a
+ * score from the price axis alone. Reading 88 there, nothing on the screen says
+ * the solar half was excluded, let alone why.
+ *
+ * `not_applicable_components` has named the axes since 0.4.0 and nothing here
+ * read it. Naming them was never enough anyway — "zonnebenutting telt niet mee"
+ * only raises the question these answer.
+ *
+ * Same contract as the block above: one code, one whole sentence, each claiming
+ * only what its branch established. `solar_no_panels` is separate from
+ * `solar_no_production` for exactly that reason.
+ */
+const COMPONENT_UNAVAILABLE_TEXT = {
+  solar_no_panels:
+    'Zonnebenutting telt niet mee, want deze woning heeft geen zonnepanelen.',
+  solar_no_production:
+    'Zonnebenutting telt niet mee, want je panelen leveren op dit moment niets.',
+  solar_no_grid_reading:
+    'Zonnebenutting telt niet mee, want zonder netmeting is niet te zien ' +
+    'hoeveel van je opwek je zelf gebruikt.',
+  solar_nothing_movable:
+    'Zonnebenutting telt niet mee, want er is geen apparaat of batterij die ' +
+    'verbruik naar dit moment kan verplaatsen.',
+  solar_feed_in_pays_better:
+    'Zonnebenutting telt niet mee: terugleveren levert je op dit moment meer ' +
+    'op dan de stroom je kost, dus je opwek zelf gebruiken zou je geld kosten.',
+  price_fixed_tariff:
+    'Het prijsmoment telt niet mee, want bij een vast tarief is het ene ' +
+    'moment niet duurder dan het andere.',
+  price_thresholds_missing:
+    'Het prijsmoment telt niet mee zolang de lage en de hoge prijsdrempel ' +
+    'niet zijn ingevuld. Vul ze in bij Installatie.',
+  price_no_reading:
+    'Het prijsmoment telt niet mee, want de actuele prijs is op dit moment ' +
+    'niet uit te lezen.',
+  price_cheap:
+    'Het prijsmoment telt niet mee, want de stroom is nu goedkoop en er is ' +
+    'dus geen duur verbruik om te vermijden.',
+};
+
 export const overviewTab = {
   // English and fixed like every other identifier here; only the label the
   // customer reads is Dutch.
@@ -116,7 +172,21 @@ export const overviewTab = {
     const element = el('div', { class: 'tab-content' });
 
     // --- Headline figures ---------------------------------------------------
-    const scoreCard = card('Energiescore');
+    // Titled for the moment rather than for the score, because the score is no
+    // longer the figure this card leads with. It may be absent — that is the
+    // design (SPEC.md §35.9) — and the largest place on the screen cannot
+    // belong to something that is regularly not there.
+    const scoreCard = card('Op dit moment');
+    // First and largest: the one figure that answers "what is my house doing",
+    // present whenever the grid meter and the inverter can be read, and
+    // therefore present on the evenings and nights when the score is not
+    // (SPEC.md §35.8b). It moved up from `Actuele situatie` rather than being
+    // repeated here — the same number twice on one screen invites the question
+    // which of the two is the real one.
+    const homeConsumption = displayMetric('Thuisverbruik', {
+      suffix: 'watt',
+      empty: EMPTY_NOT_AVAILABLE,
+    });
     // "van 100" read as a report card on the household. It is a reading of this
     // moment: components drop out because there is nothing to measure, not
     // because anything is wrong (SPEC.md §35).
@@ -131,13 +201,24 @@ export const overviewTab = {
     });
     const dataQuality = displayMetric('Datakwaliteit', { suffix: 'procent' });
     const scoreNotice = notice('mdi:information-outline');
+    // Why an axis was left out while the other one still gave a number
+    // (SPEC.md §35.9b). Its own notice rather than an extension of the one
+    // above: that one explains an absent score, this one qualifies a present
+    // score, and they are never both filled.
+    const componentNotice = notice('mdi:scale-balance');
     const missingNotice = notice('mdi:clipboard-alert-outline');
+    // Moved up with the figure it explains: without it, "Niet beschikbaar"
+    // stands under the largest number on the page with no reason next to it.
+    const consumptionNotice = notice('mdi:solar-power-variant-outline');
     scoreCard.body.append(
       el('div', { class: 'display-row' }, [
+        homeConsumption.element,
         energyScore.element,
         dataQuality.element,
       ]),
+      consumptionNotice.element,
       scoreNotice.element,
+      componentNotice.element,
       missingNotice.element,
     );
 
@@ -149,14 +230,6 @@ export const overviewTab = {
 
     // --- Measurements -------------------------------------------------------
     const powerCard = card('Actuele situatie');
-    // First, and above the grid power on purpose: this is the only row that
-    // answers "what is my home doing", and the grid power is a *consequence*
-    // of it minus production, so it used to sit above its own causes. It also
-    // needs no footnote, where the signed grid figure does (SPEC.md §36.5).
-    const homeConsumptionRow = statRow('Thuisverbruik', {
-      unit: ' W',
-      empty: EMPTY_NOT_AVAILABLE,
-    });
     const gridPowerRow = statRow('Netvermogen', {
       unit: ' W',
       empty: EMPTY_NOT_CONFIGURED,
@@ -167,6 +240,19 @@ export const overviewTab = {
     });
     const surplusRow = statRow('Zonneoverschot', {
       unit: ' W',
+      empty: EMPTY_NOT_AVAILABLE,
+    });
+    // A measurement with no direction attached, and therefore here among the
+    // meter readings rather than in the score tile (SPEC.md §35.8b). It is
+    // present whenever production and grid power can be read — including when
+    // the score is not, which is the whole reason it exists as its own row.
+    //
+    // *Zelfbenutting*, not *zelfvoorziening*: this is the share of production
+    // consumed on site. The other fraction — own production over own
+    // consumption — is a different number that can read 100% in the same
+    // minute, so the label is doing real work here.
+    const selfConsumptionRow = statRow('Zelfbenutting', {
+      unit: '%',
       empty: EMPTY_NOT_AVAILABLE,
     });
     const loadRow = statRow('Percentage van maximum', {
@@ -189,19 +275,17 @@ export const overviewTab = {
     // The one thing the old confidence label was about, next to the figure it
     // qualifies rather than as a grade on it.
     const surplusNotice = notice('mdi:battery-alert-variant-outline');
-    const consumptionNotice = notice('mdi:solar-power-variant-outline');
     // Kept from the removed Configuratie card: an installation with nothing
     // linked has to say what to do, and this is where the empty readings are.
     const setupNotice = notice('mdi:information-outline');
     powerCard.body.append(
-      homeConsumptionRow.element,
       gridPowerRow.element,
       solarPowerRow.element,
       surplusRow.element,
+      selfConsumptionRow.element,
       loadRow.element,
       priceRow.element,
       runningRow.element,
-      consumptionNotice.element,
       surplusNotice.element,
       peakNotice.element,
       setupNotice.element,
@@ -333,6 +417,7 @@ export const overviewTab = {
       const metrics = live.metrics || {};
       calculatedRow.set(formatTimestamp(live.generated_at));
 
+      homeConsumption.set(formatNumber(metrics.home_consumption_w));
       energyScore.set(metrics.energy_score ?? null);
       dataQuality.set(metrics.data_quality?.score ?? null);
 
@@ -346,6 +431,22 @@ export const overviewTab = {
         tone: unavailable ? unavailable.tone : 'info',
         icon: unavailable ? unavailable.icon : null,
       });
+
+      // The mirror case, and the one that had nowhere to be said: there *is* a
+      // number, and it was reached over one axis instead of two. Only when
+      // there is a score — without one the sentence above already covers the
+      // ground, and two explanations of the same silence read as a fault.
+      //
+      // Both axes out means no score, so this is at most one sentence.
+      const scored =
+        metrics.energy_score !== null && metrics.energy_score !== undefined;
+      const componentReasons = scored
+        ? (metrics.not_applicable_components || [])
+            .map((key) => (metrics.component_unavailable_reasons || {})[key])
+            .map((code) => COMPONENT_UNAVAILABLE_TEXT[code])
+            .filter(Boolean)
+        : [];
+      componentNotice.set(componentReasons.join(' '), { tone: 'info' });
 
       // "van de zes" was a constant, and it was wrong for any home that does
       // not own all six things — a home with solar and a smart meter but no
@@ -364,7 +465,6 @@ export const overviewTab = {
         { tone: missingCount > 0 ? 'warning' : 'success' },
       );
 
-      homeConsumptionRow.set(formatNumber(metrics.home_consumption_w));
       gridPowerRow.set(formatNumber(metrics.grid_power_w), {
         hint:
           metrics.grid_power_w < 0
@@ -377,6 +477,9 @@ export const overviewTab = {
       // the engine took, not how good the figure was, and a customer cannot act
       // on either. The one level that did carry information is the notice below.
       surplusRow.set(formatNumber(metrics.solar_surplus_w));
+      selfConsumptionRow.set(
+        formatNumber(metrics.self_consumption_percent, { decimals: 0 }),
+      );
       loadRow.set(formatNumber(metrics.grid_load_percent, { decimals: 1 }));
       // Absent, not zero, when no appliance links a power entity: "0 draaien"
       // would claim a measurement of every appliance in the house.

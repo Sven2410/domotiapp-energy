@@ -18,6 +18,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.domotiapp_energy.const import (
     COMPLETENESS_POINTS,
+    COMPONENT_UNAVAILABLE_REASONS,
     CONF_HOME_NAME,
     CONF_MANUAL_SETUP_ACKNOWLEDGED,
     CONFIDENCE_LEVELS,
@@ -35,6 +36,7 @@ from custom_components.domotiapp_energy.const import (
     VERSION,
 )
 from custom_components.domotiapp_energy.engine.providers import (
+    _COMPONENT_UNAVAILABLE_SENTENCES,
     _ITEM_LABELS,
     _SCORE_UNAVAILABLE_SENTENCES,
 )
@@ -231,6 +233,40 @@ def test_every_no_score_reason_has_a_sentence_on_both_sides() -> None:
 
     assert panel_keys == set(SCORE_UNAVAILABLE_REASONS)
     assert set(_SCORE_UNAVAILABLE_SENTENCES) == set(SCORE_UNAVAILABLE_REASONS)
+
+
+def test_every_component_reason_has_a_sentence_on_both_sides() -> None:
+    """The same guard for the sentences that qualify a score that *is* there.
+
+    These are the second table (SPEC.md §35.9b), and they drift the same way:
+    a new way for an axis to drop out is added in the calculator, and one of
+    the two sides is forgotten. The panel would then show a number with an
+    empty notice under it, and the coach would answer the breakdown question
+    with the axis silently missing.
+    """
+    source = (
+        Path(__file__).parent.parent
+        / "custom_components"
+        / DOMAIN
+        / FRONTEND_DIR_NAME
+        / "tabs"
+        / "overview.js"
+    ).read_text(encoding="utf-8")
+    body = source.split("const COMPONENT_UNAVAILABLE_TEXT = {", 1)[1].split("\n};", 1)[
+        0
+    ]
+    # Anchored on the two-space indent *and* the identifier shape, because a
+    # continuation line of a wrapped sentence is also indented and can contain
+    # a colon — "Zonnebenutting telt niet mee: terugleveren..." parsed as a key
+    # on the first attempt at this.
+    panel_keys = {
+        match.group(1)
+        for line in body.splitlines()
+        if (match := re.match(r"^ {2}(\w+):", line))
+    }
+
+    assert panel_keys == set(COMPONENT_UNAVAILABLE_REASONS)
+    assert set(_COMPONENT_UNAVAILABLE_SENTENCES) == set(COMPONENT_UNAVAILABLE_REASONS)
 
 
 def test_every_reason_code_has_a_dutch_label() -> None:

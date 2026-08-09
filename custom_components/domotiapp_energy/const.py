@@ -16,7 +16,7 @@ from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 
 DOMAIN: Final = "domotiapp_energy"
 INTEGRATION_NAME: Final = "DomotiApp Energy"
-VERSION: Final = "0.6.1"
+VERSION: Final = "0.7.0"
 
 MANUFACTURER: Final = "DomotiApp"
 DEVICE_MODEL: Final = "Energy Coach"
@@ -735,6 +735,7 @@ SCORE_COMPONENT_WEIGHTS: Final[dict[str, float]] = {
 # customer actually sees (Sven, 2026-08-08).
 SCORE_UNAVAILABLE_INCOMPLETE_SETUP: Final = "incomplete_setup"
 SCORE_UNAVAILABLE_NO_VARIABLE_SIGNAL: Final = "no_variable_signal"
+SCORE_UNAVAILABLE_FEED_IN_PAYS_BETTER: Final = "feed_in_pays_better"
 SCORE_UNAVAILABLE_NOTHING_MOVABLE: Final = "nothing_movable"
 SCORE_UNAVAILABLE_NO_SUN_CHEAP_PRICE: Final = "no_sun_cheap_price"
 SCORE_UNAVAILABLE_NO_SUN_FIXED_TARIFF: Final = "no_sun_fixed_tariff"
@@ -762,11 +763,48 @@ HOME_CONSUMPTION_UNAVAILABLE_REASONS: Final = (
 SCORE_UNAVAILABLE_REASONS: Final = (
     SCORE_UNAVAILABLE_INCOMPLETE_SETUP,
     SCORE_UNAVAILABLE_NO_VARIABLE_SIGNAL,
+    SCORE_UNAVAILABLE_FEED_IN_PAYS_BETTER,
     SCORE_UNAVAILABLE_NOTHING_MOVABLE,
     SCORE_UNAVAILABLE_NO_SUN_CHEAP_PRICE,
     SCORE_UNAVAILABLE_NO_SUN_FIXED_TARIFF,
     SCORE_UNAVAILABLE_CHEAP_PRICE,
     SCORE_UNAVAILABLE_PRICE_THRESHOLDS_MISSING,
+)
+
+# Why one axis does not apply, while the other one still produced a number
+# (SPEC.md §35.9b). Distinct from the codes above, which explain the *absence*
+# of the whole score: a resident reading 88 has no way to tell that the solar
+# axis sat this one out, let alone why.
+#
+# `not_applicable_components` has named the axes since 0.4.0 and the panel read
+# it nowhere — computed, sent over the wire and dropped. Naming the axis was
+# never enough anyway: "zonnebenutting telt niet mee" invites the question this
+# answers.
+#
+# Same contract as the tile texts: one code, one whole sentence, and each
+# sentence may claim only what its branch established. `solar_no_panels` exists
+# separately from `solar_no_production` for exactly that reason — telling a home
+# without panels that its panels are idle is the 0.4.2 bug in miniature.
+COMPONENT_UNAVAILABLE_SOLAR_NO_PANELS: Final = "solar_no_panels"
+COMPONENT_UNAVAILABLE_SOLAR_NO_PRODUCTION: Final = "solar_no_production"
+COMPONENT_UNAVAILABLE_SOLAR_NO_GRID_READING: Final = "solar_no_grid_reading"
+COMPONENT_UNAVAILABLE_SOLAR_NOTHING_MOVABLE: Final = "solar_nothing_movable"
+COMPONENT_UNAVAILABLE_SOLAR_FEED_IN_PAYS_BETTER: Final = "solar_feed_in_pays_better"
+COMPONENT_UNAVAILABLE_PRICE_FIXED_TARIFF: Final = "price_fixed_tariff"
+COMPONENT_UNAVAILABLE_PRICE_THRESHOLDS_MISSING: Final = "price_thresholds_missing"
+COMPONENT_UNAVAILABLE_PRICE_NO_READING: Final = "price_no_reading"
+COMPONENT_UNAVAILABLE_PRICE_CHEAP: Final = "price_cheap"
+
+COMPONENT_UNAVAILABLE_REASONS: Final = (
+    COMPONENT_UNAVAILABLE_SOLAR_NO_PANELS,
+    COMPONENT_UNAVAILABLE_SOLAR_NO_PRODUCTION,
+    COMPONENT_UNAVAILABLE_SOLAR_NO_GRID_READING,
+    COMPONENT_UNAVAILABLE_SOLAR_NOTHING_MOVABLE,
+    COMPONENT_UNAVAILABLE_SOLAR_FEED_IN_PAYS_BETTER,
+    COMPONENT_UNAVAILABLE_PRICE_FIXED_TARIFF,
+    COMPONENT_UNAVAILABLE_PRICE_THRESHOLDS_MISSING,
+    COMPONENT_UNAVAILABLE_PRICE_NO_READING,
+    COMPONENT_UNAVAILABLE_PRICE_CHEAP,
 )
 
 SCORE_MIN: Final = 0

@@ -32,6 +32,15 @@ from custom_components.domotiapp_energy.const import (
     ADDITIVE_SOURCE_TYPES,
     COMPLETENESS_UNCONDITIONAL_ITEMS,
     COMPONENT_MAX,
+    COMPONENT_UNAVAILABLE_PRICE_CHEAP,
+    COMPONENT_UNAVAILABLE_PRICE_FIXED_TARIFF,
+    COMPONENT_UNAVAILABLE_PRICE_NO_READING,
+    COMPONENT_UNAVAILABLE_PRICE_THRESHOLDS_MISSING,
+    COMPONENT_UNAVAILABLE_SOLAR_FEED_IN_PAYS_BETTER,
+    COMPONENT_UNAVAILABLE_SOLAR_NO_GRID_READING,
+    COMPONENT_UNAVAILABLE_SOLAR_NO_PANELS,
+    COMPONENT_UNAVAILABLE_SOLAR_NO_PRODUCTION,
+    COMPONENT_UNAVAILABLE_SOLAR_NOTHING_MOVABLE,
     CONFIDENCE_HIGH,
     CONFIDENCE_LOW,
     CONFIDENCE_MEDIUM,
@@ -51,6 +60,7 @@ from custom_components.domotiapp_energy.const import (
     SCORE_COMPONENT_SOLAR,
     SCORE_COMPONENT_WEIGHTS,
     SCORE_UNAVAILABLE_CHEAP_PRICE,
+    SCORE_UNAVAILABLE_FEED_IN_PAYS_BETTER,
     SCORE_UNAVAILABLE_INCOMPLETE_SETUP,
     SCORE_UNAVAILABLE_NO_SUN_CHEAP_PRICE,
     SCORE_UNAVAILABLE_NO_SUN_FIXED_TARIFF,
@@ -201,7 +211,16 @@ class Calculator:
         consumption, consumption_reason = _home_consumption(config, snapshot)
 
         data_quality = evaluate_completeness(config, snapshot)
-        components = _score_components(config, snapshot)
+        # One margin, read by the score, by the tile's sentence and — through
+        # the metrics — by the advisor's saving. Three readers that used to
+        # answer the same question in two places (SPEC.md §35.4d).
+        margin = self_consumption_margin(config, snapshot)
+        # One arithmetic behind both the panel's row and the score's axis: the
+        # measurement, and the verdict over it (SPEC.md §35.8b).
+        self_consumption = _self_consumption_percent(snapshot)
+        components, component_reasons = _score_components(
+            config, snapshot, margin, self_consumption
+        )
         score = _energy_score(components, data_quality)
 
         return EnergyMetrics(
@@ -219,14 +238,17 @@ class Calculator:
             market_price_eur_kwh=snapshot.market_price_eur_kwh,
             feed_in_price_eur_kwh=snapshot.feed_in_price_eur_kwh,
             market_feed_in_price_eur_kwh=snapshot.market_feed_in_price_eur_kwh,
+            self_consumption_percent=self_consumption,
+            self_consumption_margin_eur_kwh=margin,
             data_quality=data_quality,
             energy_score=score,
             score_components=components,
             not_applicable_components=not_applicable_components(components),
+            component_unavailable_reasons=component_reasons,
             score_unavailable_reason=(
                 None
                 if score is not None
-                else _score_unavailable_reason(config, snapshot, data_quality)
+                else _score_unavailable_reason(config, snapshot, data_quality, margin)
             ),
             reason_codes=reason_codes,
         )
@@ -500,9 +522,17 @@ def _peak_risk(config: StoredConfiguration, load_percent: float | None) -> bool:
 
 
 def _score_components(
-    config: StoredConfiguration, snapshot: EnergySnapshot
-) -> dict[str, float]:
-    """Return the weighted components that apply to this home, right now.
+    config: StoredConfiguration,
+    snapshot: EnergySnapshot,
+    margin: float | None,
+    percent: float | None,
+) -> tuple[dict[str, float], dict[str, str]]:
+    """Return the components that apply, and why the others do not.
+
+    Both come out of the same call on purpose. The reason a component is absent
+    is decided by the branch that made it absent, so the two cannot drift the
+    way a separate selector did in 0.4.1 — that one answered "is there sun"
+    from the configuration while the component answered it from the meter.
 
     Two components, both about the same question: did movable consumption fall
     on the right moment (SPEC.md §35.8). Three others were removed in 0.4.0 for
@@ -516,11 +546,19 @@ def _score_components(
        not apply", and every attempt to find one has cost a real home real
        points. A fixed contract scored 50 here, meant as neutral, which was a
        permanent 7.5-point deduction for choosing a fixed contract.
-    2. **The advice rule.** Following the coach's advice may never lower the
-       score. `peak_component` did exactly that — a 3.7 kW charge the coach had
+    2. **The advice rule, both halves.** Following the coach's advice may never
+       lower the score, *and ignoring it may never raise the score.*
+       `peak_component` broke the first half — a 3.7 kW charge the coach had
        just recommended took a 1x25 A home from 100 to 57 on that axis — and no
        amount of re-anchoring its slope closes that, because the conflict is
        between what the axis measures and what the advice asks for.
+
+       The second half arrived later, from a home where feeding in paid better
+       than self-consumption (SPEC.md §35.4d). There the coach says to wait, so
+       following it changes nothing and the first half is silent; it is
+       *ignoring* the advice that lifts `solar_component`. A score that rewards
+       ignoring the advice is as wrong as one that punishes following it, and
+       only the second shape was being tested for.
 
     A missing input does **not** score zero any more. That used to be the rule
     ("the signal exists and was not configured"), and it was another way of
@@ -534,10 +572,13 @@ def _score_components(
     whole numbers on identical input.
     """
     candidates = (
-        (SCORE_COMPONENT_SOLAR, _solar_component(config, snapshot)),
+        (SCORE_COMPONENT_SOLAR, _solar_component(config, snapshot, margin, percent)),
         (SCORE_COMPONENT_PRICE, _price_component(config, snapshot)),
     )
-    return {key: round(value, 2) for key, value in candidates if value is not None}
+    return (
+        {key: round(value, 2) for key, (value, _) in candidates if value is not None},
+        {key: reason for key, (_, reason) in candidates if reason is not None},
+    )
 
 
 def not_applicable_components(components: dict[str, float]) -> list[str]:
@@ -650,54 +691,163 @@ def _price_thresholds_usable(config: StoredConfiguration) -> bool:
     return low is not None and high is not None and high > low
 
 
-def _solar_component(
-    config: StoredConfiguration, snapshot: EnergySnapshot
-) -> float | None:
+def _self_consumption_percent(snapshot: EnergySnapshot) -> float | None:
     """Return what share of this moment's production the home uses itself.
 
     ::
 
-        zelfverbruik = (opwek - teruglevering) / opwek
+        zelfbenutting = (opwek - teruglevering) / opwek
 
-    Returns ``None`` — not applicable — in three cases, each a different way of
-    having nothing to measure:
+    **A measurement, with no direction attached** (SPEC.md §35.8b). It needs
+    production and a readable grid power and nothing else — not a movable load,
+    not a positive margin, not a complete installation. Those conditions decide
+    whether the figure may be *judged*, which is `_solar_component`'s question,
+    and conflating the two threw away a true number because the verdict over it
+    would have been unfair: 4.654 W production with 1.635 W used at home is 35%,
+    and the panel showed nothing at all.
 
-    - **no production.** At night nothing is being wasted. A nightly zero was
-      twenty points off a home that had done nothing wrong.
+    **The name matters as much as the arithmetic here.** This is
+    *zelfbenutting*: the share of production consumed on site. *Zelfvoorziening*
+    is the other fraction — own production over own consumption — and in that
+    same moment it was 100%, because the house ran entirely on sun. Two true
+    figures with opposite impressions, so the label is not decoration.
+
+    One arithmetic with two readers, so the panel's row and the score's axis
+    cannot come out differently.
+    """
+    production = _production_now(snapshot)
+    if production is None or snapshot.grid_power_w is None:
+        return None
+
+    exported = max(-snapshot.grid_power_w, 0.0)
+    self_used = (production - exported) / production
+    return min(max(self_used, 0.0), 1.0) * PERCENT_MAX
+
+
+def self_consumption_margin(
+    config: StoredConfiguration, snapshot: EnergySnapshot
+) -> float | None:
+    """Return what a kWh used at home is worth over one fed in, in EUR/kWh.
+
+    Public for the reason `has_movable_load` is: the score asks it, the tile
+    explains it and the advisor multiplies it by an energy per cycle. One
+    definition keeps those three from disagreeing about whether this home is
+    better off using its surplus.
+
+    ::
+
+        marge = importprijs - effectieve terugleververgoeding + terugleverkosten
+
+    Using a kWh yourself avoids importing it, forgoes whatever feeding it in
+    would have been worth, and avoids the cost of feeding it in.
+
+    **This used to live inside the advisor's per-appliance saving**, where the
+    same three terms sat inside the brackets of ``energie x marge``. The
+    brackets never depended on the appliance; only the scale did. Keeping them
+    there had a cost that showed up on a real installation (SPEC.md §35.4d):
+    the sentence "wachten is voordeliger" hangs off an appliance with an energy
+    per cycle, so a home with panels and no such appliance — precisely the home
+    whose solar axis already drops out — could never be told that feeding in
+    paid better. The owner had to work it out himself.
+
+    Here, the score, the tile and the advice all read the same number.
+
+    Under net metering a fed-in kWh is worth the full retail price, so the first
+    two terms cancel and only the avoided feed-in cost remains. That also means
+    the margin can never be negative under net metering, which is why the
+    negative case only arises for a home that has left it — and those are the
+    homes where the feed-in fields are filled in.
+
+    ``None`` when any term is unknown, and the callers treat that as "not
+    proven negative" rather than guessing a sign (SPEC.md §35.4d).
+    """
+    home = config.home
+    import_price = (
+        snapshot.current_price_eur_kwh
+        if home.contract_type == CONTRACT_TYPE_DYNAMIC
+        else home.fixed_import_price_eur_kwh
+    )
+    if import_price is None:
+        return None
+
+    if home.is_net_metering_active(dt_util.as_local(snapshot.timestamp).date()):
+        effective_feed_in: float | None = import_price
+    else:
+        effective_feed_in = snapshot.feed_in_price_eur_kwh
+        if effective_feed_in is None:
+            effective_feed_in = home.feed_in_price_eur_kwh
+        if effective_feed_in is None:
+            return None
+
+    feed_in_cost = home.feed_in_cost_eur_kwh
+    if feed_in_cost is None:
+        return None
+
+    return import_price - effective_feed_in + feed_in_cost
+
+
+def _solar_component(
+    config: StoredConfiguration,
+    snapshot: EnergySnapshot,
+    margin: float | None,
+    percent: float | None,
+) -> tuple[float | None, str | None]:
+    """Return the judged self-consumption, or why this home is not judged on it.
+
+    The value is `_self_consumption_percent`; everything here decides whether
+    that measurement may be read as a verdict. Four ways it may not be, each a
+    different way of having nothing to gain:
+
+    - **no panels, or no production.** At night nothing is being wasted. A
+      nightly zero was twenty points off a home that had done nothing wrong.
     - **no readable grid power.** Without it the export is unknown, so the
-      share cannot be computed. Not zero: see the module note on missing
-      inputs.
+      share cannot be computed. Not zero: see the module note on missing inputs.
     - **nothing movable** (`has_movable_load`). A home with panels, no battery
       and no complete flexible appliance cannot raise its self-consumption at
       all, so the axis would be a discount rather than a meter (SPEC.md §35.4a).
       Adding a battery switches it on, which is the honest description of what
       a battery does: the ceiling and the bar rise together.
+    - **feeding in pays better** (SPEC.md §35.4d). With a negative margin every
+      kWh this home uses itself costs it money, and the coach says to wait. The
+      axis would then rise when the resident ignores that advice — the mirror
+      half of rule 2, and the reason it now has one.
+
+    **The axis is dropped, never inverted.** Rewarding export would make "hoog"
+    mean the opposite of what it meant an hour earlier, on a price relationship
+    that is nowhere in the number. It would also measure self-consumption of
+    *all* load, including the oven nobody can move, so raising it comes down to
+    using less — the frugality meter SPEC.md §35.2 has refused three revisions
+    running.
+
+    **An unknown margin leaves the axis on.** Only a proven negative margin
+    removes it, so an empty field on the installer's form never takes the
+    resident's number away (SPEC.md §35.7).
 
     **An earlier definition measured the opposite of its own name.** It scored
     the *surplus* — power flowing out — so it awarded 100 to a home exporting
     everything and 0 to a home consuming all of its own production, while being
     labelled "zonnebenutting" and sitting next to a coach advising the resident
     to use that surplus themselves.
-
-    This moves with behaviour, which is what keeps it a measurement rather than
-    a discount, and it moves the right way: a resident who runs the dishwasher
-    while the sun is out raises it. That is precisely what the coach advises,
-    so the advice rule holds.
     """
-    production = _production_now(snapshot)
-    if production is None:
-        return None
-    if snapshot.grid_power_w is None or not has_movable_load(config):
-        return None
+    if not _has_row(config, SOURCE_TYPE_SOLAR):
+        return None, COMPONENT_UNAVAILABLE_SOLAR_NO_PANELS
+    if _production_now(snapshot) is None:
+        return None, COMPONENT_UNAVAILABLE_SOLAR_NO_PRODUCTION
+    if percent is None:
+        # The measurement takes production and grid power, and production is
+        # established above, so the grid reading is the only thing left.
+        return None, COMPONENT_UNAVAILABLE_SOLAR_NO_GRID_READING
+    if margin is not None and margin < 0:
+        return None, COMPONENT_UNAVAILABLE_SOLAR_FEED_IN_PAYS_BETTER
+    if not has_movable_load(config):
+        return None, COMPONENT_UNAVAILABLE_SOLAR_NOTHING_MOVABLE
 
-    exported = max(-snapshot.grid_power_w, 0.0)
-    self_used = (production - exported) / production
-    return min(max(self_used, 0.0), 1.0) * COMPONENT_MAX
+    return percent / PERCENT_MAX * COMPONENT_MAX, None
 
 
 def _price_component(
     config: StoredConfiguration, snapshot: EnergySnapshot
-) -> float | None:
+) -> tuple[float | None, str | None]:
     """Return how little of the connection is being drawn while it is expensive.
 
     ::
@@ -729,10 +879,10 @@ def _price_component(
     cheap power would make the score demand that a tumble dryer be switched on.
     """
     if config.home.contract_type != CONTRACT_TYPE_DYNAMIC:
-        return None
+        return None, COMPONENT_UNAVAILABLE_PRICE_FIXED_TARIFF
 
     if not _price_thresholds_usable(config):
-        return None
+        return None, COMPONENT_UNAVAILABLE_PRICE_THRESHOLDS_MISSING
 
     price = snapshot.current_price_eur_kwh
     low = config.home.low_price_threshold_eur_kwh
@@ -740,15 +890,15 @@ def _price_component(
     maximum = config.home.max_grid_power_w
     grid_power = snapshot.grid_power_w
     if price is None or low is None or high is None:
-        return None
+        return None, COMPONENT_UNAVAILABLE_PRICE_NO_READING
     if maximum is None or maximum <= 0 or grid_power is None:
-        return None
+        return None, COMPONENT_UNAVAILABLE_PRICE_NO_READING
     if price <= low:
-        return None
+        return None, COMPONENT_UNAVAILABLE_PRICE_CHEAP
 
     price_position = min((price - low) / (high - low), 1.0)
     import_share = min(max(grid_power, 0.0) / maximum, 1.0)
-    return (1.0 - price_position * import_share) * COMPONENT_MAX
+    return (1.0 - price_position * import_share) * COMPONENT_MAX, None
 
 
 def _energy_score(
@@ -795,6 +945,7 @@ def _score_unavailable_reason(
     config: StoredConfiguration,
     snapshot: EnergySnapshot,
     data_quality: DataQualityResult,
+    margin: float | None,
 ) -> str:
     """Return why there is no score, so the panel can explain rather than dash.
 
@@ -816,18 +967,26 @@ def _score_unavailable_reason(
     1. **the gate** — the installation is incomplete.
     2. **no variable signal** — a fixed tariff and no panels. Never a number,
        which is accepted; the coach keeps working.
-    3. **nothing movable** — the sun *is* producing and there is nothing to
+    3. **feeding in pays better** — the sun *is* producing and every kWh used
+       at home costs money (SPEC.md §35.4d).
+    4. **nothing movable** — the sun *is* producing and there is nothing to
        shift it to. Deliberately not restricted to a fixed tariff any more: a
        dynamic home in the sun with nothing movable used to fall through to a
        sentence claiming its panels were idle.
-    4. **thresholds missing** — a dynamic tariff whose price cannot be judged.
-       A shortcoming, and the only one of the last four that is.
-    5-7. **nothing right now**, split by what is actually true of this home:
+    5. **thresholds missing** — a dynamic tariff whose price cannot be judged.
+       A shortcoming, and the only one of the last five that is.
+    6-8. **nothing right now**, split by what is actually true of this home:
        panels idle plus a cheap hour, panels idle on a fixed tariff, or a cheap
        hour without panels. One sentence each, so none of them mentions an
        expensive hour to a home that has no price signal.
 
-    Cases 5 to 7 all imply the panels are idle: production plus something
+    **Where two reasons hold at once, the one that survives fixing the other
+    goes first.** That is why 3 sits above 4: a home in the sun with nothing
+    movable *and* a negative margin gains nothing from being told to link an
+    appliance, because it should not be running one at that moment either. The
+    home in SPEC.md §35.4d is exactly that case.
+
+    Cases 6 to 8 all imply the panels are idle: production plus something
     movable makes the solar component apply, which means a score, which means
     this function is never called.
     """
@@ -841,14 +1000,30 @@ def _score_unavailable_reason(
 
     if not dynamic and not panels:
         return SCORE_UNAVAILABLE_NO_VARIABLE_SIGNAL
-    if _production_now(snapshot) is not None and not has_movable_load(config):
+    producing = _production_now(snapshot) is not None
+    if producing and margin is not None and margin < 0:
+        return SCORE_UNAVAILABLE_FEED_IN_PAYS_BETTER
+    if producing and not has_movable_load(config):
         return SCORE_UNAVAILABLE_NOTHING_MOVABLE
     if dynamic and not _price_thresholds_usable(config):
         return SCORE_UNAVAILABLE_PRICE_THRESHOLDS_MISSING
-    if panels:
-        return (
-            SCORE_UNAVAILABLE_NO_SUN_CHEAP_PRICE
-            if dynamic
-            else SCORE_UNAVAILABLE_NO_SUN_FIXED_TARIFF
-        )
-    return SCORE_UNAVAILABLE_CHEAP_PRICE
+    return _nothing_right_now_reason(dynamic=dynamic, panels=panels)
+
+
+def _nothing_right_now_reason(*, dynamic: bool, panels: bool) -> str:
+    """Return which of the three "nothing to do at this moment" sentences fits.
+
+    Split out from the selector so each of the three can name only what this
+    home actually has. A single sentence covering all three claimed both "geen
+    opwek" and "geen duur moment", which told a fixed-tariff home about
+    expensive hours it never has (0.4.2).
+
+    Panels being idle is established by the caller: production plus something
+    movable makes the solar component apply, and then there is a score and
+    nobody asks this question.
+    """
+    if not panels:
+        return SCORE_UNAVAILABLE_CHEAP_PRICE
+    if dynamic:
+        return SCORE_UNAVAILABLE_NO_SUN_CHEAP_PRICE
+    return SCORE_UNAVAILABLE_NO_SUN_FIXED_TARIFF

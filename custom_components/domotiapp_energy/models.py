@@ -36,6 +36,7 @@ from .const import (
     ALL_IN_PRICE_DECIMALS,
     ALLOWED_PHASES,
     CAPABILITIES,
+    COMPONENT_UNAVAILABLE_REASONS,
     CONFIDENCE_LEVELS,
     CONFIDENCE_LOW,
     CONTRACT_TYPES,
@@ -86,6 +87,7 @@ from .const import (
     PRICE_BASIS_MARKET,
     PRIORITIES,
     SCHEMA_VERSION,
+    SCORE_COMPONENT_WEIGHTS,
     SCORE_UNAVAILABLE_REASONS,
     SEVERITIES,
     SEVERITY_INFO,
@@ -1423,6 +1425,22 @@ class EnergyMetrics:
     # leaving a bare "Niet beschikbaar" that reads like a fault.
     home_consumption_unavailable_reason: str | None = None
     solar_surplus_w: float | None = None
+    # What share of this moment's production the home uses itself, 0-100
+    # (SPEC.md §35.8b). A measurement with no direction attached, and therefore
+    # present whenever production and grid power are readable — including when
+    # the score is not. Separating it from `solar_component` is what stopped a
+    # true 35% from being thrown away because the verdict over it would have
+    # been unfair.
+    #
+    # This is *zelfbenutting*, production consumed on site. Not
+    # *zelfvoorziening*, which is own production over own consumption and was
+    # 100% in the same moment. The label is not decoration.
+    self_consumption_percent: float | None = None
+    # What a kWh used at home is worth over one fed in, in EUR/kWh (§35.4d).
+    # Read by the score, by the tile's sentence and by the advisor's per-cycle
+    # saving, which multiplies it by the energy. `None` means unknown, and
+    # every reader treats that as "not proven negative" rather than guessing.
+    self_consumption_margin_eur_kwh: float | None = None
     solar_surplus_confidence: str = CONFIDENCE_LOW
     grid_load_percent: float | None = None
     peak_risk: bool = False
@@ -1450,6 +1468,12 @@ class EnergyMetrics:
     # rather than silently absent: a score built from one component instead of
     # two looks like it skipped something unless it says which one.
     not_applicable_components: list[str] = field(default_factory=list)
+    # Why each of those is left out, keyed by component (SPEC.md §35.9b). The
+    # list above says *which* axis sat out and this says *why*, which is the
+    # half the resident needs: reading 88 with no explanation, there is no way
+    # to tell that the solar axis was excluded because feeding in pays better
+    # rather than because something is broken.
+    component_unavailable_reasons: dict[str, str] = field(default_factory=dict)
     # Why there is no score, when there is none (SPEC.md §35.9). Set exactly
     # when energy_score is None, so the panel can print a sentence instead of a
     # dash — a dash reads as a fault, and three of the four reasons describe a
@@ -1509,6 +1533,8 @@ class EnergyMetrics:
                 self.home_consumption_unavailable_reason
             ),
             "solar_surplus_w": self.solar_surplus_w,
+            "self_consumption_percent": self.self_consumption_percent,
+            "self_consumption_margin_eur_kwh": self.self_consumption_margin_eur_kwh,
             "solar_surplus_confidence": self.solar_surplus_confidence,
             # Derived, not stored: the panel gets the conclusion rather than
             # recomputing the rule. `from_dict` ignores it for that reason.
@@ -1524,6 +1550,7 @@ class EnergyMetrics:
             "energy_score": self.energy_score,
             "score_components": dict(self.score_components),
             "not_applicable_components": list(self.not_applicable_components),
+            "component_unavailable_reasons": dict(self.component_unavailable_reasons),
             "device_power_w": dict(self.device_power_w),
             "running_device_count": self.running_device_count,
             "score_unavailable_reason": self.score_unavailable_reason,
@@ -1545,6 +1572,12 @@ class EnergyMetrics:
                 None,
             ),
             solar_surplus_w=_as_optional_float(data.get("solar_surplus_w")),
+            self_consumption_percent=_as_optional_float(
+                data.get("self_consumption_percent")
+            ),
+            self_consumption_margin_eur_kwh=_as_optional_float(
+                data.get("self_consumption_margin_eur_kwh")
+            ),
             solar_surplus_confidence=_as_choice(
                 data.get("solar_surplus_confidence"), CONFIDENCE_LEVELS, CONFIDENCE_LOW
             ),
@@ -1571,12 +1604,32 @@ class EnergyMetrics:
             not_applicable_components=_as_str_list(
                 data.get("not_applicable_components")
             ),
+            component_unavailable_reasons=_as_reason_mapping(
+                data.get("component_unavailable_reasons")
+            ),
             device_power_w=_as_number_mapping(data.get("device_power_w")),
             score_unavailable_reason=_as_choice(
                 data.get("score_unavailable_reason"), SCORE_UNAVAILABLE_REASONS, None
             ),
             reason_codes=_as_str_list(data.get("reason_codes")),
         )
+
+
+def _as_reason_mapping(value: Any) -> dict[str, str]:
+    """Return component keys mapped to known reason codes, dropping the rest.
+
+    An unknown code is dropped rather than kept: the panel has one whole
+    sentence per code and nothing to say about a code it does not know, so
+    carrying it would put an empty explanation next to a number.
+    """
+    mapping = _as_mapping(value)
+    return {
+        key: raw
+        for key, raw in mapping.items()
+        if isinstance(key, str)
+        and key in SCORE_COMPONENT_WEIGHTS
+        and raw in COMPONENT_UNAVAILABLE_REASONS
+    }
 
 
 def _as_number_mapping(value: Any) -> dict[str, float]:
