@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.9.0
+
+Drie dingen die je vandaag op je scherm zag en die er niet hoorden. SPEC §42.
+
+### Changed
+
+- **Stille uren stellen uit in plaats van te zwijgen.** Een lawaaiig apparaat verdween tot nu
+  toe uit het advies, en de bewoner zag niets — niet te onderscheiden van "er is geen
+  overschot". Nu staat er: *"Er is momenteel zonneoverschot beschikbaar. Vaatwasser maakt
+  geluid en het zijn stille uren tot 07:00. Wacht daarmee tot na 07:00, of pas de stille uren
+  aan bij Mijn voorkeuren."* Een stil apparaat wint nog steeds: het uitstel komt pas als er
+  niets anders is.
+
+  Daarmee stuurt `quiet_hours_active` eindelijk iets uit. Er staat geen bedrag onder — dat zou
+  lezen als een argument om het uitstel te negeren.
+
+- **De hulptekst bij de stille uren beschrijft het nieuwe gedrag.** Hij zei "krijgen lawaaiige
+  apparaten geen advies", en dat was het oude.
+
+### Fixed
+
+- **Het hoofdadvies stond twee keer op het Overzicht** wanneer het zelf een waarschuwing was —
+  eenmaal als advies, eenmaal in de lijst eronder. Het Energiecoach-tabblad deed dit al goed.
+  En als het hoofdadvies de enige waarschuwing is, staat er nu niets in plaats van *"geen
+  waarschuwingen"*: die zin zou de regel erboven tegenspreken.
+
+- **De tabbalk paste niet op een telefoon.** Zes tabbladen wikkelden naar drie regels, een
+  derde van het scherm. Twee nu, met de iconen erbij: 87px in plaats van ongeveer 130.
+
+### Removed
+
+- `allow_advice_during_quiet_hours`. In de uitstellende vorm is er niets meer om uit te
+  schakelen; wie het niet eens is met het venster, verzet het venster.
+
 ## 0.8.1
 
 ### Fixed

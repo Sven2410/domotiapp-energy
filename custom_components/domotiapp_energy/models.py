@@ -1036,7 +1036,12 @@ class UserPreferences:
 
     quiet_hours_start: str = DEFAULT_QUIET_HOURS_START
     quiet_hours_end: str = DEFAULT_QUIET_HOURS_END
-    allow_advice_during_quiet_hours: bool = False
+    # `allow_advice_during_quiet_hours` stood here until 0.9.0. It switched the
+    # whole noisy-appliance advice off, and in the deferring form there is
+    # nothing left for it to switch: the advice is always there, it just says
+    # "wait, and until when" (finding 12, SPEC.md §42.2). A stored value is
+    # ignored by `from_dict` rather than migrated — nothing reads it, so there
+    # is nothing to carry over.
     prefer_solar: bool = True
     prefer_low_price: bool = True
     # Filters only advice for which a saving was actually calculated; safety,
@@ -1057,7 +1062,6 @@ class UserPreferences:
         return {
             "quiet_hours_start": self.quiet_hours_start,
             "quiet_hours_end": self.quiet_hours_end,
-            "allow_advice_during_quiet_hours": self.allow_advice_during_quiet_hours,
             "prefer_solar": self.prefer_solar,
             "prefer_low_price": self.prefer_low_price,
             "min_savings_eur": self.min_savings_eur,
@@ -1079,9 +1083,6 @@ class UserPreferences:
                 data.get("quiet_hours_end"), DEFAULT_QUIET_HOURS_END
             )
             or DEFAULT_QUIET_HOURS_END,
-            allow_advice_during_quiet_hours=_as_bool(
-                data.get("allow_advice_during_quiet_hours"), False
-            ),
             prefer_solar=_as_bool(data.get("prefer_solar"), True),
             prefer_low_price=_as_bool(data.get("prefer_low_price"), True),
             min_savings_eur=_as_float(
