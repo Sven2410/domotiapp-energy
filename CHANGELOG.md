@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.8.1
+
+### Fixed
+
+- **De schermvullende dialoog schoof op een iPhone onder de statusbalk.** De titel viel achter
+  de klok en het kruisje achter het batterijpictogram — en een schermvullende dialoog heeft
+  geen achtergrond meer om weg te tikken en een telefoon geen Escape, dus dat kruisje was de
+  enige uitweg. De stylesheet gebruikte `env(safe-area-inset-bottom)` vier keer en de andere
+  drie zijden nul keer. Alle vier de kanten worden nu gerespecteerd, ook links en rechts voor
+  de uitsparing in landschap, en het paneel zelf net zo goed.
+
+### Added
+
+- **`scripts/extract_texts.py` schrijft `TEKSTEN.md`.** Het handgemaakte document was drie
+  ronden verouderd, en een document dat stil veroudert wordt gelezen alsof het klopt.
+  `tests/test_texts.py` faalt zolang het achterloopt. De CSS van het paneel is eruit
+  gefilterd en Engelse regels staan apart, zodat ze per stuk beoordeeld kunnen worden.
+
+### Waarom dit niet meer op één telefoon hoeft
+
+Een `env()`-waarde is niet te zetten — niet vanuit CSS, niet vanuit script — dus wat je er
+niet in kunt schrijven, kun je ook niet toetsen. Elke inset loopt nu door een custom property,
+en daarmee wordt "respecteert de dialoog de statusbalk" een controle die elke browser bij elke
+vensterbreedte kan doen. Dat vond meteen een tweede fout in de reparatie zelf: padding valt
+buiten `height: 100%`, dus zonder `box-sizing: border-box` werd het blad hoger dan het scherm.
+
 ## 0.8.0
 
 De visuele ronde: verfijnen, geen herontwerp. SPEC §39.

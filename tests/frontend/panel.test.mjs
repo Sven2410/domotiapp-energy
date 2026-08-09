@@ -474,6 +474,75 @@ describe('empty and populated configurations', () => {
     assert.ok(!isVisible(running));
   });
 
+  /** The stylesheet, as the panel actually ships it. */
+  const stylesheet = (panel) => panel.shadowRoot.querySelector('style').textContent;
+
+  /** The declarations of one rule, by its selector. */
+  const ruleBody = (panel, selector) =>
+    stylesheet(panel).split(selector + ' {')[1].split('}')[0];
+
+  it('routes every safe area through a token, never a bare env()', async () => {
+    // `env()` cannot be set from a stylesheet or from script, so anything it
+    // drives is only visible on a device with a notch. Through a custom
+    // property it can be overridden on the host, which is what makes the
+    // browser check possible at all without a phone (SPEC.md §40.2).
+    const panel = await mountPanel();
+    // Comments stripped first: this rule is about declarations, and the block
+    // that explains it names the very thing it forbids.
+    const css = stylesheet(panel).replace(/\/\*[\s\S]*?\*\//g, '');
+
+    const bare = [...css.matchAll(/env\(safe-area-inset-\w+/g)].map((m) => m[0]);
+    // Four, and only four: the token definitions themselves.
+    assert.equal(bare.length, 4, 'bare env() outside the tokens: ' + bare.join(', '));
+    for (const side of ['top', 'right', 'bottom', 'left']) {
+      assert.ok(
+        css.includes('--domotiapp-safe-' + side + ': env(safe-area-inset-' + side),
+        'no token for the ' + side + ' inset',
+      );
+    }
+  });
+
+  it('gives the full-bleed dialog all four insets, not just the bottom', async () => {
+    // The 0.8.0 bug, and the shape of it: four uses of the bottom inset and
+    // none of the other three. On an iPhone the title sat behind the clock and
+    // the close button behind the battery — and a full-screen dialog has no
+    // scrim left to tap and no Escape key on a phone, so it was a trap.
+    const panel = await mountPanel();
+    const surface = ruleBody(panel, '.dialog-surface');
+
+    for (const side of ['top', 'right', 'bottom', 'left']) {
+      assert.ok(
+        surface.includes('padding-' + side + ': var(--domotiapp-safe-' + side + ')'),
+        'the dialog surface ignores the ' + side + ' inset',
+      );
+    }
+  });
+
+  it('keeps the insets out of the viewport media query', async () => {
+    // The one rule that has to be right on a phone may not be the one rule no
+    // automated check can reach. Size and radius stay in the media query; the
+    // insets are unconditional, and on a desktop they resolve to 0px.
+    const panel = await mountPanel();
+    const phoneBlock = stylesheet(panel).split('@media (max-width: 600px)')[1];
+
+    assert.ok(!phoneBlock.includes('padding-top: var(--domotiapp-safe-top)'));
+    assert.ok(
+      ruleBody(panel, '.dialog-surface').includes(
+        'padding-top: var(--domotiapp-safe-top)',
+      ),
+    );
+  });
+
+  it('keeps the panel itself clear of a landscape cut-out', async () => {
+    // Not full-bleed, but 16px of padding is less than the ~44px the system
+    // reserves beside a notch in landscape.
+    const panel = await mountPanel();
+    const host = ruleBody(panel, ':host');
+
+    assert.ok(host.includes('max(16px, var(--domotiapp-safe-left))'));
+    assert.ok(host.includes('max(16px, var(--domotiapp-safe-right))'));
+  });
+
   it('keeps every tap target at 44 px, at a phone-sized panel width', async () => {
     // Measured rather than assumed, and at the width the container query
     // actually keys on: with the Home Assistant sidebar open on a tablet the
