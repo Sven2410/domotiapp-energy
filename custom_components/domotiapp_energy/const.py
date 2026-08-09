@@ -16,7 +16,7 @@ from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 
 DOMAIN: Final = "domotiapp_energy"
 INTEGRATION_NAME: Final = "DomotiApp Energy"
-VERSION: Final = "0.11.0"
+VERSION: Final = "0.11.1"
 
 MANUFACTURER: Final = "DomotiApp"
 DEVICE_MODEL: Final = "Energy Coach"
@@ -956,10 +956,12 @@ ATTR_ADVICE_TITLE: Final = "advice_title"
 # also just the market twice a day — the same reasoning that keeps the urgency
 # advice at info until it knows there is work to do (SPEC.md §43.2).
 #
-# `invalid_entity_state` is deliberately **not** in this tuple: it is never an
-# advice reason, only a metrics one, so matching it here would be a line that
-# can never fire. The attention sensor reads it from the metrics instead, which
-# is where it lives (SPEC.md §45.2).
+# `invalid_entity_state` is not in this tuple and is no longer read anywhere
+# else either. 0.11.0 read it from the metrics, and that turned the tile red
+# beside the sentence "Geen actie nodig" — a source is `unavailable` at some
+# point in every Home Assistant, which is neither rare nor actionable, and the
+# attributes went on quoting the advice. Whatever lights this sensor must also
+# supply its sentence, so this tuple is the whole of it (SPEC.md §45.6).
 ATTENTION_ADVICE_REASON_CODES: Final[tuple[str, ...]] = (
     "missing_required_data",
     "high_grid_load",

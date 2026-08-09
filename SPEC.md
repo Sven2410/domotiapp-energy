@@ -3979,6 +3979,16 @@ omgeving niet verkleinen — `resize_window` meldt succes en `window.innerWidth`
 De containerquery is dus wel echt getoetst en de mediaquery niet. Die CSS is ongewijzigd
 sinds de ronde waarin zij wel is nagelopen.
 
+### 39.9 Bekende beperking: 320 CSS-pixels
+
+De tabbalk breekt bij 320px nog naar drie regels. De tightening is afgestemd op 358px, en
+bij 360 en breder past hij op twee. Gemeten met de browsertests, niet aangenomen.
+
+**Besluit van Sven, 2026-08-09: dit blijft zo.** 320px is een iPhone SE uit 2016; de
+klanten van DomotiTech hebben tablets en moderne telefoons. De browsertest toetst daarom
+op 360 — en de grens is niet opgerekt om groen te worden, want dan zou de test niet meer
+beschrijven wat er ontworpen is.
+
 ## 40. De safe areas, en hoe je ze toetst zonder telefoon
 
 **Status: gebouwd in 0.8.1.** Productiebug op Sven's iPhone, gemeld op 2026-08-09.
@@ -4515,19 +4525,9 @@ niemand nog bekijkt. De vraag bij elke kandidaat is niet *"is dit erg"* maar:
 | `missing_required_data` | het advies | de installatie is niet af; de installateur kan hem afmaken |
 | `high_grid_load` | het advies | de aansluiting zit tegen zijn grens; iemand kan iets uitzetten |
 | `high_grid_export` | het advies | teruglevering tegen de grens; zelfde handeling, andere richting |
-| `invalid_entity_state` | **de metrics, niet het advies** | een bron die de installateur heeft ingesteld, is stuk |
 
-**Die laatste zit er precies om de reden dat hij makkelijk vergeten wordt.**
-`invalid_entity_state` wordt **nooit** een adviesreden — hij komt uit `validators.py` en landt
-in `metrics.reason_codes`. Een tegel die alleen naar het advies kijkt, blijft dus grijs
-terwijl een sensor dood is, en dat is nu juist de storing waarvoor een installateur gebeld
-wordt. De entiteit leest hem daarom apart.
-
-Let op dat de meeste dode bronnen *ook* `missing_required_data` opleveren: een netmeter of
-zonnebron is een checklistitem, dus onleesbaar betekent ontbrekend. Bronnen die door geen
-enkel checklistitem gevraagd worden — een groepenkastmeter, een thuisbatterij — doen dat niet,
-en die zijn het bewijs dat deze tak nodig is. `test_attention_is_on_when_a_source_cannot_be_read`
-gebruikt er een; zonder de tak is dat de enige test die faalt.
+**Er stond hier een vierde reden, `invalid_entity_state`, en die is in 0.11.1
+teruggedraaid. Waarom staat in §45.6.**
 
 **Bewust níét in de lijst:**
 
@@ -4584,3 +4584,55 @@ Geen `browser_mod`, geen HACS-kaart, geen template-sensor: alles hierboven is ke
 - **Geen alarm.** Geen notificatie, geen service, geen `hass.services.async_call` (regel 2).
 - **Geen vervanging van `peak_risk`.** Die zegt "de piek dreigt" en is een meting;
   deze zegt "kijk hiernaar" en is een selectie.
+
+### 45.6 Correctie in 0.11.1: de tegel mag zichzelf niet tegenspreken
+
+**Gevonden door Sven op zijn eigen dashboard, 2026-08-09:** de tegel stond rood terwijl
+er *"Geen actie nodig"* onder stond.
+
+**Wat er misging, en het was niet de lijst.** `neutral_energy_situation` stond nooit
+tussen de redenen. De entiteit las een *tweede* bron: elke `invalid_entity_state` in de
+metrics zette hem aan, terwijl de attributen — en dus de zin op de tegel — uit het
+hoofdadvies bleven komen. **De kleur kwam uit het ene object en de zin uit het andere**,
+en zodra die twee het oneens waren, was het resultaat een `problem`-tegel die zijn eigen
+tekst tegensprak.
+
+Dat is precies het defect dat een knop waardeloos maakt. Bij `device_class: problem`
+betekent `on` dat er iets aan de hand is; staat er dan "geen actie nodig" naast, dan leert
+de bewoner binnen een week dat rood niets betekent.
+
+**Daar kwam een tweede fout bovenop, en die was even erg.** `invalid_entity_state` dekt
+twee heel verschillende gevallen, en `validators.py` zegt dat zelf al bij het eerste:
+
+> *"Removed, renamed or gone quiet. All three are 'unavailable' rather than 'unreadable':
+> nothing is wrong with how this source is configured, there is simply no current
+> measurement behind it."*
+
+Elke entiteit in Home Assistant is wel eens `unavailable` — bij een herstart, een
+integratie die opnieuw laadt, een omvormer die uitvalt. Toetsen we die gebeurtenis aan de
+eigen maatstaf van §45.2 — *kan iemand hier nu iets aan doen, en is het zeldzaam genoeg
+dat rood nog betekenis heeft?* — dan zakt zij op beide helften.
+
+**De regel die er nu staat, en die breder geldt dan deze entiteit:**
+
+> **Wat de tegel aan zet, moet ook de zin leveren.**
+
+Alleen het advies doet dat. Daarmee is de tegenspraak niet opgelost maar onmogelijk: de
+kleur en de zin komen uit hetzelfde object, dus ze kunnen niet meer uiteenlopen. De
+redenen zijn nu de drie uit §45.2 en verder niets.
+
+**Wat dit kost, eerlijk opgeschreven.** Een bron die door geen enkel checklistitem
+gevraagd wordt — een groepenkastmeter, een thuisbatterij — kan onleesbaar zijn zonder dat
+de tegel rood wordt. Voor de bronnen die het advies wél dragen verandert er niets: die
+leveren `missing_required_data`, en dat is een adviesreden mét zin. Het gat is dus smal,
+en het is zichtbaar op de plek waar het thuishoort: de bronrij in het paneel, de
+datakwaliteit en het logboek.
+
+**Wil dat gat ooit dicht, dan langs de andere kant:** niet door de tegel een tweede bron
+te geven, maar door de coach er iets over te laten zeggen. Dan heeft het een zin, en volgt
+de tegel vanzelf. Dat is een eigen beslissing en staat hier alleen genoteerd.
+
+**Testniveau.** `test_the_state_and_the_sentence_can_never_disagree` toetst de regel als
+regel: voor een reeks situaties geldt dat `on` impliceert dat de geciteerde reden er een
+is waar iemand iets aan kan doen. Een test per situatie zou dit defect niet gevangen
+hebben — elke situatie die 0.11.0 toevallig toetste, had de twee het eens.

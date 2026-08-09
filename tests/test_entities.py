@@ -583,30 +583,74 @@ def _configuration_with_a_dead_submeter() -> dict[str, Any]:
     return config
 
 
-async def test_attention_is_on_when_a_source_cannot_be_read(
+async def test_attention_stays_off_when_only_a_source_dropped_out(
     hass: HomeAssistant, hass_storage: dict[str, Any]
 ) -> None:
-    """The case a list of advice reasons alone would miss (SPEC.md §45.2).
+    """Sven's tile, on production, 2026-08-09: red beside "Geen actie nodig".
 
-    `invalid_entity_state` never becomes an advice reason — it only ever
-    reaches the metrics. A tile keyed on the advice would stay grey while a
-    configured sensor is dead, which is the one failure an installer is
-    actually called about.
+    The reason codes were never the problem — `neutral_energy_situation` is not
+    in the list and never was. The entity read a second source: any
+    `invalid_entity_state` in the metrics turned it on, while the attributes
+    kept quoting the advice. So the colour and the sentence came from two
+    different objects and could disagree, which is the one thing a tile with
+    `device_class: problem` may never do (SPEC.md §45.6).
+
+    A source that cannot be read at this moment is the ordinary case, not the
+    exception: every Home Assistant entity is `unavailable` sometimes, and the
+    validator's own comment says of it "nothing is wrong with how this source
+    is configured, there is simply no current measurement behind it".
     """
     await _setup_with(
         hass,
         hass_storage,
-        {GRID_ENTITY: "500", "sensor.groep": "kapot"},
+        {GRID_ENTITY: "500", "sensor.groep": "unavailable"},
         _configuration_with_a_dead_submeter(),
     )
 
     state = hass.states.get(BINARY_SENSOR_ATTENTION)
     assert state is not None
-    assert state.state == STATE_ON
-    # And it is the metrics that light it: the advice is an ordinary one.
+    assert state.state == STATE_OFF
+    # And the sentence beside it is the ordinary one, which is exactly why the
+    # tile may not be red.
     assert state.attributes[ATTR_ADVICE_REASON_CODE] not in (
         ATTENTION_ADVICE_REASON_CODES
     )
+
+
+@pytest.mark.parametrize(
+    ("entity_states", "with_submeter"),
+    [
+        ({GRID_ENTITY: "500"}, False),
+        ({GRID_ENTITY: "5600"}, False),
+        ({GRID_ENTITY: "-5700"}, False),
+        ({GRID_ENTITY: "kapot"}, False),
+        ({GRID_ENTITY: "500", "sensor.groep": "unavailable"}, True),
+        ({GRID_ENTITY: "500", "sensor.groep": "geen getal"}, True),
+    ],
+)
+async def test_the_state_and_the_sentence_can_never_disagree(
+    hass: HomeAssistant,
+    hass_storage: dict[str, Any],
+    entity_states: dict[str, str],
+    with_submeter: bool,
+) -> None:
+    """The rule the fix rests on, tested as a rule rather than as a case.
+
+    Whatever lights the tile also supplies its text, so `on` implies the quoted
+    reason is one a person can act on. Parametrised rather than looped: a loop
+    in one test would set up a second config entry, whose entities get a `_2`
+    suffix, and every assertion after the first would keep reading the first
+    entry — green, and blind.
+    """
+    config = _configuration_with_a_dead_submeter() if with_submeter else None
+    await _setup_with(hass, hass_storage, entity_states, config)
+
+    state = hass.states.get(BINARY_SENSOR_ATTENTION)
+    assert state is not None
+    if state.state == STATE_ON:
+        assert (
+            state.attributes[ATTR_ADVICE_REASON_CODE] in ATTENTION_ADVICE_REASON_CODES
+        ), "the tile is lit by something its own sentence denies"
 
 
 async def test_attention_is_on_when_the_home_is_missing_data(
