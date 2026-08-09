@@ -74,7 +74,6 @@ from custom_components.domotiapp_energy.models import (
 from custom_components.domotiapp_energy.validators import (
     ReadResult,
     ValidationIssue,
-    has_errors,
     is_within_window,
     read_entity_value,
     validate_configuration,
@@ -84,6 +83,20 @@ from custom_components.domotiapp_energy.validators import (
     validate_preferences,
     window_length_minutes,
 )
+
+
+def has_errors(issues: list[ValidationIssue]) -> bool:
+    """Return whether any issue would block use of the row.
+
+    A test convenience, and it lives here because that is the only place it was
+    ever used. It sat in `validators.py` as production code until 0.7.1, where
+    it was exported, documented and called by nothing — no engine, no WebSocket
+    handler, no panel. The audit of SPEC.md §37.2b found it and this round
+    removes it; the assertions it makes readable are worth keeping, so it moved
+    rather than disappearing.
+    """
+    return any(issue.is_error for issue in issues)
+
 
 ENTITY_ID = "sensor.grid_power"
 

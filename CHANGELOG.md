@@ -1,5 +1,56 @@
 # Changelog
 
+## 0.7.1
+
+Eén thema: **het product vroeg of bood iets dat niets deed.** Daarna is die categorie leeg.
+
+### Changed
+
+- **De twee prognosebronnen staan niet meer in de keuzelijst.** *Prijsverwachting* en
+  *Zonverwachting* waren een volledige keuze, met een hulptekst die uitnodigde een entiteit
+  te koppelen, en de motor las ze nergens. Een bestaande rij blijft gewoon werken en zegt
+  nu waar zij aan toe is: *"Dit brontype is nog niet in gebruik. DomotiApp Energy rekent
+  alleen met het huidige moment en leest geen verwachtingen. De koppeling blijft bewaard,
+  maar er wordt op dit moment niets mee gedaan."*
+
+- **Een apparaat waar nooit advies over komt, krijgt de adviesvragen niet meer.**
+  Prioriteit, "maakt geluid" en het tijdvenster ordenen, dempen en timen advies; zonder
+  advies vragen ze om een keuze die niemand leest. Ze komen terug zodra je het apparaat wél
+  verplaatsbaar maakt. Bij een thuisbatterij viel dat op: verplaatsbaar van nature,
+  geadviseerd nooit, en toch gevraagd op welke dagen hij mocht draaien.
+
+- **Een slimme stekker wordt niet meer om zijn eigen vermogen gevraagd.** Bij *Overig,
+  alleen meten* verdwijnen vermogen, energie per cyclus en duur: die vragen gaan over het
+  apparaat áchter de stekker, en dat is deze rij niet. Bij een thuisbatterij verdwijnen de
+  twee cyclusvelden; het vermogen blijft, want dat beschrijft wel iets.
+
+- **De regel onder een alleen-gemeten apparaat noemt geen adviesbegrippen meer.** Er stond
+  *"Overig, alleen meten · Normaal · Alleen adviseren"* — een prioriteit die niets ordent,
+  naast een bedieningsniveau dat advies belooft aan een apparaat dat er geen krijgt. Nu:
+  type, locatie en vermogen.
+
+### Fixed
+
+- **Een thuisbatterij werd om een energie per cyclus gevraagd.** Een batterij heeft geen
+  cyclus: niemand start hem, hij volgt het overschot vanzelf. Hetzelfde geval als de
+  tabletlader in 0.6.1, één apparaattype verderop — en het had een eigen as nodig, want een
+  batterij ís verplaatsbaar, dus die vlag kon het niet dragen.
+
+- **Een verborgen veld werd gewist zodra een buurveld veranderde.** Een sectie gaf alle
+  velden terug die zij kent, ook de niet-getoonde, en las daar `undefined` voor. Een
+  vaatwasser die je bewust op "maakt geen geluid" had gezet, verloor dat zodra je hem op
+  "alleen meekijken" zette en weer terug.
+
+- **De waarschuwing over weg te gooien gegevens noemde ook standaardwaarden.** Een verse
+  slimme stekker meldde dat zijn prioriteit en geluidsvlag verdwenen — twee waarden die het
+  formulier zelf had ingevuld en die de backend precies zo teruggeeft.
+
+### Removed
+
+- `validators.has_errors`. Bestond, werd getest, en werd door niets gebruikt: niet door de
+  motor, niet door de WebSocket-API, niet door het paneel (SPEC §37.2b). De assertie die
+  hem leesbaar maakte staat nu in de testlaag, waar hij altijd al thuishoorde.
+
 ## 0.7.0
 
 ### Fixed

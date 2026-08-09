@@ -16,7 +16,7 @@ from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 
 DOMAIN: Final = "domotiapp_energy"
 INTEGRATION_NAME: Final = "DomotiApp Energy"
-VERSION: Final = "0.7.0"
+VERSION: Final = "0.7.1"
 
 MANUFACTURER: Final = "DomotiApp"
 DEVICE_MODEL: Final = "Energy Coach"
@@ -472,6 +472,29 @@ INFLEXIBLE_BY_DEFAULT_DEVICE_TYPES: Final[frozenset[str]] = frozenset(
     {
         DEVICE_TYPE_GENERIC_MONITOR,
         DEVICE_TYPE_HEAT_PUMP,
+    }
+)
+
+# Device types the coach can never address, whatever the installer ticks
+# (SPEC.md §38.2).
+#
+# **A different axis from flexibility, and that is the whole point.** A home
+# battery *is* flexible — moving energy through time is what it does — so
+# `is_flexible` says yes and the appliance became advisable, and the checklist
+# then asked it for an energy per cycle. A battery has no cycle: it follows the
+# surplus continuously and nobody starts it. Same class of defect as the tablet
+# charger of 0.6.1, one device type further along, and marking it inflexible
+# would have hidden it behind a claim that is simply untrue.
+#
+# The question for adding a type here is not "do we use it yet" but **"is there
+# a moment a resident could be advised to start this"**. If not, every field
+# that exists to produce advice is a question with no reader.
+#
+# This does not touch `has_movable_load`: a battery still moves consumption to
+# the sun, which is a fact about the home and not about advice.
+NEVER_ADVISED_DEVICE_TYPES: Final[frozenset[str]] = frozenset(
+    {
+        DEVICE_TYPE_HOME_BATTERY,
     }
 )
 

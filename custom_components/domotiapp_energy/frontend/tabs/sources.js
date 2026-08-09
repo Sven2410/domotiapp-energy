@@ -99,10 +99,48 @@ function labelOf(name) {
   return FIELD_LABELS[name] ?? null;
 }
 
-const TYPE_OPTIONS = Object.entries(TYPE_LABELS).map(([value, label]) => ({
-  value,
-  label,
-}));
+/**
+ * The two types the engine has never read (SPEC.md §28, §38.1).
+ *
+ * They are gone from the dropdown and **kept everywhere else**: still a valid
+ * type in the model, still labelled here, still stored. Removing them from
+ * `SOURCE_TYPES` would quarantine the rows of anyone who linked one — the row
+ * would go to "Onbekend brontype" and stop being used, which is a harsher
+ * answer than the situation deserves and one the installer cannot undo.
+ *
+ * Offering them was the real fault. A choice in a list, with a helper inviting
+ * you to link an entity ("De entiteit met de verwachte opbrengst"), that then
+ * counts for nothing anywhere: the most expensive kind of empty field, because
+ * it costs the installer a decision and a link before it costs him trust.
+ */
+const RETIRED_TYPES = ['price_forecast', 'solar_forecast'];
+
+const RETIRED_TYPE_NOTICE =
+  'Dit brontype is nog niet in gebruik. DomotiApp Energy rekent alleen met ' +
+  'het huidige moment en leest geen verwachtingen. De koppeling blijft ' +
+  'bewaard, maar er wordt op dit moment niets mee gedaan.';
+
+const TYPE_OPTIONS = Object.entries(TYPE_LABELS)
+  .filter(([value]) => !RETIRED_TYPES.includes(value))
+  .map(([value, label]) => ({ value, label }));
+
+/**
+ * The type options for one row, which is not always the list above.
+ *
+ * A row that already carries a retired type keeps it as an option. Without
+ * that the select renders with nothing selected, and the first save silently
+ * rewrites the row to whatever the installer happened to pick — a dropdown
+ * quietly changing stored data because we removed its current value.
+ */
+function typeOptionsFor(draft) {
+  if (!RETIRED_TYPES.includes(draft.type)) {
+    return TYPE_OPTIONS;
+  }
+  return [
+    ...TYPE_OPTIONS,
+    { value: draft.type, label: TYPE_LABELS[draft.type] || draft.type },
+  ];
+}
 
 const UNIT_OPTIONS = [
   { value: 'W', label: 'W — watt' },
@@ -149,7 +187,10 @@ function schemaFor(draft) {
     {
       name: 'type',
       label: 'Soort bron',
-      selector: { select: { mode: 'dropdown', options: TYPE_OPTIONS } },
+      helper: RETIRED_TYPES.includes(draft.type) ? RETIRED_TYPE_NOTICE : undefined,
+      selector: {
+        select: { mode: 'dropdown', options: typeOptionsFor(draft) },
+      },
     },
     {
       name: 'enabled',
@@ -673,6 +714,17 @@ export const sourcesTab = {
           icon: 'mdi:pause-circle-outline',
           tone: 'info',
           text: 'Uitgeschakeld — wordt niet meegerekend.',
+        };
+      }
+      // Before the completeness check on purpose: telling an installer which
+      // field to fill in on a row that is read by nothing would send him to
+      // finish work that has no effect. Informative and not a warning — the
+      // row is not broken, it is simply not used yet (SPEC.md §38.1).
+      if (RETIRED_TYPES.includes(source.type)) {
+        return {
+          icon: 'mdi:information-outline',
+          tone: 'info',
+          text: RETIRED_TYPE_NOTICE,
         };
       }
       const errors = fieldErrors(currentIssues(), source.id);

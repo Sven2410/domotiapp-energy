@@ -3542,8 +3542,8 @@ worden.
 | `remaining_time_entity` | elk apparaatformulier | bewaakt, nooit gelezen |
 | `temperature_entity` | elk apparaatformulier | bewaakt, nooit gelezen |
 | `battery_level_entity` | apparaatformulier bij `ev_charger` | bewaakt, nooit gelezen — §34 geeft het een lezer |
-| brontype `price_forecast` | keuzelijst Energiebronnen | een volledig brontype dat niets doet |
-| brontype `solar_forecast` | keuzelijst Energiebronnen | idem |
+| brontype `price_forecast` | ~~keuzelijst Energiebronnen~~ | **opgelost in 0.7.1, §38.1** |
+| brontype `solar_forecast` | ~~keuzelijst Energiebronnen~~ | **opgelost in 0.7.1, §38.1** |
 
 **De twee brontypen zijn het ernstigst.** Dit is geen veld dat je kunt overslaan: het staat
 als keuze in de lijst, met een hulptekst die uitnodigt een entiteit te koppelen (*"De
@@ -3592,7 +3592,7 @@ waarschijnlijk niet het enige geval was.
 
 | Functie | Oordeel |
 |---|---|
-| `validators.has_errors` | **dood.** Bestaat, wordt getest, en wordt door niets gebruikt — noch door de motor, noch door de WebSocket-API, noch door het paneel. Kan weg. |
+| `validators.has_errors` | **dood.** Bestond, werd getest, werd door niets gebruikt — noch door de motor, noch door de WebSocket-API, noch door het paneel. **Weg in 0.7.1, §38.5.** |
 | `Calculator.calculate` | alleen tests, en dat mag: hij is sinds deze ronde één regel die de twee helften samenstelt, met een docstring die zegt dat de coordinator hem niet gebruikt. Er kan zich niets meer in verstoppen. |
 | `Store._async_migrate_func` | geen vondst: een haak die Home Assistant zelf aanroept bij een schemawijziging. |
 
@@ -3624,3 +3624,153 @@ weg als Home Assistant zelf.
 - sluimerverbruik telt niet als draaiend;
 - datakwaliteit en energiescore geven op elke bestaande testconfiguratie exact dezelfde
   uitkomst als ervoor.
+
+## 38. De opruimronde: alles wat om aandacht vroeg zonder iets te doen
+
+**Status: gebouwd in 0.7.1.** Eén thema, en daarna is de categorie leeg: *het product vroeg
+of bood iets dat niets deed.* De inventarisatie staat in §37.2; dit is wat ermee gebeurd is.
+
+De vraag die elk punt hieronder verbindt is niet "gebruiken wij dit veld", maar:
+
+> **Kan de installateur of de bewoner hier iets invullen dat ooit gelezen wordt?**
+
+Zo nee, dan mag het niet gevraagd worden. Dat is dezelfde vraag als bij de datakwaliteit
+(§16, de vijf gevallen van een eis die niet van toepassing is), nu gesteld over het
+formulier in plaats van over de checklist.
+
+### 38.1 De twee prognosebronnen: uit de lijst, niet uit het model
+
+`price_forecast` en `solar_forecast` stonden als volwaardige keuze in Energiebronnen, met
+een hulptekst die uitnodigde een entiteit te koppelen — *"De entiteit met de verwachte
+opbrengst"* — en de motor las ze nergens. §28 zegt dat prognose niet gebouwd wordt; de
+keuze had dan niet aangeboden moeten worden.
+
+**Optie D, goedgekeurd door Sven (2026-08-09): uit de keuzelijst, geldig in het model.**
+
+| | Wat er gebeurt |
+|---|---|
+| Nieuwe rij | het type is niet te kiezen |
+| Bestaande rij | blijft geldig, blijft bewaard, blijft leesbaar in het formulier |
+| Rijweergave | een informatieve regel die zegt dat er niets mee gedaan wordt |
+
+**Waarom niet uit `SOURCE_TYPES`.** Dan zou elke bestaande rij in quarantaine gaan —
+*"Onbekend brontype"*, niet gebruikt, met een foutkleur — voor een keuze die het product
+zelf heeft aangeboden. Dat is een hardere straf dan de situatie verdient en de installateur
+kan hem niet ongedaan maken.
+
+De goedgekeurde zin, woordelijk:
+
+> *Dit brontype is nog niet in gebruik. DomotiApp Energy rekent alleen met het huidige
+> moment en leest geen verwachtingen. De koppeling blijft bewaard, maar er wordt op dit
+> moment niets mee gedaan.*
+
+Hij staat op de rij **vóór** de compleetheidscontrole: een installateur naar een veld sturen
+op een rij die door niets gelezen wordt, is hem werk laten afmaken dat geen effect heeft.
+Toon: informatief. De rij is niet stuk.
+
+**Het type blijft in de keuzelijst staan zolang de rij hem draagt.** Een select waarvan de
+huidige waarde ontbreekt rendert leeg, en de eerste opslag herschrijft de rij dan stil naar
+wat er toevallig gekozen wordt — een keuzelijst die opgeslagen gegevens verandert omdat wij
+haar waarde hebben weggehaald.
+
+### 38.2 De thuisbatterij had een eigen as nodig
+
+`home_battery` als **apparaattype** is verplaatsbaar by default, dus advisable, dus vroeg de
+checklist om een energie per cyclus. Een batterij heeft geen cyclus: niemand start hem, hij
+volgt het overschot vanzelf.
+
+Dat is hetzelfde geval als de tabletlader van 0.6.1, één type verderop — maar de reparatie
+van toen kon het niet dragen. Die hing alles aan `is_advisable`, en `is_advisable` leunde op
+`is_flexible`. Een batterij **is** verplaatsbaar; energie door de tijd schuiven is precies
+wat hij doet. Hem inflexibel noemen zou het probleem verstoppen achter een bewering die
+gewoon onwaar is.
+
+Daarom een derde as: **`NEVER_ADVISED_DEVICE_TYPES`**, types waar de coach de bewoner nooit
+iets over kan zeggen, ongeacht wat er aangevinkt staat.
+
+> De vraag om een type hieraan toe te voegen is niet "gebruiken wij het al", maar **"bestaat
+> er een moment waarop een bewoner geadviseerd kan worden dit te starten"**. Zo nee, dan is
+> elk veld dat advies voedt een vraag zonder lezer.
+
+**Dit raakt `has_movable_load` niet.** Dat is een uitspraak over de woning — kan verbruik
+naar de zon verplaatst worden — en een batterij doet dat zonder dat iemand geadviseerd
+wordt. De zonne-as blijft dus aan, wat precies de reden is dat de batterij in dat predicaat
+staat (§35.4a).
+
+### 38.3 Twee soorten velden die verdwijnen, en het verschil
+
+| Soort | Wat het is | Voorbeeld | Wanneer verborgen |
+|---|---|---|---|
+| **Adviesbegrip** | ordent, timet of dempt advies | prioriteit, maakt geluid, dagen | zodra er nooit advies komt |
+| **Beschrijft niets** | geen waar antwoord voor dit type | vermogen en cyclus bij een slimme stekker | idem |
+
+Beide lijsten komen **terug zodra het apparaat advisable wordt**, en dat is wat de override
+van een dood spoor redt: vink *verplaatsbaar in de tijd* aan op een slimme stekker en iemand
+heeft gezegd dat er advies moet volgen — en dan is het apparaat achter de stekker precies
+waar vermogen en cyclus over gaan. Alleen op type verbergen zou een verplicht veld hebben
+achtergelaten dat niet in te vullen is, en dat is de vorm van defect die deze ronde opruimt
+in plaats van verplaatst.
+
+**De warmtepomp blijft er bewust buiten.** Zijn nominale vermogen beschrijft iets echts, ook
+al leest niemand het. Of wij daar überhaupt naar moeten vragen is een aparte open vraag
+(§37.2), en die hier beantwoorden door het veld te verbergen zou hem terloops beslissen.
+
+**Verbergen, niet tonen-en-uitschakelen.** Dat laatste is de andere afspraak in dit project
+(het bedieningsniveau op Woning, §33.4a) en die geldt voor een veld dat in een latere release
+beantwoordbaar wordt. Hier is niets te vroeg: de vraag is verkeerd voor dít apparaat. Een
+verborgen veld met een waarde erin wordt bij naam genoemd voordat het bij opslaan verdwijnt,
+door dezelfde melding die elke andere typewissel afhandelt.
+
+**Een standaardwaarde wordt niet als verlies gemeld.** Een verse slimme stekker draagt een
+prioriteit *Normaal* en een geluidsvlag die uit het type volgt; geen van beide heeft de
+installateur getypt, en de backend geeft ze bij een ontbrekend veld precies zo terug
+(`TYPE_DEFAULT` in `models.py`). Melden dat ze weggegooid worden, benoemt een verlies dat
+niet plaatsvindt.
+
+**De rijweergave laat de adviesbegrippen los.** Er stond *"Overig, alleen meten · Normaal ·
+Alleen adviseren"*: een prioriteit die niets ordent, naast een bedieningsniveau dat advies
+belooft aan een apparaat dat er geen krijgt. Voor zo'n apparaat blijft over wat hem
+identificeert — type, locatie, vermogen. De statusregel eronder zegt al dat hij alleen
+gemeten wordt.
+
+### 38.4 Een sectie mag alleen teruggeven wat zij toont
+
+Gevonden doordat §38.3 het uitlokte, en het is een bug van vóór deze ronde.
+
+Elk `ha-form` in de dialoog krijgt de velden die zijn sectie **declareert**, en rendert
+daarvan alleen wat betekenis heeft. De wijzigingshandler kopieerde de hele gedeclareerde
+lijst terug en las `undefined` voor elk verborgen veld — dus een vaatwasser die de
+installateur bewust op *maakt geen geluid* had gezet, verloor dat zodra hij hem op *alleen
+meekijken* zette en weer terug. Stil, en precies wat "verbergen is nooit wissen" verbiedt.
+
+De handler kijkt nu naar wat er werkelijk op het scherm staat.
+
+### 38.5 `validators.has_errors` is weg
+
+Bestond, werd getest, werd door niets gebruikt (§37.2b). De assertie die hem leesbaar maakte
+is meeverhuisd naar `tests/test_validators.py`, waar hij altijd al thuishoorde: dat is de
+enige plek die hem ooit heeft aangeroepen.
+
+### 38.6 Wat deze ronde niet raakt
+
+- **De datakwaliteit en de energiescore.** Geen enkel cijfer beweegt. De batterij verlaat
+  teller *én* noemer, zoals elk item dat niet van toepassing is.
+- **De vijf apparaatkoppelingen zonder lezer** (`status_entity`, `energy_entity`,
+  `remaining_time_entity`, `temperature_entity`, `battery_level_entity`). Ze beschrijven iets
+  echts en wachten op een lezer; zie §37.2.
+- **De velden die bewust leeg staan tot de aansturingsrelease** (`capabilities`,
+  `control_forbidden_reason`, `control_level`).
+
+### 38.7 Klaar wanneer
+
+- de twee prognosetypes zijn niet te kiezen, een bestaande rij blijft geldig en zegt waarom
+  er niets mee gebeurt, en opslaan verandert haar type niet;
+- een thuisbatterij wordt nergens om een energie per cyclus of een tijdvenster gevraagd, en
+  telt nog steeds als verplaatsbare last;
+- een slimme stekker vraagt geen vermogen, cyclus of duur, en vraagt ze wél zodra hij
+  verplaatsbaar wordt gemaakt;
+- prioriteit en geluid verdwijnen bij een apparaat waar nooit advies over komt;
+- de rij van zo'n apparaat toont type, locatie en vermogen;
+- een verborgen veld overleeft een wijziging aan zijn buurveld, en een standaardwaarde wordt
+  niet als verlies gemeld;
+- `validators.has_errors` bestaat niet meer.

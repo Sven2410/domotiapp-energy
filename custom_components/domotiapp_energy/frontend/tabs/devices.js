@@ -237,7 +237,15 @@ function flexibleByDefault(deviceType) {
  * different claim from "this field must be filled in".
  */
 function requiredFields(draft) {
-  return isAdvisable(draft) ? ['nominal_power_w', 'energy_per_cycle_kwh'] : [];
+  if (!isAdvisable(draft)) {
+    return [];
+  }
+  // Filtered through the same question the form asks, so a field this type
+  // never shows can never be marked required — an asterisk on a field that is
+  // not on screen is a completeness the installer cannot reach.
+  return ['nominal_power_w', 'energy_per_cycle_kwh'].filter((name) =>
+    asksSomething(name, draft),
+  );
 }
 
 /**
@@ -248,11 +256,84 @@ function requiredFields(draft) {
  * own off switch.
  */
 function isAdvisable(draft) {
+  if (NEVER_ADVISED_TYPES.includes(draft.device_type)) {
+    return false;
+  }
   const flexible =
     draft.is_flexible === undefined || draft.is_flexible === null
       ? flexibleByDefault(draft.device_type)
       : draft.is_flexible;
   return Boolean(flexible) && draft.control_mode !== 'monitor_only';
+}
+
+/**
+ * Types the coach can never address (`const.NEVER_ADVISED_DEVICE_TYPES`).
+ *
+ * A home battery is flexible — moving energy through time is what it does — so
+ * the flag says yes and the appliance became advisable, and the checklist asked
+ * it for an energy per cycle. It has none: nobody starts a battery, it follows
+ * the surplus by itself. Same defect as the tablet charger of 0.6.1, one type
+ * further along, and it needed an axis of its own because calling a battery
+ * inflexible would have been untrue (SPEC.md §38.2).
+ */
+const NEVER_ADVISED_TYPES = ['home_battery'];
+
+/**
+ * Advice concepts: they order, time or silence advice, and do nothing else.
+ *
+ * The priority ranks candidates for advice; the noise flag keeps one quiet
+ * during the quiet hours. On an appliance the coach will never mention, both
+ * are questions with no reader — "Normaal" as a priority among nothing, next to
+ * a noise rule that will never be applied (SPEC.md §38.3). The days are already
+ * tied to `is_flexible` and follow the same logic.
+ */
+const ADVICE_CONCEPTS = ['priority', 'is_noisy'];
+
+/**
+ * Fields with no true answer for this type, however anything else is set.
+ *
+ * - a `generic_monitor` is a smart plug. It has no power of its own — it
+ *   measures whatever is plugged into it — and no cycle. All three questions
+ *   are about the appliance behind the plug, which this row is not.
+ * - a `home_battery` has a power worth stating and **no cycle at all**. Its
+ *   power stays asked; only the two cycle fields go.
+ *
+ * Deliberately *not* extended to the heat pump, whose nominal power describes
+ * something real even though nothing reads it yet. Whether we should be asking
+ * for that at all is a separate open question (SPEC.md §37.2), and answering it
+ * by hiding the field here would be deciding it in passing.
+ */
+const MEANINGLESS_BY_TYPE = {
+  generic_monitor: ['nominal_power_w', 'energy_per_cycle_kwh', 'duration_minutes'],
+  home_battery: ['energy_per_cycle_kwh', 'duration_minutes'],
+};
+
+/**
+ * Whether this field is a question about the appliance in front of us.
+ *
+ * Both lists are released the moment the appliance becomes advisable, and that
+ * is what keeps the override from being a dead end: tick "verplaatsbaar in de
+ * tijd" on a smart plug and somebody has said advice should follow, so the
+ * appliance behind the plug is exactly what the power and the cycle describe.
+ * Hiding those by type alone would have left a required field that could not be
+ * filled in — the shape of defect this round exists to remove. A battery can
+ * never become advisable, so for it "while only measured" is simply always.
+ *
+ * **Hidden, not shown-and-disabled.** That is the other agreement in this
+ * project (the control level on Woning, §33.4a), and it is for a field that
+ * becomes answerable in a later release. This is not that: the question is
+ * wrong for this appliance, not early. A hidden field with a value in it is
+ * named out loud before it is dropped, by the same orphan notice that handles
+ * every other type change.
+ */
+function asksSomething(name, draft) {
+  if (isAdvisable(draft)) {
+    return true;
+  }
+  return (
+    !ADVICE_CONCEPTS.includes(name) &&
+    !(MEANINGLESS_BY_TYPE[draft.device_type] || []).includes(name)
+  );
 }
 
 /**
@@ -341,7 +422,11 @@ function schemaFor(draft) {
     { name: 'notes', label: 'Notities', selector: { text: { multiline: true } } },
   ];
 
-  return fields.map((field) => markRequired(field, required));
+  // One filter over the finished list rather than a guard in each builder, so
+  // a field added later cannot slip past it by being defined somewhere else.
+  return fields
+    .filter((field) => asksSomething(field.name, draft))
+    .map((field) => markRequired(field, required));
 }
 
 /**
@@ -458,7 +543,13 @@ function readyBeforeHelper(draft) {
 }
 
 function windowFields(draft) {
-  if (!draft.is_flexible) {
+  // `isAdvisable` rather than `is_flexible` alone, which is strictly narrower:
+  // a window says when advice may be given, so an appliance that gets none has
+  // no use for one. The data quality checklist already reads it that way — the
+  // time-window item stopped applying to a monitor-only appliance in 0.6.1 —
+  // and a home battery made the gap visible: flexible by nature, advised about
+  // never, and still asked on which days it was allowed to run (SPEC.md §38.3).
+  if (!isAdvisable(draft)) {
     return [];
   }
   return [
@@ -630,8 +721,37 @@ function orphanedFields(draft, schema) {
       !asked.has(name) &&
       draft[name] !== undefined &&
       draft[name] !== null &&
-      draft[name] !== '',
+      draft[name] !== '' &&
+      !isDefaultValue(name, draft),
   );
+}
+
+/**
+ * Whether this value is only what the form itself would have filled in.
+ *
+ * Dropping such a value loses nothing — the backend resolves an absent
+ * `is_noisy` or `is_flexible` back to the same type default (`TYPE_DEFAULT` in
+ * `models.py`), and an absent priority back to "normaal" — so warning about it
+ * would name a loss that does not happen.
+ *
+ * It matters from 0.7.1, when the advice fields stopped being asked of an
+ * appliance nobody is advised about. Without this, opening a fresh
+ * `generic_monitor` would announce that its priority and its noise flag are
+ * about to be thrown away, for two values the installer never typed.
+ */
+function isDefaultValue(name, draft) {
+  const defaults = {
+    priority: 'normal',
+    is_noisy: noisyByDefault(draft.device_type),
+    is_flexible: flexibleByDefault(draft.device_type),
+    days_of_week: ['0', '1', '2', '3', '4', '5', '6'],
+    capabilities: [],
+    control_forbidden: false,
+  };
+  if (!(name in defaults)) {
+    return false;
+  }
+  return !differs(draft[name], defaults[name]);
 }
 
 /** The Dutch label of a field, for the sentence about what would be dropped. */
@@ -645,6 +765,14 @@ function labelOf(name) {
     ready_from: 'Niet eerder klaar dan',
     days_of_week: 'Dagen',
     control_forbidden_reason: 'Reden',
+    // The five that stop being asked once an appliance is only measured. They
+    // need names here for the same reason the window fields do: the notice that
+    // says what a save would drop has to say it in words the installer typed.
+    nominal_power_w: 'Nominaal vermogen',
+    energy_per_cycle_kwh: 'Energie per cyclus',
+    duration_minutes: 'Duur van een cyclus',
+    priority: 'Prioriteit',
+    is_noisy: 'Maakt geluid',
   };
   return known[name] || name;
 }
@@ -834,13 +962,21 @@ export const devicesTab = {
     function changeHandler(names) {
       return (part) => {
         const previousType = draft.device_type;
-        for (const name of names) {
+        // A section owns the fields it *declares*, but only renders the ones
+        // that mean something for this draft. Copying back the whole declared
+        // list would read `undefined` for every hidden one and wipe it from
+        // the draft — so changing "verplaatsbaar in de tijd" would silently
+        // throw away the noise flag sitting behind it, and switching the flag
+        // back would not bring it back. Only what is on screen answers here.
+        const rendered = new Set(schemaFor(draft).map((field) => field.name));
+        const owned = names.filter((name) => rendered.has(name));
+        for (const name of owned) {
           if (differs(part[name], draft[name])) {
             touched.add(name);
           }
         }
         const mine = {};
-        for (const name of names) {
+        for (const name of owned) {
           mine[name] = part[name];
         }
         draft = { ...draft, ...mine };
@@ -938,10 +1074,29 @@ export const devicesTab = {
       };
     }
 
+    /**
+     * The one line that says what this appliance is.
+     *
+     * **An appliance nobody is advised about drops the advice words.** It read
+     * "Overig, alleen meten · Normaal · Alleen adviseren": a priority that
+     * orders nothing, next to a control level that says "adviseren" about an
+     * appliance that gets no advice. Three of the four words were noise, and
+     * the two that were left contradicted the first (SPEC.md §38.3).
+     *
+     * What stays is what identifies it — type, where it is, what it draws. The
+     * status line underneath already says it is only measured, so nothing is
+     * lost by leaving that out here.
+     */
     function describeDevice(device) {
       const parts = [TYPE_LABELS[device.device_type] || device.device_type];
       if (device.location) {
         parts.push(device.location);
+      }
+      if (!isAdvisable(draftFrom(device))) {
+        if (typeof device.nominal_power_w === 'number') {
+          parts.push(`${formatNumber(device.nominal_power_w)} W`);
+        }
+        return parts.join(' · ');
       }
       parts.push(PRIORITY_LABELS[device.priority] || device.priority);
       parts.push(CONTROL_MODE_LABELS[device.control_mode] || device.control_mode);
@@ -1092,9 +1247,10 @@ export const devicesTab = {
       const orphans = orphanedFields(draft, schema);
       orphanNotice.set(
         orphans.length
-          ? 'Deze ingevulde gegevens horen niet bij dit apparaattype en ' +
-              `verdwijnen bij opslaan: ${orphans.map(labelOf).join(', ')}. ` +
-              'Zet het type terug om ze te behouden.'
+          ? 'Deze ingevulde gegevens worden voor dit apparaat niet meer ' +
+              `gevraagd en verdwijnen bij opslaan: ${orphans.map(labelOf).join(', ')}. ` +
+              'Zet het apparaattype, "verplaatsbaar in de tijd" of het ' +
+              'bedieningsniveau terug om ze te behouden.'
           : '',
         { tone: 'warning' },
       );

@@ -289,9 +289,16 @@ describe('the flags that follow from the type', () => {
 
     change(panel, { device_type: 'heat_pump' });
 
-    // A heat pump is neither noisy nor flexible by default.
-    assert.equal(form(panel).data.is_noisy, false);
+    // A heat pump is not flexible by default, so it is never advised about.
     assert.equal(form(panel).data.is_flexible, false);
+    // And that is why the noise flag is no longer on screen for it: silence
+    // during the quiet hours is a rule about advice, and there is none here
+    // (SPEC.md §38.3). The default it would have had is still false.
+    assert.ok(!fieldNames(panel).includes('is_noisy'));
+
+    // Tick it flexible and the question means something again.
+    change(panel, { is_flexible: true });
+    assert.equal(form(panel).data.is_noisy, false);
   });
 
   it('never overwrites a flag the installer set by hand', async () => {
@@ -780,6 +787,193 @@ describe('only the questions this type can answer', () => {
   });
 });
 
+describe('nothing is asked of an appliance that only gets measured', () => {
+  it('drops the three consumption questions on a smart plug', async () => {
+    // A `generic_monitor` is the plug, not the appliance in it: it has no
+    // power of its own and no cycle, so all three questions were about
+    // something this row is not (SPEC.md §38.3).
+    const { panel, tab } = await openDevicesTab();
+    buttonIn(tab, 'Apparaat toevoegen').click();
+    await settle();
+
+    change(panel, { device_type: 'generic_monitor' });
+
+    for (const name of ['nominal_power_w', 'energy_per_cycle_kwh', 'duration_minutes']) {
+      assert.ok(!fieldNames(panel).includes(name), `${name} is still asked`);
+    }
+  });
+
+  it('brings them back when the installer says advice should follow', async () => {
+    // The override may not be a dead end. Hiding by type alone would leave a
+    // required field that cannot be filled in, which is the shape of defect
+    // this round removes rather than moves.
+    const { panel, tab } = await openDevicesTab();
+    buttonIn(tab, 'Apparaat toevoegen').click();
+    await settle();
+
+    change(panel, { device_type: 'generic_monitor' });
+    change(panel, { is_flexible: true });
+
+    for (const name of ['nominal_power_w', 'energy_per_cycle_kwh', 'duration_minutes']) {
+      assert.ok(fieldNames(panel).includes(name), `${name} is missing`);
+    }
+  });
+
+  it('asks a battery for no window either', async () => {
+    // Flexible by nature, advised about never. A window says *when* advice may
+    // be given, so on an appliance that gets none it is a question with no
+    // reader — the same rule, one field further along (SPEC.md §38.3).
+    const { panel, tab } = await openDevicesTab();
+    buttonIn(tab, 'Apparaat toevoegen').click();
+    await settle();
+
+    change(panel, { device_type: 'home_battery' });
+
+    assert.equal(form(panel).data.is_flexible, true);
+    assert.ok(!fieldNames(panel).includes('ready_before'));
+    assert.ok(!fieldNames(panel).includes('days_of_week'));
+  });
+
+  it('asks a battery for its power and never for a cycle', async () => {
+    // The power is real — it is what the battery charges at. The cycle is not:
+    // nobody starts a battery, so there is no cycle whose size to state.
+    const { panel, tab } = await openDevicesTab();
+    buttonIn(tab, 'Apparaat toevoegen').click();
+    await settle();
+
+    change(panel, { device_type: 'home_battery' });
+
+    assert.ok(fieldNames(panel).includes('nominal_power_w'));
+    assert.ok(!fieldNames(panel).includes('energy_per_cycle_kwh'));
+    assert.ok(!fieldNames(panel).includes('duration_minutes'));
+  });
+
+  it('drops the advice concepts, and keeps them where advice follows', async () => {
+    const { panel, tab } = await openDevicesTab();
+    buttonIn(tab, 'Apparaat toevoegen').click();
+    await settle();
+
+    // A dishwasher is advised about, so both mean something.
+    assert.ok(fieldNames(panel).includes('priority'));
+    assert.ok(fieldNames(panel).includes('is_noisy'));
+
+    // "Alleen meekijken" is the resident saying no advice, and then a priority
+    // orders nothing and a noise rule silences nothing.
+    change(panel, { control_mode: 'monitor_only' });
+
+    assert.ok(!fieldNames(panel).includes('priority'));
+    assert.ok(!fieldNames(panel).includes('is_noisy'));
+  });
+
+  it('keeps a heat pump its power, which does describe something', async () => {
+    // Whether we should be asking for a figure nothing reads is a separate
+    // open question (SPEC.md §37.2). Answering it by hiding the field here
+    // would be deciding it in passing.
+    const { panel, tab } = await openDevicesTab();
+    buttonIn(tab, 'Apparaat toevoegen').click();
+    await settle();
+
+    change(panel, { device_type: 'heat_pump' });
+
+    assert.ok(fieldNames(panel).includes('nominal_power_w'));
+    assert.ok(fieldNames(panel).includes('energy_per_cycle_kwh'));
+  });
+
+  it('does not announce the loss of a value the form filled in itself', async () => {
+    // A fresh smart plug carries a priority of "normaal" and a noise flag that
+    // came from the type, neither of which the installer typed. Warning that
+    // they are about to be thrown away names a loss that does not happen: the
+    // backend resolves both back to the same defaults.
+    const { panel, tab } = await openDevicesTab();
+    buttonIn(tab, 'Apparaat toevoegen').click();
+    await settle();
+
+    change(panel, { device_type: 'generic_monitor' });
+
+    const warning = noticeTexts(formDialog(panel)).find((t) =>
+      t.includes('verdwijnen bij opslaan'),
+    );
+    assert.ok(!warning, `nothing should be announced, got: ${warning}`);
+  });
+
+  it('does announce a priority the installer chose', async () => {
+    const { panel, tab } = await openDevicesTab();
+    buttonIn(tab, 'Apparaat toevoegen').click();
+    await settle();
+
+    change(panel, { priority: 'high' });
+    change(panel, { control_mode: 'monitor_only' });
+
+    const warning = noticeTexts(formDialog(panel)).find((t) =>
+      t.includes('verdwijnen bij opslaan'),
+    );
+    assert.ok(warning, 'a chosen priority is a real loss and has to be named');
+    assert.match(warning, /Prioriteit/);
+  });
+
+  it('does not wipe a hidden field when its neighbour changes', async () => {
+    // A section owns the fields it declares and renders only the ones that
+    // mean something. Copying the whole declared list back would read
+    // `undefined` for every hidden one: switching "verplaatsbaar in de tijd"
+    // off and on again would silently lose the noise flag beside it.
+    const { panel, tab } = await openDevicesTab();
+    buttonIn(tab, 'Apparaat toevoegen').click();
+    await settle();
+
+    // A dishwasher the installer put in the garage: deliberately not noisy.
+    change(panel, { is_noisy: false });
+    change(panel, { control_mode: 'monitor_only' });
+    assert.ok(!fieldNames(panel).includes('is_noisy'));
+
+    // Move something else in the same section while it is hidden.
+    change(panel, { is_flexible: false });
+    change(panel, { control_mode: 'advice_only' });
+    change(panel, { is_flexible: true });
+
+    assert.equal(form(panel).data.is_noisy, false);
+  });
+});
+
+describe('the row says what the appliance is, not what it is not', () => {
+  it('drops the advice words from an appliance nobody is advised about', async () => {
+    // It read "Overig, alleen meten · Normaal · Alleen adviseren": a priority
+    // that orders nothing, beside a control level claiming advice for an
+    // appliance that gets none (SPEC.md §38.3).
+    const hass = fakeHass({
+      config: sampleConfig({
+        devices: [
+          dishwasher({
+            id: 'm1',
+            name: 'Tabletlader',
+            device_type: 'generic_monitor',
+            is_flexible: false,
+            location: 'Woonkamer',
+            nominal_power_w: 12,
+          }),
+        ],
+      }),
+    });
+    const { tab } = await openDevicesTab(hass);
+
+    const meta = rows(tab)[0].querySelector('.row-meta').textContent;
+
+    assert.equal(meta, 'Overig, alleen meten · Woonkamer · 12 W');
+  });
+
+  it('keeps them where advice does follow', async () => {
+    const hass = fakeHass({
+      config: sampleConfig({ devices: [dishwasher({ location: 'Keuken' })] }),
+    });
+    const { tab } = await openDevicesTab(hass);
+
+    const meta = rows(tab)[0].querySelector('.row-meta').textContent;
+
+    assert.match(meta, /Vaatwasser|Afwasmachine/);
+    assert.match(meta, /Keuken/);
+    assert.match(meta, /Normaal/);
+  });
+});
+
 describe('what the data quality checklist needs', () => {
   it("marks the fields the checklist asks for, the way Home Assistant does", async () => {
     const { panel, tab } = await openDevicesTab();
@@ -990,7 +1184,11 @@ describe('the dialog folds into sections a phone can hold', () => {
     buttonIn(tab, 'Apparaat toevoegen').click();
     await settle();
 
-    for (const type of ['dishwasher', 'home_battery', 'ev_charger', 'heat_pump']) {
+    // Advisable types only. A field is asked of an appliance nobody is advised
+    // about only when it says something about that appliance, so a type that
+    // is never advised would fail this for the right reason and tell us
+    // nothing about section assignment, which is what this test is for.
+    for (const type of ['dishwasher', 'ev_charger', 'generic_schedulable']) {
       change(panel, { device_type: type });
       change(panel, { control_forbidden: true });
 

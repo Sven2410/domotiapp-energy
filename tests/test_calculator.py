@@ -39,6 +39,7 @@ from custom_components.domotiapp_energy.const import (
     CONTROL_MONITOR_ONLY,
     DEVICE_TYPE_DISHWASHER,
     DEVICE_TYPE_GENERIC_MONITOR,
+    DEVICE_TYPE_HOME_BATTERY,
     HOME_CONSUMPTION_BATTERY_UNREADABLE,
     HOME_CONSUMPTION_NO_GRID_READING,
     HOME_CONSUMPTION_SOLAR_UNREADABLE,
@@ -73,6 +74,8 @@ from custom_components.domotiapp_energy.engine.advisor import Advisor
 from custom_components.domotiapp_energy.engine.calculator import Calculator
 from custom_components.domotiapp_energy.engine.completeness import (
     evaluate_completeness,
+    has_movable_load,
+    is_advisable,
 )
 from custom_components.domotiapp_energy.engine.reason_codes import (
     REASON_HIGH_ENERGY_PRICE,
@@ -3058,3 +3061,47 @@ def test_the_checklist_asks_a_device_for_exactly_these_fields() -> None:
     monitored = _score(control_mode=CONTROL_MONITOR_ONLY)
     assert COMPLETENESS_ITEM_DEVICE_PROFILE in monitored.not_applicable_items
     assert COMPLETENESS_ITEM_TIME_WINDOWS in monitored.not_applicable_items
+
+
+async def test_a_home_battery_is_never_asked_for_a_cycle(hass: HomeAssistant) -> None:
+    """A battery has no cycle, and the flexibility flag could not say so.
+
+    The same defect as the tablet charger of 0.6.1, one device type further
+    along, and the reason it needed an axis of its own: a battery **is**
+    flexible — moving energy through time is exactly what it does — so
+    `is_flexible` said yes, the appliance counted as advisable, and the
+    checklist asked it for an energy per cycle it can never have (SPEC.md
+    §38.2).
+
+    Marking it inflexible would have hidden the problem behind a claim that is
+    untrue, so the type carries it instead.
+    """
+    battery = DeviceProfile(id="b1", device_type=DEVICE_TYPE_HOME_BATTERY)
+    config = StoredConfiguration(devices=[battery])
+
+    assert battery.is_flexible is True
+    assert not is_advisable(battery)
+
+    quality = evaluate_completeness(config, EnergySnapshot())
+
+    assert COMPLETENESS_ITEM_DEVICE_PROFILE in quality.not_applicable_items
+    assert COMPLETENESS_ITEM_TIME_WINDOWS in quality.not_applicable_items
+    assert COMPLETENESS_ITEM_DEVICE_PROFILE not in quality.missing_items
+    assert COMPLETENESS_ITEM_TIME_WINDOWS not in quality.missing_items
+
+
+async def test_a_battery_still_counts_as_something_movable(
+    hass: HomeAssistant,
+) -> None:
+    """Not advisable is not the same as not useful.
+
+    `has_movable_load` is a fact about the home — can consumption be moved to
+    the sun — and a battery does that without anybody being advised to. So the
+    solar axis stays switched on, which is the whole reason the battery is in
+    that predicate (SPEC.md §35.4a).
+    """
+    config = StoredConfiguration(
+        devices=[DeviceProfile(id="b1", device_type=DEVICE_TYPE_HOME_BATTERY)]
+    )
+
+    assert has_movable_load(config)

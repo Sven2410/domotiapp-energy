@@ -215,6 +215,85 @@ describe('the list of sources', () => {
   });
 });
 
+describe('the two forecast types nothing reads', () => {
+  it('does not offer them when adding a source', async () => {
+    // A choice in a list, with a helper inviting you to link an entity, that
+    // then counts for nothing anywhere. Offering it was the fault (SPEC.md
+    // §38.1).
+    const { panel, tab } = await openSourcesTab();
+    buttonIn(tab, 'Bron toevoegen').click();
+    await settle();
+
+    const type = schema(panel).find((field) => field.name === 'type');
+    const offered = type.selector.select.options.map((option) => option.value);
+
+    assert.ok(!offered.includes('price_forecast'));
+    assert.ok(!offered.includes('solar_forecast'));
+    // The types that do something are untouched.
+    assert.ok(offered.includes('grid_meter'));
+    assert.ok(offered.includes('solar'));
+  });
+
+  it('leaves an existing row usable, and says what it does', async () => {
+    // Removing the type from the model would quarantine the row instead —
+    // "Onbekend brontype", not used, and nothing the installer can undo. This
+    // is the softer answer the situation deserves.
+    const hass = fakeHass({
+      config: sampleConfig({
+        sources: [
+          {
+            id: 'f1',
+            name: 'Verwachting',
+            type: 'solar_forecast',
+            enabled: true,
+            entity_id: 'sensor.forecast',
+            invalid_reason: null,
+          },
+        ],
+      }),
+    });
+    const { tab } = await openSourcesTab(hass);
+
+    const row = rows(tab)[0];
+
+    assert.match(row.textContent, /Zonverwachting/);
+    assert.doesNotMatch(row.textContent, /Onbekend brontype/);
+    assert.match(row.textContent, /nog niet in gebruik/);
+    // Not a fault: the row is not broken, it is simply not read yet.
+    assert.equal(row.querySelector('.row-status').dataset.tone, 'info');
+  });
+
+  it('keeps the current type selectable so a save cannot rewrite it', async () => {
+    // With its own value missing from the options the select renders empty,
+    // and the first save silently turns the row into whatever was picked.
+    const hass = fakeHass({
+      config: sampleConfig({
+        sources: [
+          {
+            id: 'f1',
+            name: 'Verwachting',
+            type: 'price_forecast',
+            enabled: true,
+            entity_id: 'sensor.forecast',
+            invalid_reason: null,
+          },
+        ],
+      }),
+    });
+    const { panel, tab } = await openSourcesTab(hass);
+    buttonIn(rows(tab)[0], 'Bewerken').click();
+    await settle();
+
+    const type = schema(panel).find((field) => field.name === 'type');
+
+    assert.equal(form(panel).data.type, 'price_forecast');
+    assert.ok(
+      type.selector.select.options.some((option) => option.value === 'price_forecast'),
+    );
+    assert.match(type.helper, /nog niet in gebruik/);
+  });
+});
+
 describe('the dialog', () => {
   it('is closed until something opens it, and is labelled when it opens', async () => {
     const { panel, tab } = await openSourcesTab();
