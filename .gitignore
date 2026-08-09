@@ -39,3 +39,8 @@ node_modules/
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Playwright leaves traces, videos and its HTML report behind after a failure.
+test-results/
+playwright-report/
+blob-report/

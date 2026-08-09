@@ -58,3 +58,17 @@ jobs:
 
       - name: Frontend tests
         run: npm test
+
+      # The layer above jsdom: the panel in a real browser. It answers what
+      # jsdom cannot settle — the cascade, container queries, viewport widths
+      # and the geometry the safe-area insets produce — and it needs no Home
+      # Assistant, so it runs on every push like everything else here.
+      #
+      # It does NOT render ha-form. No check in this workflow does. Whether a
+      # control accepts a click is route 1, run by hand with
+      # scripts/browsertest.ps1 against a live instance.
+      - name: Install Chromium for Playwright
+        run: npx playwright install --with-deps chromium
+
+      - name: Panel layout tests
+        run: npm run test:layout

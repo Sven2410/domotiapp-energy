@@ -1,5 +1,29 @@
 # Changelog
 
+## Nog niet uitgebracht
+
+### Testgereedschap (raakt de integratie niet)
+
+- **Twee Playwright-routes naast de jsdom-laag.** `npm run test:layout` draait het paneel
+  in een echte browser met een gestubde Home Assistant en staat in CI; het beantwoordt wat
+  jsdom niet kan beslissen: de cascade, containerqueries, schermbreedtes en de meetkunde
+  die de safe areas opleveren. `.\scripts\browsertest.ps1` draait tegen de draaiende
+  Home Assistant met echte kliks, en is de enige laag die `ha-form` rendert.
+
+- **Wat elke laag niet kan bewijzen staat in CLAUDE.md**, als tabel. De belangrijkste
+  regel: een groene CI zegt niets over de vraag of een control een klik accepteert. Dat is
+  het gat waar de dagenselector doorheen viel, en het gaat niet dicht met meer tests in
+  een laag die geen controls rendert.
+
+- **Meteen iets gevonden.** Op HA 2026.7 rendert dezelfde zevendaagse multiselector als
+  een rij `ha-input-chip`s — de derde vorm na de combobox en de checkboxes, zonder dat er
+  iets aan onze code veranderde. En het tekstveld is geen `ha-textfield` meer maar
+  `ha-input`/`wa-input`.
+
+- **Bekende grens:** bij 320 CSS-pixels breekt de tabbalk nog naar drie regels. De
+  tightening is op 358px afgestemd (SPEC §39); de test staat daarom op 360 en dit is
+  gemeten, geen aanname.
+
 ## 0.11.0
 
 Eén tegel op je eigen dashboard, in plaats van twee stukken YAML per woning. SPEC §45.
