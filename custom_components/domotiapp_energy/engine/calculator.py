@@ -89,6 +89,7 @@ from custom_components.domotiapp_energy.models import (
     HomeProfile,
     SourceFailure,
     StoredConfiguration,
+    import_price_now,
     without_negative_zero,
 )
 from custom_components.domotiapp_energy.validators import ReadResult, read_entity_value
@@ -116,7 +117,7 @@ class _Readings:
     market_feed_in_price: float | None = None
 
 
-def _stale_minutes(source_type: str) -> int:
+def _stale_minutes(source_type: str) -> int | None:
     """Return how long this kind of source may stay quiet (SPEC.md §47).
 
     A type that is not in the mapping falls back to the measurement window,
@@ -224,6 +225,10 @@ class Calculator:
 
         consumption, consumption_reason = _home_consumption(config, snapshot)
 
+        # One price for every reader, and one place that decides where it
+        # comes from (SPEC.md §48).
+        price_now, price_origin = import_price_now(config.home, snapshot)
+
         data_quality = evaluate_completeness(config, snapshot)
         # One margin, read by the score, by the tile's sentence and — through
         # the metrics — by the advisor's saving. Three readers that used to
@@ -248,7 +253,8 @@ class Calculator:
             solar_surplus_confidence=confidence,
             grid_load_percent=load_percent,
             peak_risk=_peak_risk(config, load_percent),
-            current_price_eur_kwh=snapshot.current_price_eur_kwh,
+            current_price_eur_kwh=price_now,
+            price_origin=price_origin,
             market_price_eur_kwh=snapshot.market_price_eur_kwh,
             feed_in_price_eur_kwh=snapshot.feed_in_price_eur_kwh,
             market_feed_in_price_eur_kwh=snapshot.market_feed_in_price_eur_kwh,
@@ -807,11 +813,7 @@ def self_consumption_margin(
     proven negative" rather than guessing a sign (SPEC.md §35.4d).
     """
     home = config.home
-    import_price = (
-        snapshot.current_price_eur_kwh
-        if home.contract_type == CONTRACT_TYPE_DYNAMIC
-        else home.fixed_import_price_eur_kwh
-    )
+    import_price, _origin = import_price_now(home, snapshot)
     if import_price is None:
         return None
 

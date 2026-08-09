@@ -868,23 +868,56 @@ describe('the actual energy price on the Overzicht', () => {
     assert.match(priceRow(panel).hint, /0,080/);
   });
 
-  it('says a fixed contract has no hourly price rather than leaving it blank', async () => {
+  it('shows the price of a fixed contract instead of refusing to', async () => {
     const panel = await mountPanel(
       fakeHass({
-        coach: sampleCoach({ metrics: { current_price_eur_kwh: 0.3 } }),
+        coach: sampleCoach({
+          metrics: { current_price_eur_kwh: 0.24171, price_origin: 'fixed_tariff' },
+        }),
       }),
     );
 
-    // The sample configuration is on a fixed contract.
-    assert.match(priceRow(panel).value, /Niet van toepassing bij een vast contract/);
+    // The sample configuration is on a fixed contract, and until 0.13.0 this
+    // row answered "Niet van toepassing bij een vast contract" — to a customer
+    // who had filled in exactly what he pays. A fixed contract has a price; it
+    // has no *varying* price, and that is the advice's business (SPEC.md §48).
+    assert.match(priceRow(panel).value, /0,24/);
   });
 
-  it('tells a missing price source apart from a fixed contract', async () => {
+  it('says where the price came from, because the two age differently', async () => {
+    const panel = await mountPanel(
+      fakeHass({
+        coach: sampleCoach({
+          metrics: { current_price_eur_kwh: 0.24171, price_origin: 'fixed_tariff' },
+        }),
+      }),
+    );
+
+    // A measured price keeps itself current; a typed-in tariff survives a
+    // contract change without saying so.
+    assert.match(priceRow(panel).hint, /Vast leveringstarief/);
+  });
+
+  it('tells a missing price source apart from a home that has no price yet', async () => {
     const panel = await mountPanel(
       withPrice({ current_price_eur_kwh: null, market_price_eur_kwh: null }),
     );
 
-    // One of the two is something to go and fix; the other never will be.
+    // A dynamic contract with nothing to read: go and look at the source.
     assert.match(priceRow(panel).value, /Geen bruikbare prijsbron/);
+  });
+
+  it('names both ways out when a fixed contract has no price at all', async () => {
+    const panel = await mountPanel(
+      fakeHass({
+        coach: sampleCoach({
+          metrics: { current_price_eur_kwh: null, market_price_eur_kwh: null },
+        }),
+      }),
+    );
+
+    // Neither a source nor a tariff, so the row says what would answer it —
+    // an empty row with no reason is what sent an installer hunting (SPEC.md §46).
+    assert.match(priceRow(panel).value, /prijsbron of vul het vaste leveringstarief/);
   });
 });

@@ -138,7 +138,7 @@ def read_entity_value(
     hass: HomeAssistant,
     binding: EntityBinding,
     *,
-    stale_after_minutes: int = ENTITY_STALE_AFTER_MINUTES,
+    stale_after_minutes: int | None = ENTITY_STALE_AFTER_MINUTES,
 ) -> ReadResult:
     """Read one entity and return its value in the engine's own unit.
 
@@ -217,7 +217,7 @@ def _is_unusable(raw: Any) -> bool:
 
 
 def _live_state(
-    hass: HomeAssistant, entity_id: str, stale_after_minutes: int
+    hass: HomeAssistant, entity_id: str, stale_after_minutes: int | None
 ) -> State | None:
     """Return the entity's state when it is present and recent enough.
 
@@ -242,6 +242,12 @@ def _live_state(
     state = hass.states.get(entity_id)
     if state is None:
         return None
+    if stale_after_minutes is None:
+        # No window at all, for a value that stays true however old it is: a
+        # forecast made this morning is still this morning's forecast tonight.
+        # The obligation that comes with it lives in the panel — show the age
+        # (SPEC.md §47.4).
+        return state
     age = dt_util.utcnow() - state.last_reported
     if age > timedelta(minutes=stale_after_minutes):
         return None

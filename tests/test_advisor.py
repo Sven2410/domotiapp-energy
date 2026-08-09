@@ -955,7 +955,11 @@ async def test_an_unknown_feed_in_cost_yields_no_amount_at_all(
         feed_in_cost_eur_kwh=None,
     )
     config.devices.append(_device())
-    metrics = _metrics(solar_surplus_w=1500.0)
+    # The metrics carry the price that applies, whatever the contract is: on a
+    # fixed contract that is the entered tariff (SPEC.md 48). Before 0.13.0 the
+    # advisor read that field off the home itself, so this fixture could leave
+    # it out.
+    metrics = _metrics(solar_surplus_w=1500.0, current_price_eur_kwh=0.30)
 
     advice = Advisor().generate(config, metrics)
 
@@ -1121,8 +1125,10 @@ async def test_a_broken_feed_in_source_points_at_the_source(
         EnergySource(id="f1", name="Teruglevering", type=SOURCE_TYPE_FEED_IN_PRICE)
     )
     config.devices.append(_device())
-    # Source linked but unreadable, so the metrics carry no live rate.
-    metrics = _metrics(solar_surplus_w=1500.0)
+    # The feed-in source is linked but unreadable, so there is no live rate;
+    # the import price is the entered tariff, the way the metrics carry it
+    # since SPEC 48.
+    metrics = _metrics(solar_surplus_w=1500.0, current_price_eur_kwh=0.30)
 
     advice = Advisor().generate(config, metrics)
 
