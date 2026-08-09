@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.10.0
+
+Fase 2 van het gereed-venster: het urgentie-advies. SPEC §43.
+
+### Added
+
+- **DomotiApp Energy zegt nu wanneer je moet starten om het te halen.** Heeft een apparaat een
+  deadline en een duur, dan verschijnt een half uur voor de uiterste starttijd: *"Start
+  Vaatwasser nu als hij om 07:00 klaar moet zijn."* Het staat op rang 3 en wint daarmee van
+  zon en prijs — een deadline is hard, wachten op zon is een optimalisatie.
+
+  Geen prognose nodig: je hoeft de toekomst niet te kennen om te weten dat later starten het
+  onhaalbaar maakt.
+
+- **Eén apparaat krijgt één advies.** Een vaatwasser binnen zijn urgentievenster terwijl de
+  zon schijnt leverde twee items over dezelfde machine, allebei met hetzelfde verzoek. De
+  hoogste rang blijft over. Advies over de woning — piek, prijs, veiligheid — wordt niet
+  samengevoegd; twee daarvan kunnen tegelijk waar zijn.
+
+### Wat dit advies bewust nog niet doet
+
+Het weet niet of er werk te doen is: de vlag "de machine is vol" is fase 3. Daarom is de zin
+**voorwaardelijk** en de toon informatief in plaats van een waarschuwing. Een waarschuwing die
+de helft van de tijd over een lege machine gaat, leert mensen waarschuwingen negeren. Met de
+vlag erbij wordt het *"Start Vaatwasser nu om 07:00 te halen"* en een echte waarschuwing.
+
+Het zwijgt ook zodra de deadline niet meer haalbaar is — een half uur eerder dan SPEC §32.3
+voorschreef. Om 04:30 nog zeggen dat hij om 07:00 klaar is, is onwaar voor een cyclus van drie
+uur.
+
 ## 0.9.0
 
 Drie dingen die je vandaag op je scherm zag en die er niet hoorden. SPEC §42.

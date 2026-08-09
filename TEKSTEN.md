@@ -20,7 +20,7 @@ is dit de invoer en niet de uitvoer.
 - **Engelse regels staan apart**, onderaan. Een Engelse zin in dit product is
   een fout tenzij zij een identifier is: de UI is Nederlands (CLAUDE.md).
 
-**798 Nederlandse teksten**, waarvan 109 op meer dan één plek. En 9 Engelse regels om na te lopen.
+**801 Nederlandse teksten**, waarvan 109 op meer dan één plek. En 9 Engelse regels om na te lopen.
 
 
 ## `custom_components/domotiapp_energy/const.py`
@@ -61,33 +61,35 @@ is dit de invoer en niet de uitvoer.
 
 | Tekst | Waar | Regel |
 |---|---|---|
-| Aanvullende gegevens nodig | _advise_missing_data | 164 |
-| De actuele energieprijs is relatief hoog. Stel flexibel energiegebruik indien mogelijk uit. | _advise_price | 550 |
-| De actuele energieprijs is relatief laag. Flexibele apparaten kunnen nu voordeliger worden gebruikt. | _advise_price | 532 |
-| De actuele energiesituatie vraagt momenteel niet om een aanpassing. | _neutral_advice | 568 |
-| De teruglevering ligt dicht bij de ingestelde maximale woningbelasting. Schakel indien mogelijk juist extra verbruikers in om de belasting te verlagen. Let op: terugleveren levert je op dit moment meer op dan zelf verbruiken, dus dit kost je geld. | _advise_peak_risk | 210 |
-| De teruglevering ligt dicht bij de ingestelde maximale woningbelasting. Schakel indien mogelijk juist extra verbruikers in om het overschot zelf te benutten. | _advise_peak_risk | 204 |
-| Dit is een gunstig moment om {...} te gebruiken. | _surplus_message | 376 |
-| Er is momenteel zonneoverschot beschikbaar. | _surplus_message | 375 |
-| Er is momenteel zonneoverschot beschikbaar. {...} maakt geluid en het zijn stille uren tot {...}. Wacht daarmee tot na {...}, of pas de stille uren aan bij Mijn voorkeuren. | _quiet_hours_message | 342 |
-| Geen actie nodig | _neutral_advice | 567 |
-| Het actuele netvermogen ligt dicht bij de ingestelde maximale woningbelasting. Stel extra grootverbruikers indien mogelijk uit. | _advise_peak_risk | 233 |
-| Hoeveel dit oplevert is niet te berekenen zolang de terugleverkosten niet zijn ingevuld — vul ze in bij Woning, of zet ze op 0 als deze aansluiting ze niet betaalt. | _why_no_amount | 498 |
-| Hoeveel dit oplevert is niet te berekenen zolang de terugleverprijsbron geen bruikbare waarde geeft. Controleer die bij Energiebronnen. | _why_no_amount | 487 |
-| Hoeveel dit oplevert is niet te berekenen zolang er geen actuele prijs is. Controleer de prijsbron bij Energiebronnen. | _why_no_amount | 472 |
-| Hoeveel dit oplevert is niet te berekenen zonder de energie per cyclus van {...} — vul die in bij Apparaten. | _why_no_amount | 461 |
-| Hoeveel dit oplevert is niet te berekenen zonder de terugleververgoeding — vul die in bij Woning, of koppel een terugleverprijsbron. | _why_no_amount | 492 |
-| Hoeveel dit oplevert is niet te berekenen zonder het vaste leveringstarief — vul dat in bij Woning. | _why_no_amount | 476 |
-| Hoge energieprijs | _advise_price | 548 |
-| Lage energieprijs | _advise_price | 530 |
-| Netbelasting hoog | _advise_peak_risk | 231 |
-| Teruglevering hoog | _advise_peak_risk | 219 |
-| Vul de ontbrekende energiegegevens aan om een betrouwbaar advies te ontvangen. | _advise_missing_data | 166 |
-| Zonneoverschot beschikbaar ↔ | _advise_solar_surplus | 298 |
-| Zonneoverschot, maar het zijn stille uren | _advise_solar_surplus | 283 |
-| {...} Zelf verbruiken levert nu echter minder op dan terugleveren: {...} nu gebruiken kost naar schatting {...} ten opzichte van het overschot terugleveren. Wachten tot de terugleververgoeding lager ligt is voordeliger. | _surplus_message | 390 |
-| {...} {...} Het levert op dit moment niets extra op, maar het kost ook niets. | _surplus_message | 408 |
-| {...} {...} Zolang de salderingsregeling geldt levert dit geen extra besparing op, maar het overschot zelf gebruiken blijft de meest efficiënte keuze. | _surplus_message | 401 |
+| Aanvullende gegevens nodig | _advise_missing_data | 205 |
+| Bijna te laat om op tijd klaar te zijn | _advise_deadline | 591 |
+| De actuele energieprijs is relatief hoog. Stel flexibel energiegebruik indien mogelijk uit. | _advise_price | 655 |
+| De actuele energieprijs is relatief laag. Flexibele apparaten kunnen nu voordeliger worden gebruikt. | _advise_price | 637 |
+| De actuele energiesituatie vraagt momenteel niet om een aanpassing. | _neutral_advice | 673 |
+| De teruglevering ligt dicht bij de ingestelde maximale woningbelasting. Schakel indien mogelijk juist extra verbruikers in om de belasting te verlagen. Let op: terugleveren levert je op dit moment meer op dan zelf verbruiken, dus dit kost je geld. | _advise_peak_risk | 251 |
+| De teruglevering ligt dicht bij de ingestelde maximale woningbelasting. Schakel indien mogelijk juist extra verbruikers in om het overschot zelf te benutten. | _advise_peak_risk | 245 |
+| Dit is een gunstig moment om {...} te gebruiken. | _surplus_message | 417 |
+| Er is momenteel zonneoverschot beschikbaar. | _surplus_message | 416 |
+| Er is momenteel zonneoverschot beschikbaar. {...} maakt geluid en het zijn stille uren tot {...}. Wacht daarmee tot na {...}, of pas de stille uren aan bij Mijn voorkeuren. | _quiet_hours_message | 383 |
+| Geen actie nodig | _neutral_advice | 672 |
+| Het actuele netvermogen ligt dicht bij de ingestelde maximale woningbelasting. Stel extra grootverbruikers indien mogelijk uit. | _advise_peak_risk | 274 |
+| Hoeveel dit oplevert is niet te berekenen zolang de terugleverkosten niet zijn ingevuld — vul ze in bij Woning, of zet ze op 0 als deze aansluiting ze niet betaalt. | _why_no_amount | 539 |
+| Hoeveel dit oplevert is niet te berekenen zolang de terugleverprijsbron geen bruikbare waarde geeft. Controleer die bij Energiebronnen. | _why_no_amount | 528 |
+| Hoeveel dit oplevert is niet te berekenen zolang er geen actuele prijs is. Controleer de prijsbron bij Energiebronnen. | _why_no_amount | 513 |
+| Hoeveel dit oplevert is niet te berekenen zonder de energie per cyclus van {...} — vul die in bij Apparaten. | _why_no_amount | 502 |
+| Hoeveel dit oplevert is niet te berekenen zonder de terugleververgoeding — vul die in bij Woning, of koppel een terugleverprijsbron. | _why_no_amount | 533 |
+| Hoeveel dit oplevert is niet te berekenen zonder het vaste leveringstarief — vul dat in bij Woning. | _why_no_amount | 517 |
+| Hoge energieprijs | _advise_price | 653 |
+| Lage energieprijs | _advise_price | 635 |
+| Netbelasting hoog | _advise_peak_risk | 272 |
+| Start {...} nu als hij om {...} klaar moet zijn. | _advise_deadline | 593 |
+| Teruglevering hoog | _advise_peak_risk | 260 |
+| Vul de ontbrekende energiegegevens aan om een betrouwbaar advies te ontvangen. | _advise_missing_data | 207 |
+| Zonneoverschot beschikbaar ↔ | _advise_solar_surplus | 339 |
+| Zonneoverschot, maar het zijn stille uren | _advise_solar_surplus | 324 |
+| {...} Zelf verbruiken levert nu echter minder op dan terugleveren: {...} nu gebruiken kost naar schatting {...} ten opzichte van het overschot terugleveren. Wachten tot de terugleververgoeding lager ligt is voordeliger. | _surplus_message | 431 |
+| {...} {...} Het levert op dit moment niets extra op, maar het kost ook niets. | _surplus_message | 449 |
+| {...} {...} Zolang de salderingsregeling geldt levert dit geen extra besparing op, maar het overschot zelf gebruiken blijft de meest efficiënte keuze. | _surplus_message | 442 |
 
 ## `custom_components/domotiapp_energy/engine/calculator.py`
 
@@ -179,27 +181,28 @@ is dit de invoer en niet de uitvoer.
 | Tekst | Waar | Regel |
 |---|---|---|
 | Buiten het toegestane tijdvenster | labels | 13 |
-| De besparing is te klein om te melden | labels | 15 |
+| De besparing is te klein om te melden | labels | 16 |
 | De energieprijs is hoog | labels | 11 |
 | De energieprijs is laag | labels | 10 |
 | De netbelasting is hoog | labels | 8 |
-| De situatie vraagt niet om een aanpassing | labels | 16 |
+| De situatie vraagt niet om een aanpassing | labels | 17 |
 | De teruglevering is hoog | labels | 9 |
+| De uiterste starttijd komt in zicht | labels | 15 |
 | Een gekoppelde entiteit levert geen bruikbare waarde | labels | 6 |
 | Er is een verplaatsbaar apparaat beschikbaar | labels | 12 |
 | Er is zonneoverschot | labels | 7 |
 | Er ontbreken gegevens | labels | 5 |
 | Het is nu stille uren | labels | 14 |
-| all-in prijs in €/kWh ↔ | labels | 31 |
-| de woninggegevens ↔ | labels | 21 |
-| een compleet apparaatprofiel ↔ | labels | 25 |
-| een geldige netbron ↔ | labels | 22 |
-| een geldige zonnebron ↔ | labels | 23 |
-| netbelasting in % ↔ | labels | 32 |
-| netvermogen in W ↔ | labels | 33 |
-| ontbrekende onderdelen ↔ | labels | 35 |
-| tijdvensters voor flexibele apparaten ↔ | labels | 26 |
-| zonneoverschot in W ↔ | labels | 34 |
+| all-in prijs in €/kWh ↔ | labels | 32 |
+| de woninggegevens ↔ | labels | 22 |
+| een compleet apparaatprofiel ↔ | labels | 26 |
+| een geldige netbron ↔ | labels | 23 |
+| een geldige zonnebron ↔ | labels | 24 |
+| netbelasting in % ↔ | labels | 33 |
+| netvermogen in W ↔ | labels | 34 |
+| ontbrekende onderdelen ↔ | labels | 36 |
+| tijdvensters voor flexibele apparaten ↔ | labels | 27 |
+| zonneoverschot in W ↔ | labels | 35 |
 
 ## `custom_components/domotiapp_energy/frontend/core/roles.js`
 

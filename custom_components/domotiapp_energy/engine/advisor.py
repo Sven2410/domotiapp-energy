@@ -23,20 +23,24 @@ from custom_components.domotiapp_energy.const import (
     ADVICE_RANK_PRICE,
     ADVICE_RANK_SAFETY,
     ADVICE_RANK_SOLAR,
+    ADVICE_RANK_TIME_LIMIT,
     CONFIDENCE_HIGH,
     CONFIDENCE_MEDIUM,
     CONTRACT_TYPE_DYNAMIC,
     DEVICE_TYPE_EV_CHARGER,
     MEASUREMENT_GRID_LOAD_PERCENT,
     MEASUREMENT_GRID_POWER_W,
+    MEASUREMENT_MINUTES_LEFT,
     MEASUREMENT_MISSING_ITEMS,
     MEASUREMENT_PRICE,
     MEASUREMENT_SOLAR_SURPLUS_W,
+    MINUTES_PER_DAY,
     MINUTES_PER_HOUR,
     PRIORITIES,
     SEVERITY_INFO,
     SEVERITY_WARNING,
     SOURCE_TYPE_FEED_IN_PRICE,
+    URGENCY_LEAD_MINUTES,
 )
 from custom_components.domotiapp_energy.models import (
     AdviceItem,
@@ -49,6 +53,7 @@ from custom_components.domotiapp_energy.validators import is_within_window
 
 from .completeness import is_advisable
 from .reason_codes import (
+    REASON_DEADLINE_APPROACHING,
     REASON_HIGH_ENERGY_PRICE,
     REASON_HIGH_GRID_EXPORT,
     REASON_HIGH_GRID_LOAD,
@@ -58,6 +63,7 @@ from .reason_codes import (
     REASON_QUIET_HOURS_ACTIVE,
     REASON_SOLAR_SURPLUS_AVAILABLE,
 )
+from .scheduling import latest_start_minutes
 
 # Rank per reason code, following the sort order in SPEC.md §16. Anything not
 # listed sorts as general optimisation.
@@ -70,6 +76,7 @@ _ADVICE_RANKS: dict[str, int] = {
     REASON_MISSING_REQUIRED_DATA: ADVICE_RANK_SAFETY,
     REASON_HIGH_GRID_LOAD: ADVICE_RANK_PEAK,
     REASON_HIGH_GRID_EXPORT: ADVICE_RANK_PEAK,
+    REASON_DEADLINE_APPROACHING: ADVICE_RANK_TIME_LIMIT,
     REASON_SOLAR_SURPLUS_AVAILABLE: ADVICE_RANK_SOLAR,
     # The deferred form of the same advice, so the same rank. It replaces the
     # surplus item rather than joining it, and it says the same thing about the
@@ -135,6 +142,7 @@ class Advisor:
             for rule in (
                 _advise_missing_data,
                 _advise_peak_risk,
+                _advise_deadline,
                 _advise_solar_surplus,
                 _advise_price,
             )
@@ -142,11 +150,44 @@ class Advisor:
         ]
 
         advice = _filter_by_savings(advice, config)
+        advice = _drop_second_advice_per_device(advice)
         advice.sort(key=lambda item: advice_rank(item.reason_code))
 
         if not advice:
             return [_neutral_advice()]
         return advice[: config.preferences.max_advice_count]
+
+
+def _drop_second_advice_per_device(advice: list[AdviceItem]) -> list[AdviceItem]:
+    """Keep one advice per appliance: the most urgent reason it appears for.
+
+    A dishwasher inside its urgency window while the sun is out produced two
+    items about the same machine — *start hem nu voor 07:00* and *er is
+    zonneoverschot, gebruik hem nu*. Both true, both asking for the same
+    action, and one of them is noise.
+
+    The same lesson as the doubled primary advice on the Overzicht (SPEC.md
+    §42.1), one layer up: there the panel printed one item twice, here the
+    engine produced two items about one subject. Rank decides which survives,
+    so the deadline beats the sun and the sun beats the price.
+
+    Advice without an appliance — safety, peak, price, neutral — is never
+    touched: those are about the house, and two of them can be true at once.
+    """
+    # Keyed on identity rather than on the item: AdviceItem is a plain
+    # dataclass, so it compares by value and is not hashable, and two items
+    # that happen to carry the same fields are still two items.
+    best: dict[str, AdviceItem] = {}
+    for item in advice:
+        for device_id in item.related_device_ids:
+            current = best.get(device_id)
+            if current is None or advice_rank(item.reason_code) < advice_rank(
+                current.reason_code
+            ):
+                best[device_id] = item
+
+    kept = {id(item) for item in best.values()}
+    return [item for item in advice if not item.related_device_ids or id(item) in kept]
 
 
 # --- Rules ------------------------------------------------------------------
@@ -499,6 +540,70 @@ def _why_no_amount(context: _Context, device: DeviceProfile) -> str:
         "niet zijn ingevuld — vul ze in bij Woning, of zet ze op 0 als deze "
         "aansluiting ze niet betaalt."
     )
+
+
+def _advise_deadline(context: _Context) -> list[AdviceItem]:
+    """Say when an appliance has to start now to be finished on time.
+
+    **The one advice that needs no forecast.** You do not have to know the
+    future to know that starting later than this makes the deadline
+    unreachable, which is why SPEC.md §32.3 puts it at rank 3 — above solar and
+    price. A deadline is hard; waiting for the sun is an optimisation.
+
+    The window runs from ``latest_start - URGENCY_LEAD_MINUTES`` **to
+    ``latest_start``**, and not on to the deadline itself. §32.3 says "loopt tot
+    de deadline", and that is one moment too late: past the last start the
+    sentence "start nu, dan is hij om 07:00 klaar" is simply false, and there is
+    no other true sentence that helps. Silence there is the same choice §32.3
+    makes after the deadline has passed, for the same reason, taken at the
+    moment the deadline actually becomes unreachable rather than at the moment
+    it formally expires.
+
+    **The phrasing is conditional and the severity is info, both deliberately
+    against the table in §32.3.** That table specifies "Start [naam] nu om
+    [tijd] te halen" as a warning, and it is right — once phase 3 knows there is
+    work to do. Phase 2 has no such signal: `needs_ready_flag` is the next
+    phase, so this rule cannot tell a full dishwasher from an empty one. A
+    nightly warning claiming urgency about an empty machine is the kind of
+    message that teaches people to ignore warnings, so the sentence states the
+    condition it actually knows — *if* you want it finished by then — and the
+    severity waits for the flag that makes the claim true.
+    """
+    now = context.now_minutes
+    lead = URGENCY_LEAD_MINUTES
+    items: list[AdviceItem] = []
+
+    for device in context.config.devices:
+        if not is_advisable(device) or not _allowed_today(device, context):
+            continue
+        latest = latest_start_minutes(device, context.metrics)
+        if latest is None:
+            continue
+        # The window may cross midnight — 03:00 for a 06:00 deadline is the
+        # normal case — so it is compared the same way every other window in
+        # this engine is (SPEC.md §16).
+        if not is_within_window(now, (latest - lead) % MINUTES_PER_DAY, latest):
+            continue
+
+        items.append(
+            AdviceItem(
+                id=f"{REASON_DEADLINE_APPROACHING}:{device.id}",
+                title="Bijna te laat om op tijd klaar te zijn",
+                message=(
+                    f"Start {device.name} nu als hij om {device.ready_before} "
+                    f"klaar moet zijn."
+                ),
+                severity=SEVERITY_INFO,
+                reason_code=REASON_DEADLINE_APPROACHING,
+                confidence=CONFIDENCE_HIGH,
+                related_device_ids=[device.id],
+                measurements={
+                    MEASUREMENT_MINUTES_LEFT: (latest - now) % MINUTES_PER_DAY
+                },
+            )
+        )
+
+    return items
 
 
 def _advise_price(context: _Context) -> list[AdviceItem]:

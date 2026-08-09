@@ -16,7 +16,7 @@ from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 
 DOMAIN: Final = "domotiapp_energy"
 INTEGRATION_NAME: Final = "DomotiApp Energy"
-VERSION: Final = "0.9.0"
+VERSION: Final = "0.10.0"
 
 MANUFACTURER: Final = "DomotiApp"
 DEVICE_MODEL: Final = "Energy Coach"
@@ -937,6 +937,14 @@ ATTR_LAST_CALCULATED: Final = "last_calculated"
 # 1) safety 2) peak load 3) hard time limits 4) solar 5) price 6) general.
 # 0.1.0 has no safety reason code of its own; missing essential data takes that
 # rank, because every other advice below it would rest on incomplete input.
+# How long before the last possible start the urgency advice begins (§32.3).
+#
+# A **fixed constant, not a setting**, on the same reasoning as the hysteresis:
+# it describes how the engine deals with time, not something a customer has an
+# opinion about. Half an hour is enough to walk to the kitchen and not so much
+# that the advice sits there all evening.
+URGENCY_LEAD_MINUTES: Final = 30
+
 ADVICE_RANK_SAFETY: Final = 1
 ADVICE_RANK_PEAK: Final = 2
 ADVICE_RANK_TIME_LIMIT: Final = 3
@@ -953,6 +961,8 @@ ADVICE_RANK_GENERAL: Final = 6
 # them; see MEASUREMENT_PRICE in particular, which is always the normalised
 # all-in price (SPEC.md §16).
 MEASUREMENT_PRICE: Final = "prijs_eur_kwh"
+# Minutes left before the appliance has to start to still be on time (§32.3).
+MEASUREMENT_MINUTES_LEFT: Final = "minuten_tot_uiterste_start"
 MEASUREMENT_GRID_LOAD_PERCENT: Final = "netbelasting_procent"
 MEASUREMENT_GRID_POWER_W: Final = "netvermogen_w"
 MEASUREMENT_SOLAR_SURPLUS_W: Final = "zonneoverschot_w"
