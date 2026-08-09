@@ -4759,15 +4759,28 @@ stond dezelfde ternary op vier plekken: de marge in de calculator, de besparing 
 advisor, het checklistitem in de datakwaliteit, en de rij in het paneel. Dat laatste
 exemplaar is wat een klant zag.
 
-De volgorde:
+**De volgorde hangt af van het contract, en dat is de correctie van 0.13.1.** 0.13.0 liet
+een meting overal winnen van een ingetypt getal, en bij een vast contract is dat verkeerd:
+het Overzicht toonde € 0,306 uit een gekoppelde marktsensor aan een woning die € 0,24171
+betaalt. Onschuldig voor wie weet dat het een testbron is, een onware prijs voor iedereen
+daarna.
 
-1. **Een meting wint van een ingetypt getal.** De bron meet wat de klant nú betaalt; het
-   tariefveld is een uitspraak van het moment waarop het is ingevuld, en het overleeft een
-   contractwijziging zonder te klagen.
-2. **Anders het ingevulde vaste tarief, en alleen bij een vast contract.** Bij een
-   dynamisch contract staat dat veld niet eens in het formulier, dus een waarde die daar
-   nog uit een eerdere contractsoort staat, zou een stil verkeerd getal zijn.
-3. **Anders: onbekend**, en de rij zegt wat het zou beantwoorden.
+1. **Dynamisch contract: de bron, of niets.** De prijs verandert werkelijk per uur en
+   alleen een meting kan dat weten. Geen terugval op het tariefveld, dat in dat formulier
+   niet eens getoond wordt.
+2. **Vast contract: het ingevulde tarief.** Een vast tarief is een *afspraak*, geen meting.
+   Een bron kan om allerlei redenen gekoppeld zijn — de markt volgen, vergelijken, testen —
+   en geen daarvan is wat deze woning betaalt.
+3. **Vast contract met het veld leeg: alsnog de bron.** Een meting is beter dan een lege
+   rij, en de rij zegt waar het bedrag vandaan komt.
+
+**Wat dit kost, eerlijk:** een klant met een vast contract wiens bron werkelijk zijn eigen
+tarief levert — actueler dan het ingetypte getal — krijgt toch het ingetypte getal te zien.
+Dat is bewust: het product kan die bron niet onderscheiden van een marktfeed, en alleen de
+bewoner weet welke van de twee het is. Zijn eigen opgave is dan het betrouwbaarste antwoord
+dat er is, en zij verandert niet stilletjes. Vraagt een echte klant hierom, dan is dat een
+veld op de bron ("dit is mijn werkelijke tarief") — en dat bouwen we wanneer die klant er
+is, niet ervoor.
 
 De metrics dragen naast de prijs ook `price_origin`, want een gemeten prijs houdt zichzelf
 actueel en een ingetypt tarief niet — en alleen de klant weet dat zijn contract veranderd
@@ -4799,3 +4812,26 @@ iets is, of over of het verandert? Alleen het tweede hangt aan de contractsoort.
 en vraagt nu simpelweg of er een prijs is. Een woning met een prijsbron mist geen
 prijsinformatie omdat zij het tariefveld leeg liet — dat was dezelfde fout als §16 over
 niet-toepasselijke eisen: een gat tonen dat de klant niet kan dichten omdat het al dicht is.
+
+### 48.4 Een bron die niets bepaalt, zegt dat
+
+Een prijsbron bij een vast contract is compleet, wordt gelezen, en bepaalt de getoonde prijs
+niet. Dat is precies het patroon van §38: iets dat om aandacht vraagt en niets doet — en
+zonder tekst is het erger dan nutteloos, want het wekt de indruk dat het meetelt.
+
+De prijsrij zegt het daarom zelf: *"Vast leveringstarief, zoals ingevuld bij Woning. De
+gekoppelde prijsbron bepaalt dit bedrag niet."* Twee hele zinnen per situatie, niet één zin
+met een aangeplakte staart (§26).
+
+**Nog open:** dezelfde mededeling hoort ook op de bronrij zelf te staan, waar de installateur
+hem beheert. Dat wacht op de implementatie van §46.
+
+### 48.5 De terugleverbron staat hier los van
+
+**Leveren en terugleveren zijn losse contractdimensies.** Een woning met een vast
+leveringstarief kan wel degelijk een variabele terugleververgoeding hebben — en omgekeerd.
+De terugleverbron is daarom **geen informatieve bijkomstigheid** bij een vast contract: hij
+is de enige manier om te weten wat een teruggeleverde kWh nu oplevert.
+
+De regel van §48.1 gaat dus alleen over de *leveringsprijs*. `feed_in_price` houdt zijn
+eigen weg: bron als die er is, anders het ingevulde bedrag, ongeacht de contractsoort.

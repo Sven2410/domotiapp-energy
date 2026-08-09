@@ -396,7 +396,7 @@ export const overviewTab = {
 
       const market = metrics.market_price_eur_kwh;
       priceRow.set(`${formatPrice(allIn)} per kWh`, {
-        hint: priceHint(metrics, market),
+        hint: priceHint(config, metrics, market),
       });
     }
 
@@ -406,15 +406,29 @@ export const overviewTab = {
      * A measured price keeps itself current; a tariff someone typed in stays
      * the same after a contract change, and only the customer knows that
      * happened.
+     *
+     * And when a price source is linked while the entered tariff is what
+     * counts, the row says that too. A source that is configured, complete and
+     * quietly ignored is the same trap as a field nobody reads: it looks like
+     * it is doing something (SPEC.md §48.4).
      */
-    function priceHint(metrics, market) {
+    function priceHint(config, metrics, market) {
       if (metrics.price_origin === 'fixed_tariff') {
-        return 'Vast leveringstarief, zoals ingevuld bij Woning.';
+        return hasPriceSource(config)
+          ? 'Vast leveringstarief, zoals ingevuld bij Woning. De gekoppelde prijsbron bepaalt dit bedrag niet.'
+          : 'Vast leveringstarief, zoals ingevuld bij Woning.';
       }
       if (market === null || market === undefined) {
         return null;
       }
       return `All-in, afgeleid van een marktprijs van ${formatPrice(market)}.`;
+    }
+
+    /** Whether this home has a price source that the engine actually reads. */
+    function hasPriceSource(config) {
+      return (config?.sources ?? []).some(
+        (source) => source.type === 'current_price' && source.enabled,
+      );
     }
 
     function update(state) {

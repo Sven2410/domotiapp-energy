@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.13.1
+
+De voorrangsregel van 0.13.0 omgedraaid waar zij verkeerd was.
+
+### Fixed
+
+- **Bij een vast contract wint het ingevulde tarief van een gekoppelde prijsbron.** 0.13.0
+  liet een meting overal winnen, en toonde € 0,306 uit een testbron aan een woning die
+  € 0,24171 betaalt. Een vast tarief is een *afspraak*, geen meting; een bron kan om
+  allerlei redenen gekoppeld zijn en geen daarvan is wat de klant betaalt.
+
+  Bij een dynamisch contract blijft de bron leidend — daar verandert de prijs werkelijk per
+  uur. Staat het tariefveld bij een vast contract leeg, dan vult de bron alsnog aan.
+
+- **De rij zegt nu dat een gekoppelde bron het bedrag niet bepaalt.** Een bron die compleet
+  is, gelezen wordt en niets bepaalt, wekt anders de indruk dat hij meetelt (SPEC §48.4).
+
+### Documentatie
+
+- **SPEC §48.5:** de terugleverbron staat hier los van. Leveren en terugleveren zijn losse
+  contractdimensies — een vast leveringstarief sluit een variàbele terugleververgoeding niet
+  uit, dus die bron blijft leidend ongeacht de contractsoort.
+
+- **CLAUDE.md:** Sven tagt pas nadat de merge gemeld is. De release-workflow vergelijkt de
+  tag met de versienummers, niet of die commit op `main` staat.
+
 ## 0.13.0
 
 Een vast contract heeft ook een prijs. SPEC §48.

@@ -167,6 +167,12 @@ geserveerd wordt en de paneelmodule draagt zijn eigen kopie voor de
 cache-busting, dus uiteenlopen levert precies het half-oude paneel op dat het
 versiepad moest voorkomen. `tests/test_panel.py` bewaakt dit.
 
+**Sven tagt pas nadat jij "gemerged" hebt gemeld (afspraak 2026-08-09).** Hij tagde 0.13.0
+terwijl de code nog op een branch stond; de release-workflow was groen, want die vergelijkt
+de tag met `manifest.json` en `const.py` — **niet of die commit op `main` staat**. Was er
+daarna nog iets aan de PR veranderd, dan had de release code bevat die nooit op `main` kwam.
+Meld de merge dus expliciet, dat is het sein.
+
 **Tags en releases maakt Sven zelf.** Bump het versienummer en de CHANGELOG,
 meld dat `main` klaar is om te taggen, en maak nooit zelf een tag of release.
 

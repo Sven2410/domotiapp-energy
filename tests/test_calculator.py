@@ -51,6 +51,8 @@ from custom_components.domotiapp_energy.const import (
     POSITIVE_MEANS_IMPORT,
     PRICE_BASIS_ALL_IN,
     PRICE_BASIS_MARKET,
+    PRICE_ORIGIN_FIXED_TARIFF,
+    PRICE_ORIGIN_SOURCE,
     SCORE_COMPONENT_PRICE,
     SCORE_COMPONENT_SOLAR,
     SCORE_UNAVAILABLE_CHEAP_PRICE,
@@ -3253,3 +3255,79 @@ async def test_a_price_published_once_an_hour_stays_usable(
 
     assert snapshot.market_price_eur_kwh == 0.089
     assert snapshot.current_price_eur_kwh is not None
+
+
+# --- Which price counts (SPEC.md §48.1) --------------------------------------
+
+
+def _fixed_home_with_price_source(tariff: float | None) -> StoredConfiguration:
+    """Return a fixed contract with a price source beside the entered tariff.
+
+    Sven's own installation, 2026-08-09: a Frank Energie sensor linked as a test
+    source for dynamic prices, while the house is really on a fixed contract of
+    € 0,24171.
+    """
+    return StoredConfiguration(
+        home=HomeProfile(
+            contract_type=CONTRACT_TYPE_FIXED,
+            fixed_import_price_eur_kwh=tariff,
+        ),
+        sources=[
+            EnergySource(
+                id="prijs",
+                name="Stroomprijs",
+                type=SOURCE_TYPE_CURRENT_PRICE,
+                price_basis=PRICE_BASIS_ALL_IN,
+                binding=EntityBinding(entity_id="sensor.price", unit=UNIT_EUR_KWH),
+            )
+        ],
+    )
+
+
+async def test_a_fixed_tariff_beats_a_linked_price_source(hass: HomeAssistant) -> None:
+    """What the customer states he pays beats what a sensor happens to report.
+
+    0.13.0 had this the other way round and showed € 0,306 to a house billed
+    € 0,24171. A fixed tariff is an agreement, not a measurement, and a linked
+    source may be there for any reason at all — watching the market, comparing,
+    testing (SPEC.md §48.1).
+    """
+    config = _fixed_home_with_price_source(0.24171)
+    hass.states.async_set("sensor.price", "0.306")
+
+    metrics = Calculator(hass).calculate(config)
+
+    assert metrics.current_price_eur_kwh == 0.24171
+    assert metrics.price_origin == PRICE_ORIGIN_FIXED_TARIFF
+
+
+async def test_a_fixed_contract_without_a_tariff_falls_back_to_the_source(
+    hass: HomeAssistant,
+) -> None:
+    """A reading beats an empty row, and the row says where it came from."""
+    config = _fixed_home_with_price_source(None)
+    hass.states.async_set("sensor.price", "0.306")
+
+    metrics = Calculator(hass).calculate(config)
+
+    assert metrics.current_price_eur_kwh == 0.306
+    assert metrics.price_origin == PRICE_ORIGIN_SOURCE
+
+
+async def test_a_dynamic_contract_never_falls_back_to_the_tariff_field(
+    hass: HomeAssistant,
+) -> None:
+    """The other direction, and it stays as it was.
+
+    On a dynamic contract the price genuinely changes every hour and only a
+    reading can know it. The tariff field is not shown in that form, so a value
+    left behind from an earlier contract type must never surface.
+    """
+    config = _fixed_home_with_price_source(0.24171)
+    config.home.contract_type = CONTRACT_TYPE_DYNAMIC
+    # No state for the sensor at all: the source cannot be read.
+
+    metrics = Calculator(hass).calculate(config)
+
+    assert metrics.current_price_eur_kwh is None
+    assert metrics.price_origin is None
