@@ -28,6 +28,7 @@ from custom_components.domotiapp_energy.const import (
     DEVICE_TYPE_GENERIC_MONITOR,
     DEVICE_TYPE_GENERIC_SCHEDULABLE,
     ENTITY_STALE_AFTER_MINUTES,
+    EXPORT_STALE_MINUTES,
     MAX_ADVICE_COUNT,
     METER_MODE_SEPARATE,
     METER_MODE_SINGLE_SIGNED,
@@ -37,11 +38,16 @@ from custom_components.domotiapp_energy.const import (
     PRICE_BASIS_MARKET,
     SEVERITY_ERROR,
     SEVERITY_WARNING,
+    SOURCE_STALE_MINUTES,
     SOURCE_TYPE_CURRENT_PRICE,
     SOURCE_TYPE_FEED_IN_PRICE,
     SOURCE_TYPE_GRID_METER,
     SOURCE_TYPE_HOME_BATTERY,
     SOURCE_TYPE_SOLAR,
+    SOURCE_TYPES,
+    STALE_AFTER_MINUTES_MEASUREMENT,
+    STALE_AFTER_MINUTES_PRICE,
+    STALE_AFTER_MINUTES_RESTING,
     UNIT_A,
     UNIT_CT_KWH,
     UNIT_EUR_KWH,
@@ -1522,3 +1528,77 @@ async def test_a_source_carries_the_same_agreement(hass: HomeAssistant) -> None:
 
     assert [issue.code for issue in issues] == [VALIDATION_REQUIRED]
     assert issues[0].field == "control_forbidden_reason"
+
+
+# --- How long a source may stay quiet (SPEC.md §47) --------------------------
+#
+# Written from the situation, because the situation is what went wrong: a
+# perfectly healthy home whose price sensor publishes once an hour and whose
+# export sensor reads zero all night was told its sources could not be read.
+# See CLAUDE.md, eighth variant — the old rule made an assumption about the
+# world (every source reports within a quarter of an hour) that no unit test
+# could contradict, because every unit test writes its state a moment before
+# reading it.
+
+
+def test_every_source_type_has_a_staleness_window() -> None:
+    """A new source type must be given a window, with a reason beside it.
+
+    This is the guard that keeps §47 from decaying back into one constant with
+    exceptions: add a type to `SOURCE_TYPES` and forget the window, and this
+    fails rather than silently handing it the strictest number.
+    """
+    missing = [name for name in SOURCE_TYPES if name not in SOURCE_STALE_MINUTES]
+
+    assert not missing, f"no staleness window chosen for {missing} (SPEC.md §47)"
+
+
+def test_the_three_windows_are_ordered_and_distinct() -> None:
+    """Measurement is the strictest, resting the most patient.
+
+    Not decoration: the three exist because they answer the same question for
+    things that behave differently, and a change that collapses two of them
+    into one number is exactly the regression this section is about.
+    """
+    assert STALE_AFTER_MINUTES_MEASUREMENT < STALE_AFTER_MINUTES_PRICE
+    assert STALE_AFTER_MINUTES_PRICE < STALE_AFTER_MINUTES_RESTING
+    assert EXPORT_STALE_MINUTES == STALE_AFTER_MINUTES_RESTING
+
+
+async def test_an_hourly_price_is_not_stale_after_half_an_hour(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """The situation from the first strange installation, in one test.
+
+    A market price is published once an hour and then stands still by design.
+    Under the old single window it was refused for three quarters of every
+    hour, and the panel said "Geen bruikbare prijsbron" about a sensor that was
+    doing exactly what it should.
+    """
+    hass.states.async_set(ENTITY_ID, "0.089")
+    freezer.tick(timedelta(minutes=45))
+
+    refused = read_entity_value(hass, _binding(unit=UNIT_W))
+    accepted = read_entity_value(
+        hass, _binding(unit=UNIT_W), stale_after_minutes=STALE_AFTER_MINUTES_PRICE
+    )
+
+    # The measurement window would still refuse it, and that is right for power.
+    assert refused.ok is False
+    assert accepted.ok is True
+    assert accepted.value == 0.089
+
+
+async def test_a_price_that_really_stopped_is_still_refused(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """The patience has an end, or the rule would protect nothing."""
+    hass.states.async_set(ENTITY_ID, "0.089")
+    freezer.tick(timedelta(minutes=STALE_AFTER_MINUTES_PRICE + 1))
+
+    result = read_entity_value(
+        hass, _binding(unit=UNIT_W), stale_after_minutes=STALE_AFTER_MINUTES_PRICE
+    )
+
+    assert result.ok is False
+    assert result.unavailable is True

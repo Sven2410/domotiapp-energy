@@ -9,7 +9,7 @@ checklist and energy score.
 import math
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 
 import pytest
@@ -41,6 +41,7 @@ from custom_components.domotiapp_energy.const import (
     DEVICE_TYPE_DISHWASHER,
     DEVICE_TYPE_GENERIC_MONITOR,
     DEVICE_TYPE_HOME_BATTERY,
+    EXPORT_STALE_MINUTES,
     HOME_CONSUMPTION_BATTERY_UNREADABLE,
     HOME_CONSUMPTION_NO_GRID_READING,
     HOME_CONSUMPTION_SOLAR_UNREADABLE,
@@ -3136,3 +3137,119 @@ async def test_a_battery_still_counts_as_something_movable(
     )
 
     assert has_movable_load(config)
+
+
+# --- The quiet export sensor (SPEC.md §47.2) ---------------------------------
+
+
+async def test_a_meter_still_reads_when_its_export_entity_is_quiet(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """Familie De Wit, 2026-08-09, and the reason a whole meter mode looked dead.
+
+    A house that feeds nothing back reads a constant zero on its export entity.
+    Integrations that write only when a value changes then leave that entity
+    untouched for hours — and judged by the import window it counted as a
+    sensor that had died, dragging a perfectly fresh import reading down with
+    it. The panel said "een geldige netbron ontbreekt" beside a source row that
+    said "Compleet".
+
+    Half an hour is deliberately chosen: past the measurement window, well
+    inside the resting one.
+    """
+    config = StoredConfiguration(
+        home=HomeProfile(max_grid_power_w=17250.0),
+        sources=[
+            EnergySource(
+                id="meter",
+                name="Slimme meter",
+                type=SOURCE_TYPE_GRID_METER,
+                meter_mode=METER_MODE_SEPARATE,
+                import_entity_id="sensor.power_consumption",
+                export_entity_id="sensor.power_production",
+                binding=EntityBinding(unit=UNIT_KW),
+            )
+        ],
+    )
+
+    hass.states.async_set("sensor.power_production", "0.0")
+    freezer.tick(timedelta(minutes=30))
+    # The import side keeps reporting, the way a meter does.
+    hass.states.async_set("sensor.power_consumption", "3.1")
+
+    snapshot = Calculator(hass).build_snapshot(config)
+
+    assert snapshot.grid_power_w == 3100.0
+    assert snapshot.invalid_source_ids == []
+
+
+async def test_an_export_entity_that_really_died_is_still_refused(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """Patience, not blindness: past the resting window the meter is refused.
+
+    And the refusal names the export entity, because that is the half that went
+    quiet — blaming the import entity would send an installer to the one sensor
+    that is working.
+    """
+    config = StoredConfiguration(
+        home=HomeProfile(max_grid_power_w=17250.0),
+        sources=[
+            EnergySource(
+                id="meter",
+                name="Slimme meter",
+                type=SOURCE_TYPE_GRID_METER,
+                meter_mode=METER_MODE_SEPARATE,
+                import_entity_id="sensor.power_consumption",
+                export_entity_id="sensor.power_production",
+                binding=EntityBinding(unit=UNIT_KW),
+            )
+        ],
+    )
+
+    hass.states.async_set("sensor.power_production", "0.0")
+    freezer.tick(timedelta(minutes=EXPORT_STALE_MINUTES + 1))
+    hass.states.async_set("sensor.power_consumption", "3.1")
+
+    snapshot = Calculator(hass).build_snapshot(config)
+
+    assert snapshot.grid_power_w is None
+    assert [failure.entity_id for failure in snapshot.source_failures] == [
+        "sensor.power_production"
+    ]
+
+
+async def test_a_price_published_once_an_hour_stays_usable(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """The second half of the same evening: the price of this hour is the price.
+
+    Under one shared window this source was refused for three quarters of every
+    hour, and the overview said "Geen bruikbare prijsbron" about a sensor that
+    was publishing exactly as it should.
+    """
+    config = StoredConfiguration(
+        home=HomeProfile(
+            contract_type=CONTRACT_TYPE_DYNAMIC,
+            energy_tax_eur_kwh=0.1088,
+            supplier_markup_eur_kwh=0.0195,
+            vat_percent=21.0,
+        ),
+        sources=[
+            EnergySource(
+                id="prijs",
+                name="Stroomprijs",
+                type=SOURCE_TYPE_CURRENT_PRICE,
+                price_basis=PRICE_BASIS_MARKET,
+                binding=EntityBinding(entity_id="sensor.price", unit=UNIT_EUR_KWH),
+            )
+        ],
+    )
+
+    hass.states.async_set("sensor.price", "0.089")
+    freezer.tick(timedelta(minutes=45))
+
+    snapshot = Calculator(hass).build_snapshot(config)
+
+    assert snapshot.market_price_eur_kwh == 0.089
+    assert snapshot.current_price_eur_kwh is not None

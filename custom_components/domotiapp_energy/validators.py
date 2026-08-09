@@ -134,7 +134,12 @@ class ReadResult:
         )
 
 
-def read_entity_value(hass: HomeAssistant, binding: EntityBinding) -> ReadResult:
+def read_entity_value(
+    hass: HomeAssistant,
+    binding: EntityBinding,
+    *,
+    stale_after_minutes: int = ENTITY_STALE_AFTER_MINUTES,
+) -> ReadResult:
     """Read one entity and return its value in the engine's own unit.
 
     The steps are those of SPEC.md §15, in that order: existence, availability,
@@ -142,18 +147,20 @@ def read_entity_value(hass: HomeAssistant, binding: EntityBinding) -> ReadResult
     unit conversion. A value that fails any step is refused rather than
     replaced — an unavailable meter is not a meter reading zero.
 
-    The age check is the one that only matters against real hardware. Home
-    Assistant keeps the last state of an entity forever, so a meter that stops
-    reporting leaves a number behind that reads as current. Without this the
-    panel showed an hours-old figure with full confidence, and the five-minute
-    safety recalculation kept re-reading the same stale value and finding
-    nothing wrong (SPEC.md §15).
+    The age check exists because Home Assistant keeps the last state of an
+    entity forever, so a meter that stops reporting leaves a number behind that
+    reads as current. Without it the panel showed an hours-old figure with full
+    confidence, and the five-minute safety recalculation kept re-reading the
+    same stale value and finding nothing wrong (SPEC.md §15).
+
+    ``stale_after_minutes`` is the caller's, because how long silence is normal
+    depends on what is being read and not on how it is read (SPEC.md §47).
     """
     entity_id = binding.entity_id
     if entity_id is None:
         return ReadResult.failed(REASON_MISSING_REQUIRED_DATA, "")
 
-    state = _live_state(hass, entity_id)
+    state = _live_state(hass, entity_id, stale_after_minutes)
     if state is None:
         # Removed, renamed or gone quiet. All three are "unavailable" rather
         # than "unreadable": nothing is wrong with how this source is
@@ -209,7 +216,9 @@ def _is_unusable(raw: Any) -> bool:
     return isinstance(raw, str) and raw.strip().lower() in UNUSABLE_ENTITY_STATES
 
 
-def _live_state(hass: HomeAssistant, entity_id: str) -> State | None:
+def _live_state(
+    hass: HomeAssistant, entity_id: str, stale_after_minutes: int
+) -> State | None:
     """Return the entity's state when it is present and recent enough.
 
     **``last_reported``, and neither of the other two.** A house drawing a steady
@@ -221,12 +230,20 @@ def _live_state(hass: HomeAssistant, entity_id: str) -> State | None:
     age on either of the others declares a perfectly healthy meter dead as soon
     as the reading holds still — which is exactly the situation a constant load
     produces.
+
+    **And the window is per kind of source, not one number for all of them.**
+    Until 0.12.0 this was a single fifteen minutes, which is right for power and
+    wrong for everything that legitimately stands still: an hourly price, a
+    forecast, a battery idling at 0 W, the export half of a meter on a windless
+    night. Those sources are only written when they change, so `last_reported`
+    stops moving and a healthy value was refused. The caller passes the window
+    that belongs to what it is reading (SPEC.md §47).
     """
     state = hass.states.get(entity_id)
     if state is None:
         return None
     age = dt_util.utcnow() - state.last_reported
-    if age > timedelta(minutes=ENTITY_STALE_AFTER_MINUTES):
+    if age > timedelta(minutes=stale_after_minutes):
         return None
     return state
 

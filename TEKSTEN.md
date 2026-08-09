@@ -27,19 +27,19 @@ is dit de invoer en niet de uitvoer.
 
 | Tekst | Waar | Regel |
 |---|---|---|
-| Attention | module | 923 |
-| Current advice | module | 920 |
-| Data quality | module | 917 |
+| Attention | module | 985 |
+| Current advice | module | 982 |
+| Data quality | module | 979 |
 | DomotiApp | module | 21 |
 | DomotiApp Energy ↔ | module | 18 |
 | DomotiApp Energy ↔ | module | 39 |
 | Energy Coach | module | 22 |
-| Grid power | module | 918 |
-| Home consumption | module | 922 |
+| Grid power | module | 980 |
+| Home consumption | module | 984 |
 | Mijn woning | module | 29 |
-| Peak risk | module | 921 |
-| Score | module | 916 |
-| Solar surplus | module | 919 |
+| Peak risk | module | 983 |
+| Score | module | 978 |
+| Solar surplus | module | 981 |
 
 ## `custom_components/domotiapp_energy/coordinator.py`
 
@@ -96,7 +96,7 @@ is dit de invoer en niet de uitvoer.
 
 | Tekst | Waar | Regel |
 |---|---|---|
-| Multiple enabled sources of type %r; none of them is used ↔ | _read_sources | 274 |
+| Multiple enabled sources of type %r; none of them is used ↔ | _read_sources | 288 |
 
 ## `custom_components/domotiapp_energy/engine/providers.py`
 
@@ -861,49 +861,49 @@ is dit de invoer en niet de uitvoer.
 
 | Tekst | Waar | Regel |
 |---|---|---|
-| Begin en einde van de stille uren mogen niet gelijk zijn. | validate_preferences | 835 |
-| De begin- en eindtijd van het gereed-venster mogen niet gelijk zijn. | _validate_time_window | 759 |
-| De duur | validate_device_profile | 646 |
-| De energiebelasting kan niet negatief zijn. | validate_home_profile | 335 |
-| De hoge prijsgrens moet boven de lage prijsgrens liggen. | _validate_price_thresholds | 403 |
-| De hoofdzekering moet tussen {...} en {...} ampère liggen. | validate_home_profile | 290 |
-| De minimale besparing kan niet negatief zijn. | validate_preferences | 814 |
-| De prijsbron levert de kale marktprijs. Vul de energiebelasting en de opslag van de leverancier per kWh in; zonder die twee is de all-in prijs niet te berekenen en wordt de prijs niet gebruikt. | _validate_price_components | 882 |
-| De schaalfactor moet groter zijn dan 0. | validate_energy_source | 481 |
-| De terugleverprijsbron levert de kale marktprijs. Vul in wat de leverancier per teruggeleverde kWh inhoudt; zonder dat bedrag is de vergoeding niet te berekenen en wordt de bron niet gebruikt. Vul 0 in als de leverancier niets inhoudt. | _validate_feed_in_components | 918 |
-| De waarschuwingsgrens moet tussen {...} en {...} procent liggen. | validate_home_profile | 306 |
-| Deze bron levert een prijs, maar de eenheid staat op '{...}'. Kies EUR/kWh of ct/kWh. | _validate_unit_matches_type | 441 |
-| Deze bron meet vermogen, maar de eenheid staat op '{...}'. Kies W of kW. Let op: veel slimme-meterintegraties tonen vooral de meterstand in kWh; die is een totaal en geen vermogen, en levert een netbelasting die honderden keren te hoog is. | _validate_unit_matches_type | 427 |
-| Dit bedieningsniveau vraagt om aansturing, maar er is geen besturingsmogelijkheid aangevinkt. Controleer wat deze apparatuur werkelijk ondersteunt. | _validate_control | 695 |
-| Gebruik een geldige tijd in de vorm uu:mm. ↔ | _validate_time_window | 735 |
-| Gebruik een geldige tijd in de vorm uu:mm. ↔ | validate_preferences | 825 |
-| Geef aan of een positieve waarde afname of teruglevering betekent. | _validate_grid_meter | 584 |
-| Geef aan wat deze bron levert: de kale marktprijs of de all-in prijs die de klant betaalt. Zonder die keuze wordt de prijs niet gebruikt. | _validate_price_source | 543 |
-| Geef aan wat deze bron levert: de kale marktprijs of de vergoeding die de klant werkelijk krijgt. Zonder die keuze wordt de terugleververgoeding niet gebruikt. | _validate_price_source | 537 |
-| Het apparaat past niet binnen het opgegeven gereed-venster. | _validate_time_window | 770 |
-| Het apparaattype '{...}' is niet bekend. Kies een geldig type. | validate_device_profile | 616 |
-| Het brontype '{...}' is niet bekend. Kies een geldig type. | validate_energy_source | 459 |
-| Het btw-percentage moet tussen {...} en {...} liggen. | validate_home_profile | 325 |
-| Het energieverbruik per cyclus | validate_device_profile | 644 |
-| Het ingevulde netvermogen ligt boven het theoretische maximum van {...} W ({...} x 230 V x {...} A). Controleer de hoofdzekering. | _validate_max_grid_power | 377 |
-| Het maximale netvermogen moet groter zijn dan 0 W. | _validate_max_grid_power | 365 |
-| Het minimale zonneoverschot kan niet negatief zijn. | validate_home_profile | 344 |
-| Het nominale vermogen | validate_device_profile | 640 |
-| Kies 1 of 3 fasen. | validate_home_profile | 279 |
-| Kies een geldig bedieningsniveau. | validate_device_profile | 635 |
-| Kies een geldige eenheid. | validate_energy_source | 470 |
-| Kies een geldige prioriteit. | validate_device_profile | 626 |
-| Kies een vast of dynamisch contract. | validate_home_profile | 316 |
-| Kies hoe de netmeter meet: één ondertekende waarde of gescheiden afname en teruglevering. | _validate_grid_meter | 563 |
-| Koppel de entiteit die de afname meet. | _validate_grid_meter | 594 |
-| Koppel de entiteit die de teruglevering meet. | _validate_grid_meter | 602 |
-| Koppel een entiteit aan deze bron. ↔ | validate_energy_source | 508 |
-| Koppel een entiteit aan deze bron. ↔ | _validate_grid_meter | 576 |
-| Noteer waarom aansturing hier is uitgesloten, zodat de reden later terug te vinden is. | _validate_control | 709 |
-| Toon minimaal {...} en maximaal {...} adviezen. | validate_preferences | 804 |
-| Voor deze installatie is aansturing uitgesloten. Kies 'alleen monitoren' of 'alleen adviseren'. | _validate_control | 682 |
-| Vul de naam in van het attribuut dat uitgelezen moet worden. | validate_energy_source | 493 |
-| {...} kan niet negatief zijn. | validate_device_profile | 653 |
+| Begin en einde van de stille uren mogen niet gelijk zijn. | validate_preferences | 852 |
+| De begin- en eindtijd van het gereed-venster mogen niet gelijk zijn. | _validate_time_window | 776 |
+| De duur | validate_device_profile | 663 |
+| De energiebelasting kan niet negatief zijn. | validate_home_profile | 352 |
+| De hoge prijsgrens moet boven de lage prijsgrens liggen. | _validate_price_thresholds | 420 |
+| De hoofdzekering moet tussen {...} en {...} ampère liggen. | validate_home_profile | 307 |
+| De minimale besparing kan niet negatief zijn. | validate_preferences | 831 |
+| De prijsbron levert de kale marktprijs. Vul de energiebelasting en de opslag van de leverancier per kWh in; zonder die twee is de all-in prijs niet te berekenen en wordt de prijs niet gebruikt. | _validate_price_components | 899 |
+| De schaalfactor moet groter zijn dan 0. | validate_energy_source | 498 |
+| De terugleverprijsbron levert de kale marktprijs. Vul in wat de leverancier per teruggeleverde kWh inhoudt; zonder dat bedrag is de vergoeding niet te berekenen en wordt de bron niet gebruikt. Vul 0 in als de leverancier niets inhoudt. | _validate_feed_in_components | 935 |
+| De waarschuwingsgrens moet tussen {...} en {...} procent liggen. | validate_home_profile | 323 |
+| Deze bron levert een prijs, maar de eenheid staat op '{...}'. Kies EUR/kWh of ct/kWh. | _validate_unit_matches_type | 458 |
+| Deze bron meet vermogen, maar de eenheid staat op '{...}'. Kies W of kW. Let op: veel slimme-meterintegraties tonen vooral de meterstand in kWh; die is een totaal en geen vermogen, en levert een netbelasting die honderden keren te hoog is. | _validate_unit_matches_type | 444 |
+| Dit bedieningsniveau vraagt om aansturing, maar er is geen besturingsmogelijkheid aangevinkt. Controleer wat deze apparatuur werkelijk ondersteunt. | _validate_control | 712 |
+| Gebruik een geldige tijd in de vorm uu:mm. ↔ | _validate_time_window | 752 |
+| Gebruik een geldige tijd in de vorm uu:mm. ↔ | validate_preferences | 842 |
+| Geef aan of een positieve waarde afname of teruglevering betekent. | _validate_grid_meter | 601 |
+| Geef aan wat deze bron levert: de kale marktprijs of de all-in prijs die de klant betaalt. Zonder die keuze wordt de prijs niet gebruikt. | _validate_price_source | 560 |
+| Geef aan wat deze bron levert: de kale marktprijs of de vergoeding die de klant werkelijk krijgt. Zonder die keuze wordt de terugleververgoeding niet gebruikt. | _validate_price_source | 554 |
+| Het apparaat past niet binnen het opgegeven gereed-venster. | _validate_time_window | 787 |
+| Het apparaattype '{...}' is niet bekend. Kies een geldig type. | validate_device_profile | 633 |
+| Het brontype '{...}' is niet bekend. Kies een geldig type. | validate_energy_source | 476 |
+| Het btw-percentage moet tussen {...} en {...} liggen. | validate_home_profile | 342 |
+| Het energieverbruik per cyclus | validate_device_profile | 661 |
+| Het ingevulde netvermogen ligt boven het theoretische maximum van {...} W ({...} x 230 V x {...} A). Controleer de hoofdzekering. | _validate_max_grid_power | 394 |
+| Het maximale netvermogen moet groter zijn dan 0 W. | _validate_max_grid_power | 382 |
+| Het minimale zonneoverschot kan niet negatief zijn. | validate_home_profile | 361 |
+| Het nominale vermogen | validate_device_profile | 657 |
+| Kies 1 of 3 fasen. | validate_home_profile | 296 |
+| Kies een geldig bedieningsniveau. | validate_device_profile | 652 |
+| Kies een geldige eenheid. | validate_energy_source | 487 |
+| Kies een geldige prioriteit. | validate_device_profile | 643 |
+| Kies een vast of dynamisch contract. | validate_home_profile | 333 |
+| Kies hoe de netmeter meet: één ondertekende waarde of gescheiden afname en teruglevering. | _validate_grid_meter | 580 |
+| Koppel de entiteit die de afname meet. | _validate_grid_meter | 611 |
+| Koppel de entiteit die de teruglevering meet. | _validate_grid_meter | 619 |
+| Koppel een entiteit aan deze bron. ↔ | validate_energy_source | 525 |
+| Koppel een entiteit aan deze bron. ↔ | _validate_grid_meter | 593 |
+| Noteer waarom aansturing hier is uitgesloten, zodat de reden later terug te vinden is. | _validate_control | 726 |
+| Toon minimaal {...} en maximaal {...} adviezen. | validate_preferences | 821 |
+| Voor deze installatie is aansturing uitgesloten. Kies 'alleen monitoren' of 'alleen adviseren'. | _validate_control | 699 |
+| Vul de naam in van het attribuut dat uitgelezen moet worden. | validate_energy_source | 510 |
+| {...} kan niet negatief zijn. | validate_device_profile | 670 |
 
 ## `custom_components/domotiapp_energy/websocket_api.py`
 

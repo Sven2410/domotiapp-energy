@@ -16,7 +16,7 @@ from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 
 DOMAIN: Final = "domotiapp_energy"
 INTEGRATION_NAME: Final = "DomotiApp Energy"
-VERSION: Final = "0.11.1"
+VERSION: Final = "0.12.0"
 
 MANUFACTURER: Final = "DomotiApp"
 DEVICE_MODEL: Final = "Energy Coach"
@@ -315,6 +315,70 @@ SOURCE_TYPES: Final[tuple[str, ...]] = (
     SOURCE_TYPE_HOME_BATTERY,
     SOURCE_TYPE_GENERAL_CONSUMPTION,
 )
+
+# --- How long a source may stay quiet (SPEC.md §47) -------------------------
+#
+# A reading that is old enough keeps its last value forever, so without a limit
+# the panel shows an hours-old number with full confidence. That was one
+# constant of 15 minutes until 0.12.0, and one constant was wrong: it took an
+# assumption that only holds for meters and applied it to everything.
+#
+# **The window answers one question per kind of source: how long may this
+# source stay silent before silence is suspicious?** For power that is minutes;
+# for an hourly price it is more than an hour; for a value that legitimately
+# rests on the same number half the night it is hours.
+#
+# Every entry carries its reason, and `SOURCE_STALE_MINUTES` covers every
+# member of `SOURCE_TYPES` — `test_every_source_type_has_a_staleness_window`
+# fails when a new type arrives without one, so the choice cannot be skipped.
+
+# Power moves continuously. A quarter of an hour old is not a measurement of
+# now, and acting on it is exactly the safety problem this rule exists for.
+STALE_AFTER_MINUTES_MEASUREMENT: Final = 15
+# A market price is published per hour and then stands still by definition. One
+# hour plus half an hour of margin for a late publication; anything shorter
+# refuses a perfectly current price for most of every hour, which is what
+# happened to the first customer configuration that used one.
+STALE_AFTER_MINUTES_PRICE: Final = 90
+# Values that may legitimately hold the same number for hours: a battery idling
+# at 0 W, or the export half of a meter on a windless night. Four hours still
+# catches an entity that died, without calling a quiet night a fault.
+STALE_AFTER_MINUTES_RESTING: Final = 240
+
+# Kept as the default for anything read without an explicit window, and as the
+# name older code and SPEC §15 refer to.
+
+# How long each kind of source may stay quiet, in minutes (SPEC.md §47).
+#
+# **A new source type must be given a window here, with its reason.** The
+# guard test walks `SOURCE_TYPES`, so leaving one out fails the suite rather
+# than silently inheriting a number that was chosen for something else. That is
+# the whole point of a mapping instead of one constant with exceptions.
+SOURCE_STALE_MINUTES: Final[dict[str, int]] = {
+    # Power, straight from a meter or inverter.
+    SOURCE_TYPE_GRID_METER: STALE_AFTER_MINUTES_MEASUREMENT,
+    SOURCE_TYPE_SOLAR: STALE_AFTER_MINUTES_MEASUREMENT,
+    SOURCE_TYPE_GENERAL_CONSUMPTION: STALE_AFTER_MINUTES_MEASUREMENT,
+    # Published per hour and then constant, by design.
+    SOURCE_TYPE_CURRENT_PRICE: STALE_AFTER_MINUTES_PRICE,
+    SOURCE_TYPE_FEED_IN_PRICE: STALE_AFTER_MINUTES_PRICE,
+    SOURCE_TYPE_PRICE_FORECAST: STALE_AFTER_MINUTES_PRICE,
+    # A forecast is refreshed a few times a day; treating it as a measurement
+    # would throw away a perfectly good one every afternoon.
+    SOURCE_TYPE_SOLAR_FORECAST: STALE_AFTER_MINUTES_PRICE,
+    # A battery that is neither charging nor discharging reports 0 W and, on a
+    # report-on-change integration, says nothing more for hours.
+    SOURCE_TYPE_HOME_BATTERY: STALE_AFTER_MINUTES_RESTING,
+}
+
+# The export half of a meter with separate entities is judged on its own, and
+# more leniently than the import half: a house that feeds nothing back reads a
+# constant zero all night, and on a report-on-change integration that entity
+# goes quiet. Weighing the two together let a legitimate zero pull down a
+# perfectly fresh import reading, which is how a whole meter mode looked dead
+# (SPEC.md §47.2).
+EXPORT_STALE_MINUTES: Final = STALE_AFTER_MINUTES_RESTING
+
 
 # The source types that report a price per kWh and therefore need a
 # `price_basis`. Both are normalised on reading, each by its own formula.
@@ -870,11 +934,9 @@ SOLAR_SURPLUS_RELEASE_FRACTION: Final = 0.8
 # Once a primary advice is shown it stays for at least this long, unless a more
 # urgent one arrives or the data stops supporting it (see engine/hysteresis.py).
 PRIMARY_ADVICE_MIN_DWELL_SECONDS: Final = 60.0
-# A measurement older than this is refused. An entity that quietly stops
-# reporting keeps its last state forever, so without this the panel shows an
-# hours-old number with full confidence and the safety recalculation re-reads
-# the same stale value without noticing anything (SPEC.md §15).
-ENTITY_STALE_AFTER_MINUTES: Final = 15
+# The default for anything read without an explicit window, and the name
+# SPEC.md §15 refers to.
+ENTITY_STALE_AFTER_MINUTES: Final = STALE_AFTER_MINUTES_MEASUREMENT
 
 # --- Entities (SPEC.md §19) -------------------------------------------------
 

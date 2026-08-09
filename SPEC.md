@@ -4636,3 +4636,97 @@ de tegel vanzelf. Dat is een eigen beslissing en staat hier alleen genoteerd.
 regel: voor een reeks situaties geldt dat `on` impliceert dat de geciteerde reden er een
 is waar iemand iets aan kan doen. Een test per situatie zou dit defect niet gevangen
 hebben — elke situatie die 0.11.0 toevallig toetste, had de twee het eens.
+
+
+## 46. Een status zegt wat er uitkomt, niet of het formulier vol is
+
+**Aanleiding: de eerste dag bij een vreemde woning, 2026-08-09.** De bronrij zei
+*Compleet* terwijl het Overzicht zei dat er geen geldige netbron was, en de reden stond
+alleen in het Home Assistant-logboek. De installateur zag twee schermen die elkaar
+tegenspraken en geen enkele plek die het uitlegde.
+
+Dat is dezelfde fout als bij de aandachtstegel (§45.6), één laag lager. Daar kwam de kleur
+uit het ene object en de zin uit het andere; hier komt de status uit de *configuratie* en
+de werkelijkheid uit de *meting*.
+
+### 46.1 De regel
+
+> **Een rij, tegel of scherm mag geen "compleet", "in orde" of "actief" heten wanneer er
+> niets uitkomt. De status volgt wat er werkelijk uit de bron komt, niet of het formulier
+> is ingevuld.**
+>
+> **En wat de status bepaalt, levert ook de uitleg.** Staat er een afwijking, dan staat de
+> reden op hetzelfde scherm, in dezelfde woorden, uit dezelfde bron. Een reden die alleen
+> in het logboek staat, bestaat niet voor de installateur.
+
+Beide helften zijn nodig. De eerste voorkomt een geruststelling die niet klopt; de tweede
+voorkomt dat de gebruiker met een probleem achterblijft dat hij niet kan plaatsen.
+
+### 46.2 Dit geldt ook voor wat er nog niet is
+
+Deze regel is met opzet niet geschreven als "de bronrij krijgt een derde toestand". Hij
+geldt voor **elke status die dit product toont of nog gaat tonen**: de apparaatrij, de
+sectie `Nu aangestuurd` uit §44.4, elke toekomstige tegel, en elke samenvatting die met
+één woord over meerdere dingen oordeelt.
+
+De toets bij het bouwen van zo'n status, in één vraag:
+
+> **Kan dit woord waar zijn terwijl het onderliggende ding niets doet?** Zo ja, dan meet
+> het de verkeerde zaak.
+
+### 46.3 Wat de bronrij concreet toont
+
+Drie toestanden, en de derde is nieuw:
+
+| Toestand | Wanneer | Wat erbij staat |
+|---|---|---|
+| **Niet compleet** | de configuratie mist iets | welk veld ontbreekt |
+| **Compleet, maar levert nu niets** | alles ingevuld, geen bruikbare waarde | de reden, in de woorden van de `SourceFailure` die nu al naar het logboek gaat |
+| **Compleet** | er komt een waarde uit | — |
+
+De reden komt uit dezelfde `SourceFailure` als de logboekregel. Eén bron, twee lezers.
+
+## 47. Hoe lang een bron stil mag zijn
+
+**Aanleiding: dezelfde avond.** Eén constante van vijftien minuten (`last_reported`)
+weigerde een prijssensor die per uur publiceert en een terugleversensor die 's nachts
+terecht op 0 staat. De regel deed exact wat er ontworpen was; het ontwerp nam iets over de
+wereld aan dat niet voor alle bronnen geldt. Zie CLAUDE.md, achtste variant.
+
+### 47.1 Drie vensters, elk met zijn reden
+
+Het venster beantwoordt per soort bron één vraag: **hoe lang mag deze bron stil zijn
+voordat stilte verdacht is?**
+
+| Venster | Minuten | Voor | Waarom dit getal |
+|---|---|---|---|
+| **Meting** | 15 | netmeter, zonnepanelen, algemeen verbruik, apparaatvermogen | vermogen beweegt continu; een kwartier oud is geen meting van nu, en daarop handelen is precies het veiligheidsprobleem waarvoor deze regel bestaat |
+| **Prijs** | 90 | actuele prijs, terugleververgoeding, prijsprognose, zonprognose | een marktprijs wordt per uur gepubliceerd en staat daarna per definitie stil; één uur plus een half uur marge voor een late publicatie |
+| **Rustend** | 240 | thuisbatterij, en de terugleverhelft van een gescheiden meter | mag legitiem uren dezelfde waarde houden — een batterij die niets doet, een windstille nacht. Vier uur vangt een entiteit die echt gestorven is, zonder een rustige nacht een storing te noemen |
+
+**Waarom niet één constante met uitzonderingen:** dan verdwijnt de reden. Het getal 15
+was ooit gekozen voor een meter en werd stilzwijgend het antwoord voor een prijs. Drie
+genoemde vensters met elk een verdediging maken zichtbaar wanneer een nieuwe bron bij geen
+van drieën past.
+
+### 47.2 De twee helften van een gescheiden meter worden apart gewogen
+
+De **import**helft krijgt het metingsvenster, de **export**helft het rustende. Een woning
+die niets teruglevert leest een constante nul, en een integratie die alleen bij verandering
+schrijft laat die entiteit uren met rust. Samen gewogen trok die legitieme nul een
+kerngezonde importmeting mee omlaag — en daarmee leek de hele metermodus dood, terwijl de
+rij *Compleet* zei.
+
+Wordt de exporthelft ná dat ruimere venster nog steeds geweigerd, dan noemt de melding
+**de exportentiteit**: de helft die werkelijk stil is, niet degene die het goed doet.
+
+### 47.3 Een nieuw brontype: verplicht kiezen
+
+`SOURCE_STALE_MINUTES` dekt elk lid van `SOURCE_TYPES`, en
+`test_every_source_type_has_a_staleness_window` faalt zodra dat niet meer zo is.
+
+**Bij een nieuw brontype hoort dus één beslissing, met de reden ernaast in de mapping:**
+past hij bij een meting, bij een prijs, of bij iets dat mag rusten? Past hij bij géén van
+drieën, dan is dat het bewijs dat er een vierde venster nodig is — met zijn eigen
+verdediging in de tabel hierboven. Wat níét mag: hem stil laten erven van een getal dat
+voor iets anders gekozen is. Dat is precies hoe dit ontstond.
