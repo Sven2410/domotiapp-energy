@@ -3563,6 +3563,8 @@ worden (§12), en ze vragen de installateur niet om iets in te vullen:
 - `capabilities` op bron en apparaat — alleen gevalideerd, nooit gebruikt;
 - `control_forbidden_reason` — wordt getoond in de lijst, maar door de motor niet gelezen;
 - `control_level` op de woning — staat uitgeschakeld in het formulier met uitleg erbij.
+  **§44.9 stelt voor hem het plafond van de woning te maken**, en geeft hem daarmee zijn
+  lezer: de modus van een apparaat kan er dan nooit boven uit.
 
 #### Geen lezer, en dat is goed
 
@@ -4252,8 +4254,14 @@ het staan tot het venster sluit.
 
 **Die ratel wordt nu niet gebouwd.** Er is niets dat hem kan bewegen, en een mechanisme voor
 een geval dat nog niet bestaat is precies het soort ongelezen machinerie dat §38 heeft
-opgeruimd. Hij hoort in de laadpaalronde, en hij staat hier opgeschreven zodat die ronde niet
-opnieuw voor hysterese kiest.
+opgeruimd. Hij staat hier opgeschreven zodat er later niet opnieuw voor hysterese gekozen
+wordt.
+
+> **Bijgesteld door §44.8.** Hij hoort niet in de laadpaalronde maar in de
+> aansturingsrelease, en hij is daar geen verfijning maar een **voorwaarde**: klappert het
+> advies terwijl er aangestuurd wordt, dan schakelt de laadpaal mee met de ruis op een
+> laadtoestandsmeting. Dat is hardware die aan- en uitgaat op meetruis, een andere orde van
+> fout dan een zin die heen en weer springt.
 
 ### 43.4 Eén apparaat, één advies
 
@@ -4290,3 +4298,179 @@ betalen voor het verkeerde zelfstandig naamwoord.
   een adviesvraag.
 - **Prognose.** Dit advies vereist er geen: je hoeft de toekomst niet te kennen om te weten
   dat later starten de deadline onhaalbaar maakt (§32.3).
+
+## 44. De sturingsindeling: waar de knoppen komen te staan
+
+**Status: ontwerp, alleen papier.** Er wordt in deze ronde niets gebouwd. De aansturing is een
+eigen release met een eigen spec; dit legt vast **waar** de handelingen in het paneel landen,
+zodat die release niet ook nog de indeling hoeft uit te vinden.
+
+Nu geschreven omdat §33 en §34 vers zijn. De rolindeling en de laadpaal zijn precies de twee
+stukken waarop dit rust, en die redenering opnieuw maken over drie ronden kost meer dan haar
+nu opschrijven.
+
+### 44.1 Eén regel waar de rest uit volgt
+
+> **De handeling hoort bij de aanleiding.**
+
+Een knop die iets doet, staat waar de reden staat om het te doen. Niet in een menu, niet op een
+apart tabblad, niet in een lijst met alle apparaten die je zou kunnen bedienen.
+
+Dat is dezelfde keuze als bij de zinnen: een tegel die zegt *waarom* er geen cijfer is, is
+bruikbaar waar een streepje dat niet is (§35.9). Een knop volgt hetzelfde: *"Start Vaatwasser
+nu als hij om 07:00 klaar moet zijn"* met de startknop eronder is één gedachte; dezelfde knop
+op een bedieningspagina is een gedachte die de bewoner zelf moet afmaken.
+
+### 44.2 Geen eigen tabblad
+
+**De toestemming blijft op Apparaten, bij het apparaat waar zij over gaat.**
+
+Een tabblad `Aansturing` zou een vierde plek maken waar iets over een apparaat staat — naast
+Apparaten, het advies en de rij op het Overzicht — en het zou de indeling omdraaien: van "wat
+weet ik over dit apparaat" naar "wat kan ik allemaal bedienen". Dat tweede is een dashboard, en
+§8 heeft die vorm bewust afgewezen.
+
+Het houdt ook de zes tabbladen op zes, voor beide rollen (§33.6). Dat is geen esthetiek maar de
+telefoongesprekafspraak: *"ga naar Apparaten, open de vaatwasser"* moet één zin blijven die
+voor de installateur en de bewoner hetzelfde betekent.
+
+Op Apparaten staan dus, ongewijzigd: `control_mode` (bewoner), `capabilities` en
+`control_forbidden` met zijn reden (installateur), met het veto uit §33.11 erop.
+
+### 44.3 Waar de handelingen landen
+
+| Handeling | Waar | Waarom daar |
+|---|---|---|
+| **Start nu** | onder het advies dat erom vraagt, op Overzicht én in Energiecoach | de aanleiding staat er al; de knop maakt hem afmaakbaar |
+| **Klaar / vol** (`set_ready`) | onder hetzelfde advies, en op Apparaten bij het apparaat | twee momenten waarop een bewoner eraan denkt (§44.5) |
+| **Stop** | in `Nu aangestuurd` op het Overzicht | wie wil stoppen, zoekt niet in een apparaatlijst |
+| **Goedkeuren** | onder het advies dat om goedkeuring vraagt | `approval_required` ís een advies met een knop (§44.6) |
+
+**Een knop verschijnt nooit bij een apparaat waarvoor `control_forbidden` geldt.** Niet
+uitgegrijsd, niet met een uitleg: helemaal niet. Uitgrijzen is voor iets dat later
+beantwoordbaar wordt (§33.4a); dit is een afspraak met deze klant, en een zichtbare knop zou
+suggereren dat er over te praten valt. De reden staat wél op Apparaten, waar de afspraak staat.
+
+### 44.4 "Nu aangestuurd": één sectie, één knop per apparaat
+
+Op het Overzicht, onder `Actuele situatie`. Per apparaat dat DomotiApp op dit moment
+aanstuurt: **wat**, **sinds wanneer**, **waarom** (in de woorden van het advies dat het
+veroorzaakte), en één **Stop**.
+
+**De sectie bestaat op grond van de configuratie, niet van het moment** — dezelfde regel als
+§39.3. Zij staat er zodra deze woning ten minste één apparaat in een aansturende modus heeft,
+en zegt dan *"Er wordt op dit moment niets aangestuurd."* wanneer er niets loopt. Zou de sectie
+pas verschijnen zodra er iets draait, dan is "waar zit de stopknop" een vraag die de bewoner
+voor het eerst stelt op het moment dat hij hem nodig heeft.
+
+Heeft de woning geen enkel aanstuurbaar apparaat, dan is er geen sectie. Dat is de andere helft
+van dezelfde regel: geen tekortkoming tonen die deze woning niet kan opheffen.
+
+### 44.5 Wat "stoppen" betekent — en dit is de beslissing die het meeste vastlegt
+
+Drie dingen die het níét betekent, en één dat het wel betekent.
+
+| Niet | Waarom niet |
+|---|---|
+| het apparaat uitzetten | het kan al gedraaid hebben voordat DomotiApp iets deed |
+| de aansturing uitschakelen | dat is een instelling, en die staat op Apparaten |
+| alles tegelijk stoppen | één knop voor meerdere apparaten is een knop waarvan je de gevolgen niet ziet |
+
+**Wel: draai terug wat DomotiApp zelf heeft gedaan, en geef het apparaat terug aan de bewoner.**
+
+Daaruit volgt een tweede vraag die makkelijk over het hoofd te zien is: **wat gebeurt er direct
+daarna?** De situatie die de start veroorzaakte is nog steeds waar — er is nog overschot, de
+deadline nadert nog — dus zonder verdere regel start DomotiApp het apparaat binnen één cyclus
+opnieuw, en is de stopknop een knop die niets doet.
+
+Dus: **stoppen onderdrukt de aansturing van dát apparaat**, tot het einde van zijn
+gereed-venster, of vier uur wanneer het er geen heeft. Dezelfde soort houdbaarheidstermijn als
+`READY_FLAG_MAX_AGE_HOURS` (§32.6) en om dezelfde reden: het is een uitspraak over een
+*intentie* van nu, niet over de machine. Het paneel noemt het moment waarop de onderdrukking
+afloopt, zodat niemand erdoor verrast wordt — net zoals bij de vlag.
+
+### 44.6 `set_ready` op twee plekken, en `approval_required` op één
+
+**`set_ready` staat op twee plekken en dat is bewust geen duplicatie.** Het zijn de twee
+momenten waarop een bewoner erover nadenkt:
+
+1. **onder het advies** — hij leest *"start nu om 07:00 te halen"* en denkt "hij is niet vol";
+2. **op Apparaten, bij het apparaat** — hij ruimt de keuken op en zet hem aan het einde vol.
+
+Dezelfde handeling, hetzelfde commando, twee aanleidingen. Eén ervan weglaten betekent dat de
+bewoner op het verkeerde moment moet onthouden waar de andere staat.
+
+**`approval_required` is geen aparte modus in de indeling maar een advies met een knop.** De
+coach zegt wat hij wil doen en waarom, en de knop eronder zegt ja. Dat is precies de vorm die
+er al staat, dus het kost geen nieuw scherm — en het houdt de belofte van §12 overeind dat de
+drie waarheden (wat kan, wat gewild wordt, wat is afgesproken) gescheiden blijven: goedkeuren
+verandert niets aan de configuratie.
+
+### 44.7 Het logboek is vanaf de aansturing niet meer optioneel
+
+Vandaag is het logboek prettig. Zodra DomotiApp een apparaat aanzet, is het het antwoord op
+*"waarom draaide mijn droger om 03:00?"* — en dat is een vraag die één keer per klant komt en
+dan meteen om een antwoord vraagt dat klopt.
+
+Elke aansturing is een regel: wat, welk apparaat, welke reason code, welke gebruiker als er een
+was, en of het gelukt is. **Ook een mislukte poging**, want een apparaat dat niet reageerde is
+precies wat iemand komt navragen. De anti-spamregel uit §8 geldt hier niet: twee keer starten
+is twee gebeurtenissen, geen herhaling.
+
+### 44.8 De ratel hoort hier, en zij verandert van aard
+
+§43.3 parkeerde de ratel als weergavevraag: zodra `required_duration_minutes` de laadtoestand
+leest, beweegt de laatste start mee met een ruisende meting en kan het urgentie-advies gaan
+klapperen. Een drempel met losmarge is daar het verkeerde gereedschap omdat een deadline één
+keer gepasseerd wordt; wat er hoort is een ratel — eenmaal gevuurd voor dit apparaat in dit
+venster, blijft staan tot het venster sluit.
+
+**Met aansturing is dat geen weergavevraag meer.** Klappert het advies, dan klappert de
+handeling: de laadpaal gaat aan en uit met de ruis op een laadtoestandsmeting mee. Dat is
+hardware die schakelt op meetruis, en dat is een andere orde van fout dan een zin die
+heen en weer springt.
+
+Daarom hoort de ratel in deze sectie thuis: **hij is een voorwaarde voor aansturing, niet een
+verfijning van het advies.** De aansturingsrelease bouwt hem, niet de laadpaalronde — en zeker
+niet de hysterese-machinerie, die voor drempels is en niet voor klokken.
+
+Concreet, als eis: *geen aansturing van een apparaat op grond van een deadline zonder een ratel
+die de beslissing vasthoudt tot het venster sluit.*
+
+### 44.9 Twee beslissingen die aan Sven zijn
+
+**1. Wordt `control_level` op de woning de hoofdschakelaar?**
+
+`control_mode` is een bewonersveld (§33.4) en dat is met reden zo besloten: het is zijn
+apparaat en zijn uitknop. Zolang alles behalve `monitor_only` als `advice_only` behandeld wordt,
+is dat onschadelijk — de bewoner kan *automatisch aansturen* kiezen en er gebeurt niets.
+
+**Zodra er wél iets gebeurt, is die standaard consequent.** `control_forbidden` staat standaard
+op `false`, dus op een verse installatie kan een bewoner zijn laadpaal op automatisch zetten
+zonder dat de installateur ooit iets heeft gezegd.
+
+Voorstel: **`control_level` op de woning is het plafond**, en de modus van een apparaat kan er
+nooit boven uit. Het veld bestaat al, staat al uitgeschakeld in het formulier met uitleg, en
+staat op de lijst "bewust leeg tot de aansturingsrelease" (§37.2) — dit geeft het zijn lezer.
+Dan is de volgorde: de installateur opent de deur voor de woning, de bewoner kiest daarbinnen,
+en `control_forbidden` blijft het veto per apparaat.
+
+Het alternatief — `control_forbidden` standaard op `true` — doet hetzelfde maar per apparaat,
+en dat is dertig vinkjes bij een woning waar de installateur één keer "nee" bedoelt.
+
+**2. Hoe lang onderdrukt `Stop`?**
+
+Voorgesteld: tot het einde van het gereed-venster, of vier uur zonder venster. Vier is een
+gok van dezelfde soort als de vierentwintig uur van de vlag; als jij een ander getal
+verdedigbaarder vindt, is dit de plek om het te kiezen.
+
+### 44.10 Wat deze sectie niet vastlegt
+
+- **Hoe er aangestuurd wordt.** Geen enkele `hass.services.async_call`, geen keuze van
+  domeinen, geen retrybeleid. Eigen release, eigen spec.
+- **Welke apparaten aanstuurbaar zijn.** Dat volgt uit `capabilities`, en die is al gevalideerd
+  en nog nergens gelezen.
+- **De aansturingslogica zelf** — wanneer iets aangaat, hoe lang, met welk vermogen. Dit gaat
+  over waar de knop staat en wat hij belooft.
+- **§43.2 blijft staan.** Fase 3 zet zin en severity van het urgentie-advies terug; dat is niet
+  hier.
