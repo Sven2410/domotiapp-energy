@@ -1,5 +1,29 @@
 # Changelog
 
+## Nog niet uitgebracht
+
+### Testgereedschap (raakt de integratie niet)
+
+- **De testomgeving loopt weer gelijk met de klant.** Python 3.14 en Home Assistant
+  **2026.8.1** in de testcontainer en in CI, in plaats van 3.13 met HA 2026.2.3. Dat
+  verschil was vijf maanden, en het bestond omdat het testharnas vanaf 0.13.317 Python
+  3.14 vereist en HA 2026.8 zelf ≥ 3.14.2.
+
+  Het besluit van 5 augustus was om te wachten tot 2026.8 stabiel zou zijn in plaats van
+  tegen een bèta te testen. Die kwam op 5 augustus (2026.8.0) en 7 augustus (2026.8.1).
+
+  **De overstap kostte geen enkele codewijziging**: 646 tests groen op de eerste poging,
+  en de 131 waarschuwingen komen allemaal uit Home Assistant zelf.
+
+  De ondergrens blijft HA 2025.6 (`hacs.json`); die bewaken we door de API-tabel na te
+  lopen, niet met deze workflow.
+
+- **Eén ding mocht niet mee, en dat bleek meteen.** Ruff's `target-version` op py314
+  zetten liet de formatter `except (ValueError, HomeAssistantError):` herschrijven naar de
+  haakloze vorm van PEP 758 — syntax die Python 3.13 niet eens kan parsen. De integratie
+  wordt geladen door de Python van de klant, en de ondersteunde ondergrens is HA 2025.6 op
+  3.13. `target-version` en `python_version` blijven daarom op 3.13, met de reden ernaast.
+
 ## 0.11.1
 
 Een tegel die zichzelf tegensprak, en een map voor het logo.

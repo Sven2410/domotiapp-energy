@@ -513,27 +513,36 @@ tijdvenster allebei om iets dat alleen advies dient, en hangen ze daarom allebei
 `is_advisable` (SPEC.md §16). Toen die vraag over de zes items werd gesteld kwam er
 onmiddellijk een vijfde geval uit dat nog niemand had gemeld.
 
-### Versieverschil tussen tests en de draaiende HA (bewuste keuze, niet oplossen)
+### De testomgeving loopt gelijk met de klant (sinds 2026-08-09)
 
 | | Python | Home Assistant |
 |---|---|---|
-| Testcontainer en CI | 3.13 | 2026.2.3 (via `pytest-homeassistant-custom-component` 0.13.316) |
-| Testinstance `ha-dev` (`:stable`) | 3.14.6 | 2026.7.4 |
+| Testcontainer en CI | 3.14 | 2026.8.1 (via `pytest-homeassistant-custom-component` 0.13.355) |
+| Testinstance `ha-dev` (`:stable`) | 3.14 | 2026.8.x |
 
-De testharnas pint HA; wij kiezen die versie niet. Vanaf 0.13.317 vereist
-`pytest-homeassistant-custom-component` **Python ≥ 3.14**, en HA 2026.8 zelf vereist
-≥ 3.14.2. Op Python 3.13 lost pip daarom 0.13.316 met HA 2026.2.3 op — vijf maanden
-ouder dan wat de klant draait. Op Python 3.14 lost dezelfde `pyproject.toml` 0.13.353
-met HA 2026.8.0b5 op en slaagt de hele suite ongewijzigd (geverifieerd 2026-08-05).
+**Dit was vijf maanden verschil en dat is nu weg.** Op Python 3.13 loste pip
+`pytest-homeassistant-custom-component` 0.13.316 op met HA 2026.2.3, terwijl de klant
+2026.7 draaide. Vanaf 0.13.317 vereist het harnas Python ≥ 3.14 en HA 2026.8 zelf ≥ 3.14.2,
+dus de twee hingen aan elkaar.
 
-**Besluit van Sven, 2026-08-05: we blijven op 3.13.** Overstappen betekent testen tegen
-een HA-bèta, en een bug in die bèta kost uren zoeken in code die niets mankeert.
-**Heroverwegen zodra HA 2026.8 stabiel is** — stel het dan voor, voer het niet
-stilzwijgend door in een fase.
+Het besluit van 2026-08-05 was om te wachten tot 2026.8 stabiel was, en niet tegen een bèta
+te testen. **2026.8.0 kwam op 5 augustus, 2026.8.1 op 7 augustus**; de overstap is op 9
+augustus gedaan en kostte **geen enkele codewijziging** — 646 tests groen op de eerste
+poging, en de 131 waarschuwingen komen allemaal uit Home Assistant zelf, niet uit ons.
 
-**Groene CI bewijst daarmee geen 3.14-gedrag**, en ook geen gedrag van de HA-versie die
-de klant draait. Wat een fase écht in HA doet, controleer je met de verificatieroute
-hieronder.
+**Wat dit niet verandert:** de ondergrond blijft HA 2025.6 (`hacs.json`). Testen tegen de
+nieuwste release is hoe je deprecaties vroeg ziet; de ondergrens bewaak je door de
+API-tabel in SPEC.md §0 na te lopen, niet met deze workflow.
+
+**Wat dit wel verandert:** groene CI zegt nu iets over de HA-versie die de klant draait. Dat
+was hiervoor niet zo, en het is precies waarom
+[de browserroutes](#frontendtests-javascript) bestaan — de `ha-input`-wissel die route 1
+vond, was op 2026.2.3 niet te zien.
+
+**`requires-python` in `pyproject.toml` gaat over het testgereedschap, niet over de
+integratie.** Er wordt geen Python-pakket gedistribueerd (`packages = []`); Home Assistant
+laadt `custom_components/` rechtstreeks.
+
 
 ### Verificatie tegen de draaiende HA
 
