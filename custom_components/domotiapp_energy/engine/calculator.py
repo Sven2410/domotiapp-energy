@@ -46,6 +46,7 @@ from custom_components.domotiapp_energy.const import (
     CONFIDENCE_MEDIUM,
     CONTRACT_TYPE_DYNAMIC,
     DEVICE_LINK_POWER,
+    EXPORT_STALE_MINUTES,
     HOME_CONSUMPTION_BATTERY_UNREADABLE,
     HOME_CONSUMPTION_NO_GRID_READING,
     HOME_CONSUMPTION_SOLAR_UNREADABLE,
@@ -68,12 +69,14 @@ from custom_components.domotiapp_energy.const import (
     SCORE_UNAVAILABLE_NOTHING_MOVABLE,
     SCORE_UNAVAILABLE_PRICE_THRESHOLDS_MISSING,
     SOLAR_COMPONENT_MIN_PRODUCTION_W,
+    SOURCE_STALE_MINUTES,
     SOURCE_TYPE_CURRENT_PRICE,
     SOURCE_TYPE_FEED_IN_PRICE,
     SOURCE_TYPE_GENERAL_CONSUMPTION,
     SOURCE_TYPE_GRID_METER,
     SOURCE_TYPE_HOME_BATTERY,
     SOURCE_TYPE_SOLAR,
+    STALE_AFTER_MINUTES_MEASUREMENT,
     UNIT_KW,
     UNIT_W,
 )
@@ -111,6 +114,17 @@ class _Readings:
     market_price: float | None = None
     # The same for the feed-in source, which has its own conversion.
     market_feed_in_price: float | None = None
+
+
+def _stale_minutes(source_type: str) -> int:
+    """Return how long this kind of source may stay quiet (SPEC.md §47).
+
+    A type that is not in the mapping falls back to the measurement window,
+    which is the strictest one — a new type is refused early rather than
+    trusted for hours. The guard test makes sure that fallback never actually
+    runs for a shipped type.
+    """
+    return SOURCE_STALE_MINUTES.get(source_type, STALE_AFTER_MINUTES_MEASUREMENT)
 
 
 class Calculator:
@@ -311,7 +325,11 @@ class Calculator:
         elif source.type == SOURCE_TYPE_FEED_IN_PRICE:
             value, result = self._read_feed_in_price(source, home, readings)
         else:
-            result = read_entity_value(self._hass, source.binding)
+            result = read_entity_value(
+                self._hass,
+                source.binding,
+                stale_after_minutes=_stale_minutes(source.type),
+            )
             value = result.value if result.ok else None
 
         if value is not None:
@@ -355,7 +373,9 @@ class Calculator:
         if source.price_basis not in PRICE_BASES:
             return None, None
 
-        result = read_entity_value(self._hass, source.binding)
+        result = read_entity_value(
+            self._hass, source.binding, stale_after_minutes=_stale_minutes(source.type)
+        )
         if not result.ok or result.value is None:
             return None, result
 
@@ -388,7 +408,9 @@ class Calculator:
         if source.price_basis not in PRICE_BASES:
             return None, None
 
-        result = read_entity_value(self._hass, source.binding)
+        result = read_entity_value(
+            self._hass, source.binding, stale_after_minutes=_stale_minutes(source.type)
+        )
         if not result.ok or result.value is None:
             return None, result
 
@@ -423,7 +445,9 @@ class Calculator:
         if source.positive_means not in (POSITIVE_MEANS_IMPORT, POSITIVE_MEANS_EXPORT):
             return None, None
 
-        result = read_entity_value(self._hass, source.binding)
+        result = read_entity_value(
+            self._hass, source.binding, stale_after_minutes=_stale_minutes(source.type)
+        )
         if not result.ok or result.value is None:
             return None, result
 
@@ -435,12 +459,33 @@ class Calculator:
     def _read_separate_meter(
         self, source: EnergySource
     ) -> tuple[float | None, ReadResult | None]:
-        """Read a meter with separate import and export entities."""
-        imported = read_entity_value(self._hass, source.import_binding)
-        exported = read_entity_value(self._hass, source.export_binding)
+        """Read a meter with separate import and export entities.
 
+        **The two halves are weighed apart, and that is the fix of 0.12.0.** A
+        house that feeds nothing back reads a constant zero on its export
+        entity, and an integration that only writes on change then leaves that
+        entity untouched for hours. Judged by the import window it counted as
+        dead, and it dragged a perfectly fresh import reading down with it: the
+        whole meter mode looked broken on the first strange installation that
+        used it (SPEC.md §47.2).
+
+        So the export half gets the resting window. When it is still refused
+        after that, the refusal is reported against the export entity — naming
+        the half that is actually quiet, rather than the one that is fine.
+        """
+        imported = read_entity_value(
+            self._hass,
+            source.import_binding,
+            stale_after_minutes=_stale_minutes(source.type),
+        )
         if not imported.ok or imported.value is None:
             return None, imported
+
+        exported = read_entity_value(
+            self._hass,
+            source.export_binding,
+            stale_after_minutes=EXPORT_STALE_MINUTES,
+        )
         if not exported.ok or exported.value is None:
             return None, exported
 

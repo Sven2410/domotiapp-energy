@@ -482,6 +482,52 @@ stappen iets moeten doen.
 met een docstring die zegt dat de coordinator hem niet gebruikt. Wat daar bijkomt is
 zichtbaar fout in plaats van stil dood.
 
+#### Achtste variant: de test klopt, en de aanname eronder niet
+
+**De belangrijkste van de acht, want hij is met geen enkele test te vinden.**
+
+Gevonden op 2026-08-09, bij het inrichten van een vreemde woning. Eén constante van
+vijftien minuten weigerde een prijssensor die per uur publiceert en een terugleversensor
+die 's nachts terecht 0 blijft. Het paneel zei dat de bronnen onleesbaar waren; de
+installateur kon niets doen.
+
+En er was een test die precies dit gebied dekte, met een docstring die uitlegde waarom:
+
+```python
+async def test_a_steady_reading_is_not_stale(...):
+    hass.states.async_set(ENTITY_ID, "1500")
+    freezer.tick(timedelta(minutes=ENTITY_STALE_AFTER_MINUTES + 1))
+    hass.states.async_set(ENTITY_ID, "1500")   # opnieuw gerapporteerd, zoals echte hardware
+    assert read_entity_value(hass, _binding(unit=UNIT_W)).ok is True
+```
+
+Die test is goed. Hij toetst het ontwerp, en het ontwerp klopt met zichzelf. Wat er
+misging zit in die ene regel commentaar — *zoals echte hardware* — want dat is geen
+uitspraak over onze code maar **over de wereld**:
+
+> Elke gekoppelde bron rapporteert minstens elk kwartier opnieuw.
+
+Waar voor een P1-lezer en voor pollende integraties. Onwaar voor alles wat alleen bij
+verandering schrijft: MQTT met retain, Zigbee-stekkers, templatesensoren,
+`input_number`-helpers, en een uurlijkse dynamische prijs.
+
+**De vraag die hem vangt**, te stellen bij elke regel die iets weigert, afkapt, drempelt
+of verwerpt:
+
+> **Welke aanname over de wereld maakt deze regel, en welke apparaten van een klant
+> voldoen daar niet aan?**
+
+**En de kanttekening die erbij hoort: een unittest kan die aanname per definitie niet
+weerleggen.** Hij bouwt zijn eigen wereld — hij schrijft de state een moment voordat hij
+hem leest, dus elke entiteit is altijd vers. De test bevestigt de aanname in plaats van
+haar te toetsen, hoe zorgvuldig hij ook geschreven is. Daar is een echte installatie voor
+nodig, of een aanname die zo expliciet is opgeschreven dat iemand haar kan tegenspreken.
+
+Praktisch gevolg: schrijf zo'n aanname **in de code, naast het getal**, in de vorm "dit
+geldt omdat …" en niet "dit is zo". `SOURCE_STALE_MINUTES` doet dat nu per brontype, en
+een guard-test dwingt af dat een nieuw type zijn eigen keuze krijgt in plaats van er
+stilzwijgend een te erven (SPEC.md §47).
+
 ### Een eis die niet van toepassing is, gepresenteerd als een gebrek
 
 **Vijf keer voorgekomen, allemaal in de datakwaliteit**, en elke keer opnieuw ontdekt door

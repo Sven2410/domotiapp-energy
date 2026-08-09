@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.12.0
+
+Een installateur kwam bij een vreemde woning niet voorbij de netmeter. SPEC §47.
+
+### Fixed
+
+- **Bronnen die per uur of alleen bij verandering rapporteren werden geweigerd.** Één
+  constante van vijftien minuten gold voor alles: een dynamische prijs die per uur
+  publiceert was drie kwartier van elk uur "onleesbaar", en een terugleversensor die
+  's nachts terecht 0 blijft maakte de hele netmeter onbruikbaar.
+
+  **Nu drie vensters, elk met zijn reden** (SPEC §47.1): meting 15 minuten, prijs 90,
+  en rustende waarden 240. Een nieuw brontype moet er expliciet één kiezen — een
+  guard-test faalt zodra dat vergeten wordt, zodat dit niet terugzakt naar één constante
+  met uitzonderingen.
+
+- **De twee helften van een gescheiden netmeter worden apart gewogen** (SPEC §47.2). De
+  exporthelft krijgt het rustende venster; wordt hij daarna nog geweigerd, dan noemt de
+  melding de exportentiteit in plaats van de importentiteit die het goed doet.
+
+  Dit was de zwaarste van de twee: de modus *gescheiden afname en teruglevering* — wat een
+  P1-lezer standaard oplevert — leek volledig dood, terwijl de bronrij "Compleet" zei.
+
+### Waarom geen enkele test dit vond
+
+De test die dit gebied dekte was góéd, en toetste het ontwerp precies. De fout zat in de
+aanname erónder: *elke gekoppelde bron rapporteert minstens elk kwartier opnieuw*. Waar
+voor een P1-lezer, onwaar voor MQTT, Zigbee, templatesensoren en een uurlijkse prijs. Een
+unittest kan zo'n aanname niet weerleggen — hij schrijft de state een moment voordat hij
+hem leest. Vastgelegd als achtste variant in CLAUDE.md.
+
+### Documentatie
+
+- **SPEC §46:** een status zegt wat er uitkomt, niet of het formulier vol is — en wat de
+  status bepaalt, levert ook de uitleg. Breed vastgelegd, ook voor rijen en schermen die
+  er nog niet zijn.
+
 ## Nog niet uitgebracht
 
 ### Testgereedschap (raakt de integratie niet)
