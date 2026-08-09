@@ -258,17 +258,57 @@ kwam van de service worker, niet van de server.
 
 ### Frontendtests (JavaScript)
 
-`pytest` kan geen JavaScript uitvoeren. De paneelcode heeft daarom een eigen testlaag:
-jsdom plus de ingebouwde testrunner van Node.
+`pytest` kan geen JavaScript uitvoeren. De paneelcode heeft daarom **drie eigen lagen**,
+en ze bewijzen verschillende dingen: jsdom met de testrunner van Node, en twee
+Playwright-routes.
 
 ```powershell
-npm install     # eenmalig
-npm test        # tests/frontend/*.test.mjs
+npm install                # eenmalig (jsdom + Playwright)
+npx playwright install chromium   # eenmalig, de browser zelf
+
+npm test                   # laag 1: jsdom,      tests/frontend/*.test.mjs
+npm run test:layout        # laag 2: echte browser, gestubde HA — draait in CI
+.\scripts\browsertest.ps1  # laag 3: echte browser, echte HA — met de hand
 ```
 
-**Dit is de enige dev-dependency van het project en raakt de integratie niet.**
-`custom_components/` verscheept geen JavaScript-afhankelijkheden en heeft geen buildstap
-(CLAUDE.md-regel 5); `package.json` bestaat uitsluitend voor deze tests.
+**De dev-dependencies raken de integratie niet.** `custom_components/` verscheept geen
+JavaScript-afhankelijkheden en heeft geen buildstap (regel 5); `package.json` bestaat
+uitsluitend voor deze drie lagen.
+
+#### Wat elke laag wél en niet kan bewijzen
+
+Dit is de belangrijkste tabel van deze sectie. Een groene CI dekt **de eerste twee
+kolommen**, en dat is minder dan het voelt.
+
+| | jsdom (`npm test`) | route 2 (`npm run test:layout`) | route 1 (`browsertest.ps1`) |
+|---|---|---|---|
+| Wat de paneelcode aan de DOM doet | ja | ja | ja |
+| De cascade: wordt `.is-hidden` echt `display: none` | **nee** | ja | ja |
+| Containerqueries, schermbreedtes, zijwaartse overloop | **nee** | ja | ja |
+| Safe areas (gefakete insets) | **nee** | ja | ja |
+| **Rendert `ha-form` een control, en accepteert die een klik** | **nee** | **nee** | **ja** |
+| Slaat een waarde echt op en overleeft hij een herlaadbeurt | nee | nee | ja |
+| Draait in CI | ja | ja | **nee** |
+
+**Route 2 laadt geen enkel Home Assistant-component.** `ha-form`, `ha-input`,
+`ha-select` en `ha-input-chip` horen bij HA, niet bij ons; ze binnenhalen zou een CDN of
+een buildstap betekenen. In die pagina zijn het onbekende elementen: ze staan in de boom
+en doen niets.
+
+> **Een groene `npm run test:layout` zegt niets over of een control een klik accepteert.**
+
+Dat is precies het gat waar de dagenselector doorheen viel. Verbreed daarom **nooit** een
+test in route 2 tot "kijken of het formulier werkt" — heeft een vraag een gerenderde
+control nodig, dan hoort hij in route 1.
+
+**Route 1 schrijft naar de instance waar hij op wijst.** Elke rij die hij aanmaakt heet
+`PLAYWRIGHT TESTRIJ` en wordt weer verwijderd. Blijft er na een afgebroken run toch één
+staan, verwijder die dan op Apparaten.
+
+Route 1 staat bewust niet in CI: hij heeft een draaiende HA, een token en een
+configuratie nodig die verandert terwijl je werkt. In een workflow zou hij falen om
+redenen die niets met de commit te maken hebben, en een check die zo faalt wordt
+genegeerd.
 
 **Vertrouw niet op de cascade van jsdom.** jsdom implementeert CSS maar gedeeltelijk, dus
 een vraag als "wint een eigen `display`-regel van `[hidden]`?" kun je er niet mee
@@ -284,7 +324,15 @@ een bugfix eerst de test tegen de oude code.
 wordt geen control gerenderd. Geen enkele test in deze laag kan dus bewijzen dat een
 control een klik accepteert — zo is de dagenselector kapot uitgeleverd met een groene
 suite. Toets hier wat de stub wél kan zien (bijvoorbeeld: geen enkele `select`-optie mag
-een niet-string waarde dragen) en toets de control zelf in de browser.
+een niet-string waarde dragen) en toets de control zelf in de browser — met
+`.\scripts\browsertest.ps1`, de enige laag die hem rendert.
+
+**Hoe die control er precies uitziet, is niet van ons.** Dezelfde
+`select`-multiselector met zeven opties is inmiddels op drie manieren gerenderd:
+combobox, checkboxes, en op HA 2026.7 een rij `ha-input-chip`s. Er veranderde niets aan
+onze code. Pin daarom in route 1 geen componentnaam waar het niet nodig is (het naamveld
+wordt gezocht als eerste zichtbare `input`, niet als `ha-textfield`), en verwacht dat een
+HA-upgrade deze laag rood maakt — dat is precies waarvoor hij bestaat.
 
 ### Verifieer frontendwijzigingen zelf in de browser (afspraak Sven, 2026-08-06)
 

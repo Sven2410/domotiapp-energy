@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DomotiApp Energy — browserharnas</title>
+    <style>
+      /*
+       * A stand-in for the Home Assistant page around the panel, and no more
+       * than that. Only two things here matter to a test:
+       *
+       * 1. The page itself must not scroll sideways for a reason of its own,
+       *    or a horizontal-overflow assertion would be measuring this file.
+       * 2. `ha-icon` has to take up space. It is a Home Assistant component and
+       *    does not exist here, and an unknown element is `display: inline`
+       *    with no box — so a tab bar measured without this rule is narrower in
+       *    the harness than on a customer's screen, and the width test would
+       *    pass on a bar that wraps in real life.
+       */
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font-family:
+          Roboto,
+          system-ui,
+          sans-serif;
+        background: #111;
+        color: #fff;
+      }
+      ha-icon {
+        display: inline-block;
+        width: var(--mdc-icon-size, 24px);
+        height: var(--mdc-icon-size, 24px);
+        vertical-align: middle;
+      }
+    </style>
+  </head>
+  <body>
+    <script type="module" src="./mount.mjs"></script>
+  </body>
+</html>
