@@ -309,15 +309,40 @@ const MEANINGLESS_BY_TYPE = {
 };
 
 /**
+ * The two switches that decide whether advice happens at all.
+ *
+ * **These are never hidden for being switched off.** `control_mode =
+ * monitor_only` is what makes a dishwasher unadvisable, and `is_flexible` is
+ * what makes a smart plug advisable — so hiding either one because of the state
+ * it produced would be a door that only opens one way: the resident who
+ * switched his dishwasher to "alleen meekijken" could never switch it back, and
+ * the five fields he owns beside it are already gone in that state, leaving him
+ * a dialog with nothing he may touch (SPEC.md §38.3).
+ *
+ * They go only where they can switch nothing — a type the coach can never
+ * address, whatever anybody ticks. On a `home_battery` neither moves
+ * `is_advisable` and neither moves `has_movable_load`; both are choices with no
+ * consequence, and the row has never shown them.
+ */
+const ADVICE_SWITCHES = ['control_mode', 'is_flexible'];
+
+/**
  * Whether this field is a question about the appliance in front of us.
  *
- * Both lists are released the moment the appliance becomes advisable, and that
- * is what keeps the override from being a dead end: tick "verplaatsbaar in de
- * tijd" on a smart plug and somebody has said advice should follow, so the
+ * Three rules, in the order they decide:
+ *
+ * 1. **A switch that can switch nothing.** Only on a never-advised type, and
+ *    then permanently: nothing in this form brings it back, because nothing in
+ *    this form can make such an appliance advisable.
+ * 2. **An advice concept** — it orders, times or silences advice.
+ * 3. **A field with no true answer for this type.**
+ *
+ * Rules 2 and 3 are released the moment the appliance becomes advisable, and
+ * that is what keeps the override from being a dead end: tick "verplaatsbaar in
+ * de tijd" on a smart plug and somebody has said advice should follow, so the
  * appliance behind the plug is exactly what the power and the cycle describe.
  * Hiding those by type alone would have left a required field that could not be
- * filled in — the shape of defect this round exists to remove. A battery can
- * never become advisable, so for it "while only measured" is simply always.
+ * filled in — the shape of defect this round exists to remove.
  *
  * **Hidden, not shown-and-disabled.** That is the other agreement in this
  * project (the control level on Woning, §33.4a), and it is for a field that
@@ -327,6 +352,12 @@ const MEANINGLESS_BY_TYPE = {
  * every other type change.
  */
 function asksSomething(name, draft) {
+  if (
+    ADVICE_SWITCHES.includes(name) &&
+    NEVER_ADVISED_TYPES.includes(draft.device_type)
+  ) {
+    return false;
+  }
   if (isAdvisable(draft)) {
     return true;
   }
@@ -621,14 +652,50 @@ function behaviourFields(draft) {
  * the agreement can only be contradicted — and therefore only be defended — if
  * the contradiction can be expressed.
  */
+/**
+ * What choosing a level does for *this* appliance, in three whole sentences.
+ *
+ * One sentence per situation, selected by the situation, the same contract the
+ * tile texts follow (SPEC.md §35.9). Assembling one sentence that switches its
+ * halves on and off would put a sentence on screen that exists nowhere in the
+ * source.
+ *
+ * The middle one is why the field stays visible on an appliance nobody is
+ * advised about. "Alles behalve alleen monitoren wordt als adviseren
+ * behandeld" is true of the product and says nothing here, where nothing is
+ * behandeld either way — it reads as a choice with no consequence, which is
+ * exactly what it was reported as. Said properly it is a standing statement:
+ * it decides what happens the day somebody does tick "verplaatsbaar".
+ *
+ * The last one is the way back, in words. A resident who switched his
+ * dishwasher off is the one person who needs to read how to switch it on.
+ */
+function controlModeHelper(draft) {
+  if (draft.control_mode === 'monitor_only') {
+    return (
+      'Op "alleen monitoren" krijgt dit apparaat geen advies. Zet het op ' +
+      '"alleen adviseren" om het weer mee te laten doen.'
+    );
+  }
+  if (!isAdvisable(draft)) {
+    return (
+      'Dit apparaat krijgt geen advies zolang het niet verplaatsbaar is. ' +
+      '"Alleen monitoren" legt vast dat dat zo moet blijven, ook als dat ' +
+      'later verandert.'
+    );
+  }
+  return (
+    'DomotiApp Energy adviseert in deze versie alleen; alles behalve ' +
+    '"alleen monitoren" wordt als adviseren behandeld.'
+  );
+}
+
 function controlFields(draft) {
   const fields = [
     {
       name: 'control_mode',
       label: 'Bedieningsniveau',
-      helper:
-        'DomotiApp Energy adviseert in deze versie alleen; alles behalve ' +
-        '"alleen monitoren" wordt als adviseren behandeld.',
+      helper: controlModeHelper(draft),
       selector: {
         select: {
           mode: 'dropdown',
@@ -744,6 +811,7 @@ function isDefaultValue(name, draft) {
     priority: 'normal',
     is_noisy: noisyByDefault(draft.device_type),
     is_flexible: flexibleByDefault(draft.device_type),
+    control_mode: 'advice_only',
     days_of_week: ['0', '1', '2', '3', '4', '5', '6'],
     capabilities: [],
     control_forbidden: false,
@@ -773,6 +841,12 @@ function labelOf(name) {
     duration_minutes: 'Duur van een cyclus',
     priority: 'Prioriteit',
     is_noisy: 'Maakt geluid',
+    // The two switches, which only ever go on a type that can never be
+    // advised. A stored "alleen monitoren" on such an appliance changes
+    // nothing, but it is still something somebody chose, so dropping it is
+    // announced like any other value.
+    control_mode: 'Bedieningsniveau',
+    is_flexible: 'Verplaatsbaar in de tijd',
   };
   return known[name] || name;
 }
@@ -1095,6 +1169,16 @@ export const devicesTab = {
       if (!isAdvisable(draftFrom(device))) {
         if (typeof device.nominal_power_w === 'number') {
           parts.push(`${formatNumber(device.nominal_power_w)} W`);
+        }
+        // The level is shown exactly where it is the *reason* there is no
+        // advice. Dropping it wholesale in 0.7.1 fixed one lie and made a
+        // worse one: a dishwasher the resident had switched to "alleen
+        // meekijken" read "Vaatwasser · Keuken · 2.000 W" and "Compleet.",
+        // with his own instruction nowhere on the row. The status line does
+        // not cover it — that sentence only appears while no power sensor is
+        // linked (SPEC.md §38.3).
+        if (device.control_mode === 'monitor_only') {
+          parts.push(CONTROL_MODE_LABELS.monitor_only);
         }
         return parts.join(' · ');
       }

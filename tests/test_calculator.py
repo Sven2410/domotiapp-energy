@@ -36,6 +36,7 @@ from custom_components.domotiapp_energy.const import (
     CONFIDENCE_MEDIUM,
     CONTRACT_TYPE_DYNAMIC,
     CONTRACT_TYPE_FIXED,
+    CONTROL_MODES,
     CONTROL_MONITOR_ONLY,
     DEVICE_TYPE_DISHWASHER,
     DEVICE_TYPE_GENERIC_MONITOR,
@@ -3088,6 +3089,36 @@ async def test_a_home_battery_is_never_asked_for_a_cycle(hass: HomeAssistant) ->
     assert COMPLETENESS_ITEM_TIME_WINDOWS in quality.not_applicable_items
     assert COMPLETENESS_ITEM_DEVICE_PROFILE not in quality.missing_items
     assert COMPLETENESS_ITEM_TIME_WINDOWS not in quality.missing_items
+
+
+async def test_nothing_on_a_battery_changes_whether_it_is_advised(
+    hass: HomeAssistant,
+) -> None:
+    """The two advice switches switch nothing here, and the panel hides them.
+
+    `is_flexible` and `control_mode` are the two fields that decide whether
+    advice happens, and on a type the coach can never address neither moves
+    anything at all — not `is_advisable`, not `has_movable_load`. That is what
+    makes hiding them safe, and it is exactly *not* true of the appliances they
+    stay visible on: `monitor_only` is what makes a dishwasher unadvisable, so
+    hiding the field there would be a door that only opens one way
+    (SPEC.md §38.3).
+    """
+    for flexible in (True, False):
+        battery = DeviceProfile(
+            id="b1", device_type=DEVICE_TYPE_HOME_BATTERY, is_flexible=flexible
+        )
+        config = StoredConfiguration(devices=[battery])
+        assert not is_advisable(battery), flexible
+        assert has_movable_load(config), flexible
+
+    for mode in CONTROL_MODES:
+        battery = DeviceProfile(
+            id="b1", device_type=DEVICE_TYPE_HOME_BATTERY, control_mode=mode
+        )
+        config = StoredConfiguration(devices=[battery])
+        assert not is_advisable(battery), mode
+        assert has_movable_load(config), mode
 
 
 async def test_a_battery_still_counts_as_something_movable(
