@@ -1,8 +1,11 @@
-"""The peak risk binary sensor (SPEC.md §19).
+"""The two binary sensors (SPEC.md §19, §45).
 
-``problem`` is the right device class: the sensor says whether the grid load is
-at or above the configured warning level, not whether anything is switched on.
-The integration only warns — it never intervenes (SPEC.md §2.2).
+``problem`` is the right device class for both: they say whether something is
+wrong, not whether anything is switched on. The integration only warns — it
+never intervenes (SPEC.md §2.2).
+
+The device class is also what makes them usable on a dashboard without a line
+of styling: every core card paints a ``problem`` sensor red when it is on.
 """
 
 from __future__ import annotations
@@ -16,8 +19,16 @@ from homeassistant.components.binary_sensor import (
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .const import ENTITY_KEY_PEAK_RISK
+from .const import (
+    ATTENTION_ADVICE_REASON_CODES,
+    ATTR_ADVICE_MESSAGE,
+    ATTR_ADVICE_REASON_CODE,
+    ATTR_ADVICE_TITLE,
+    ENTITY_KEY_ATTENTION,
+    ENTITY_KEY_PEAK_RISK,
+)
 from .coordinator import DomotiAppEnergyConfigEntry, EnergyCoordinator
+from .engine.reason_codes import REASON_INVALID_ENTITY_STATE
 from .entity import DomotiAppEnergyEntity
 
 
@@ -27,7 +38,13 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up the binary sensors for this config entry."""
-    async_add_entities([PeakRiskBinarySensor(entry.runtime_data.coordinator, entry)])
+    coordinator = entry.runtime_data.coordinator
+    async_add_entities(
+        [
+            PeakRiskBinarySensor(coordinator, entry),
+            AttentionBinarySensor(coordinator, entry),
+        ]
+    )
 
 
 class PeakRiskBinarySensor(DomotiAppEnergyEntity, BinarySensorEntity):
@@ -66,4 +83,69 @@ class PeakRiskBinarySensor(DomotiAppEnergyEntity, BinarySensorEntity):
                 if metrics.grid_load_percent is not None
                 else None
             ),
+        }
+
+
+class AttentionBinarySensor(DomotiAppEnergyEntity, BinarySensorEntity):
+    """On when something about this installation needs a person.
+
+    **This entity exists for a dashboard, not for the panel** (SPEC.md §45). It
+    is the one tile an installer puts on a customer's own overview: it colours
+    when there is something to do, and tapping it opens the panel.
+
+    Before it existed, that tile needed a `template` binary sensor in every
+    customer's `configuration.yaml`. Twenty homes meant twenty copies of one
+    condition, and a copy is where drift starts — the definition of "attention"
+    would have been slightly different in each of them within a year.
+
+    **What counts as attention is a short, closed list and it is meant to stay
+    short.** The bar is not "is this a warning" but *can a person do something
+    about it, and is it wrong rather than merely happening*. A price that is
+    high every evening is a warning by severity and noise by frequency, and a
+    tile that is red every evening is a tile nobody looks at.
+    """
+
+    _attr_device_class = BinarySensorDeviceClass.PROBLEM
+
+    def __init__(
+        self,
+        coordinator: EnergyCoordinator,
+        entry: DomotiAppEnergyConfigEntry,
+    ) -> None:
+        """Set up the attention sensor."""
+        super().__init__(coordinator, entry, ENTITY_KEY_ATTENTION)
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return whether somebody should look, or None before the first result.
+
+        Two sources, and the second is the one a single list would have missed.
+        The primary advice covers what the coach is saying; the metrics cover an
+        entity that cannot be read at all, which is **never an advice reason**
+        — a dead inverter on a home whose three unconditional checklist items
+        all pass produces "lage energieprijs" as its advice and nothing else.
+        """
+        result = self.coordinator.data
+        if result.primary_advice is None:
+            return None
+        if REASON_INVALID_ENTITY_STATE in self.metrics.reason_codes:
+            return True
+        return result.primary_advice.reason_code in ATTENTION_ADVICE_REASON_CODES
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return what a tile needs to say something without a template.
+
+        `advice_title` is what `state_content` puts on the second line, so one
+        tile carries both the colour and the sentence. Without it a dashboard
+        shows "Problem" — true, and useless next to a house that has an actual
+        reason.
+        """
+        primary = self.coordinator.data.primary_advice
+        if primary is None:
+            return {}
+        return {
+            ATTR_ADVICE_TITLE: primary.title,
+            ATTR_ADVICE_MESSAGE: primary.message,
+            ATTR_ADVICE_REASON_CODE: primary.reason_code,
         }

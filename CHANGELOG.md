@@ -1,14 +1,41 @@
 # Changelog
 
-## Nog niet uitgebracht
+## 0.11.0
+
+Eén tegel op je eigen dashboard, in plaats van twee stukken YAML per woning. SPEC §45.
+
+### Added
+
+- **Een achtste entiteit: `binary_sensor.domotiapp_energy_attention`.** Aan met
+  `device_class: problem` zodra er iets is waar een mens nu iets aan kan doen, uit wanneer
+  alles leesbaar is en er niets aan de hand is. Drie attributen erbij — `advice_title`,
+  `message` en `reason_code` — zodat een `tile`-kaart met `state_content: advice_title` de
+  reden op de tweede regel zet in plaats van "Probleem".
+
+  Daarmee is een knop op een eigen dashboard **één tegel om te plakken**. De vorige README
+  beschreef hetzelfde met een `template`-sensor in `configuration.yaml`, en dat is precies de
+  plek waar drift ontstaat: bij twintig woningen staan er twintig kopieën van onze definitie
+  buiten ons versiebeheer.
+
+- **Vier redenen, vastgelegd in SPEC §45.2 met de reden erbij.** Ontbrekende gegevens, een
+  onleesbare bron, en de aansluiting tegen zijn grens in beide richtingen. Een hoge prijs
+  hoort er bewust niet bij: dat is de markt twee keer per dag, en een tegel die elke avond
+  rood staat wordt een tegel die niemand nog bekijkt. Elke code die erbij komt, maakt de knop
+  minder waard — daarom staat de vraag die een kandidaat moet doorstaan nu in de spec.
+
+  De onleesbare bron staat er los in omdat `invalid_entity_state` **nooit** een adviesreden
+  wordt: hij komt uit de validators en landt in de metrics. Een tegel die alleen naar het
+  advies kijkt, blijft grijs terwijl een sensor dood is — en dat is nu juist de storing
+  waarvoor een installateur gebeld wordt.
 
 ### Documentatie
 
-- **README: een knop op je eigen dashboard.** Eén tegel die kleurt wanneer er aandacht nodig
-  is en bij aanraken het paneel opent, met alleen kern-Home-Assistant — geen HACS-kaart, geen
-  `browser_mod`. Getoetst tegen 2026.7, en twee bevindingen bepaalden de vorm: de
-  more-info-dialoog toont **geen attributen**, en hij kan niet naar een paneel navigeren.
-  Dus navigeert de tegel, en is het paneel de detailweergave.
+- **README: het knopblok is nu één tegel**, met de attributentabel erbij en een waarschuwing
+  over kiosk-modus: de tegel navigeert, en de weg terug is de zijbalk. Staat die uit, dan
+  komt het wandtablet niet meer van het paneel af.
+
+- **SPEC §19 is bijgewerkt** — de tabel telde nog zes entiteiten terwijl er zeven waren;
+  home consumption (0.5.0) ontbrak en attention is nu toegevoegd.
 
 - **SPEC §44: de sturingsindeling.** Alleen papier, geen code. Waar de knoppen komen te staan
   wanneer de aansturingsrelease er is: de toestemming blijft op Apparaten, de handeling staat

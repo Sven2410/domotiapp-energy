@@ -1543,14 +1543,19 @@ zet dus nooit `_attr_name`.
 | `sensor.domotiapp_energy_data_quality` | `Data quality` | — | measurement | `%` |
 | `sensor.domotiapp_energy_grid_power` | `Grid power` | `power` | measurement | `W` |
 | `sensor.domotiapp_energy_solar_surplus` | `Solar surplus` | `power` | measurement | `W` |
+| `sensor.domotiapp_energy_home_consumption` | `Home consumption` | `power` | measurement | `W` |
 | `sensor.domotiapp_energy_current_advice` | `Current advice` | — | — | — |
 | `binary_sensor.domotiapp_energy_peak_risk` | `Peak risk` | `problem` | — | — |
+| `binary_sensor.domotiapp_energy_attention` | `Attention` | `problem` | — | — |
 
 Deze Engelse namen staan tweemaal: in `translations/en.json` en in
 `const.ENTITY_OBJECT_ID_NAMES`. Het vertaalbestand tijdens runtime lezen zou blokkerende
 I/O in de event loop zijn, dus een test vergelijkt beide lijsten.
 
-Fase 5 bevat tests die bevestigen dat deze zes ID's ontstaan, dat ze niet meebewegen met
+Home consumption kwam er in 0.5.0 bij en attention in 0.11.0 (§45); beide zijn
+toevoegingen, dus geen enkele bestaande ID verschoof.
+
+Fase 5 bevat tests die bevestigen dat deze ID's ontstaan, dat ze niet meebewegen met
 de taal (`en` én `nl`), en dat de weergavenaam wél de taal volgt.
 
 > Twee dingen die hierbij horen. (1) HA gebruikt `device.name_by_user or device.name`:
@@ -4474,3 +4479,108 @@ verdedigbaarder vindt, is dit de plek om het te kiezen.
   over waar de knop staat en wat hij belooft.
 - **§43.2 blijft staan.** Fase 3 zet zin en severity van het urgentie-advies terug; dat is niet
   hier.
+
+## 45. De achtste entiteit: `binary_sensor.domotiapp_energy_attention`
+
+**Status: gebouwd in 0.11.0.** De aanleiding is een uitrolvraag, geen functionele: Sven zet
+dit in twintig woningen neer en wil daar **één tegel** plakken, niet een template-sensor plus
+een tegel. Een template-sensor die bij elke klant apart in `configuration.yaml` bestaat, is
+een kopie van onze definitie buiten onze versiebeheer — en dus een plek waar drift ontstaat
+zodra wij een reason code toevoegen of hernoemen.
+
+Daarom hoort de definitie bij ons. De klantkant is dan één tegel die naar deze entiteit
+wijst, en die tegel hoeft niets te weten.
+
+### 45.1 Wat de entiteit is
+
+| | |
+|---|---|
+| Entity-ID | `binary_sensor.domotiapp_energy_attention` (Engels en vast, zoals de zeven andere) |
+| `device_class` | `problem` — daarmee kleurt elke kernkaart hem rood zonder styling |
+| `on` | er is iets waar een mens nu iets aan kan doen |
+| `off` | alles leesbaar en niets aan de hand |
+| `unknown` | er is nog geen resultaat (§19: nooit `unavailable`) |
+
+### 45.2 De vier codes, en waarom precies deze
+
+**Dit is de kern van de sectie: de lijst mag niet stilletjes groeien.** Elke code die erbij
+komt maakt de knop minder waard, want een tegel die vaak rood staat wordt een tegel die
+niemand nog bekijkt. De vraag bij elke kandidaat is niet *"is dit erg"* maar:
+
+> **Kan de bewoner of de installateur hier nú iets aan doen, en is het zeldzaam genoeg dat
+> rood nog betekenis heeft?**
+
+| Code | Waar hij vandaan komt | Waarom hij meetelt |
+|---|---|---|
+| `missing_required_data` | het advies | de installatie is niet af; de installateur kan hem afmaken |
+| `high_grid_load` | het advies | de aansluiting zit tegen zijn grens; iemand kan iets uitzetten |
+| `high_grid_export` | het advies | teruglevering tegen de grens; zelfde handeling, andere richting |
+| `invalid_entity_state` | **de metrics, niet het advies** | een bron die de installateur heeft ingesteld, is stuk |
+
+**Die laatste zit er precies om de reden dat hij makkelijk vergeten wordt.**
+`invalid_entity_state` wordt **nooit** een adviesreden — hij komt uit `validators.py` en landt
+in `metrics.reason_codes`. Een tegel die alleen naar het advies kijkt, blijft dus grijs
+terwijl een sensor dood is, en dat is nu juist de storing waarvoor een installateur gebeld
+wordt. De entiteit leest hem daarom apart.
+
+Let op dat de meeste dode bronnen *ook* `missing_required_data` opleveren: een netmeter of
+zonnebron is een checklistitem, dus onleesbaar betekent ontbrekend. Bronnen die door geen
+enkel checklistitem gevraagd worden — een groepenkastmeter, een thuisbatterij — doen dat niet,
+en die zijn het bewijs dat deze tak nodig is. `test_attention_is_on_when_a_source_cannot_be_read`
+gebruikt er een; zonder de tak is dat de enige test die faalt.
+
+**Bewust níét in de lijst:**
+
+| Code | Waarom niet |
+|---|---|
+| `high_energy_price` | severity `warning`, maar het is de markt twee keer per dag. Rood elke avond is rood dat niemand leest. |
+| `solar_surplus`, `cheap_price_window`, `deadline_approaching` | kansen, geen problemen. Ze horen in het paneel, niet op een alarmknop. |
+| `no_action_needed` | het tegendeel. |
+
+**Een code toevoegen is een wijziging aan wat de knop betekent, niet aan een lijst.** Wie er
+een aan toevoegt, zet de reden in deze tabel en beantwoordt de vraag hierboven; anders groeit
+hij tot hij niets meer onderscheidt.
+
+### 45.3 De attributen, en waarom er drie zijn
+
+`state_content` van een `tile`-kaart accepteert een **attribuutnaam**. Dat is de hele reden
+dat één tegel zowel de kleur als de zin kan dragen: zonder attribuut staat er `Probleem`, wat
+waar is en niets zegt naast een woning die een concrete reden heeft.
+
+| Attribuut | Wat erin staat |
+|---|---|
+| `advice_title` | de titel van het hoofdadvies — dit is wat `state_content` toont |
+| `message` | de volledige zin, voor wie er een eigen kaart omheen bouwt |
+| `reason_code` | de code, voor een automatisering die op één geval wil reageren |
+
+`advice_title` bestaat alleen hier. De adviessensor draagt de titel in zijn *state*, en die is
+op 255 tekens afgekapt (§19); een attribuut is dat niet, en een tegel leest een attribuut.
+
+**De attributen zijn leeg zolang er geen advies is.** Geen lege sleutels met lege waarden: een
+attribuut dat bestaat maar niets zegt, is een attribuut waar een dashboard toch op gaat
+vertrouwen.
+
+### 45.4 Waarom een tegel en geen dialoog
+
+Geverifieerd tegen Home Assistant 2026.7, en twee bevindingen bepaalden de vorm:
+
+- **De more-info-dialoog toont geen attributen.** Hij toont de state, de historie en het
+  logboek. Attributen toevoegen om die dialoog informatief te maken werkt niet — ze worden
+  niet gerenderd.
+- **Een more-info-dialoog kan niet naar een paneel navigeren.** Er is geen kernactie voor.
+
+Dus opent de tegel geen dialoog: **hij navigeert, en het paneel ís de detailweergave.** Dat
+is het al, en geen dialoog ging dat verslaan. Op een wandtablet met Fully Kiosk blijft dat
+binnen dezelfde pagina — geen nieuw venster, geen adresbalk.
+
+**De weg terug is de zijbalk**, en dat is de valkuil van kiosk-modus: staat de zijbalk uit,
+dan is er geen weg terug van het paneel naar het dashboard. De README zegt dat erbij.
+
+Geen `browser_mod`, geen HACS-kaart, geen template-sensor: alles hierboven is kern-HA.
+
+### 45.5 Wat deze entiteit niet is
+
+- **Geen tweede advieskanaal.** Zij herhaalt het hoofdadvies; zij kiest niets zelf.
+- **Geen alarm.** Geen notificatie, geen service, geen `hass.services.async_call` (regel 2).
+- **Geen vervanging van `peak_risk`.** Die zegt "de piek dreigt" en is een meting;
+  deze zegt "kijk hiernaar" en is een selectie.

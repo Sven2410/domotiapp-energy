@@ -49,6 +49,9 @@
     "binary_sensor": {
       "peak_risk": {
         "name": "Piekrisico"
+      },
+      "attention": {
+        "name": "Aandacht"
       }
     }
   },

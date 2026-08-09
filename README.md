@@ -214,7 +214,7 @@ precondition.
 
 ## Generated entity IDs
 
-These seven are fixed. They do **not** change with the language your Home Assistant runs
+These eight are fixed. They do **not** change with the language your Home Assistant runs
 in, so dashboards, automations and long-term statistics built on them keep working:
 
 ```text
@@ -225,89 +225,89 @@ sensor.domotiapp_energy_home_consumption
 sensor.domotiapp_energy_solar_surplus
 sensor.domotiapp_energy_current_advice
 binary_sensor.domotiapp_energy_peak_risk
+binary_sensor.domotiapp_energy_attention
 ```
 
 The displayed names *do* follow the interface language. `sensor.domotiapp_energy_current_advice`
 carries the advice message, reason code, confidence, severity, measurements, the full
 advice list and the time of the last calculation as attributes; its state is the advice
 title, truncated to what Home Assistant allows.
+`binary_sensor.domotiapp_energy_attention` is on when something needs a person — see
+[A button on your own dashboard](#a-button-on-your-own-dashboard).
 
 ## A button on your own dashboard
 
-One tile that colours when something needs attention and opens the panel when you tap it.
-Core Home Assistant only — no HACS card, no `browser_mod`, nothing the customer has to
-install alongside.
+One tile that colours when something needs attention, says why, and opens the panel when you
+tap it. Core Home Assistant only — no HACS card, no `browser_mod`, no template sensor,
+nothing to install alongside.
 
-**Verified against Home Assistant 2026.7.** Two findings decided the shape:
-
-- **The more-info dialog does not show entity attributes.** It shows the state, the history
-  and the logbook, and nothing else. Adding attributes to make that dialog informative does
-  not work: they are simply not rendered.
-- **A more-info dialog cannot navigate to a panel.** There is no core action for it.
-
-So the tile does not open a dialog. **It navigates, and the panel is the detail view** — which
-it already is, and which no dialog was going to beat. On a wall tablet running Fully Kiosk
-that stays inside the same page: no new window, no address bar. The way *back* is the sidebar,
-so leave the sidebar visible on a kiosk dashboard, or add a tile pointing at your own
-dashboard on the panel side of the trip.
-
-### 1. The attention sensor
-
-DomotiApp Energy ships no "attention" entity of its own, so this makes one from what it does
-publish. Core `template` integration, in `configuration.yaml`:
-
-```yaml
-template:
-  - binary_sensor:
-      - name: "DomotiApp aandacht"
-        unique_id: domotiapp_aandacht
-        device_class: problem
-        state: >-
-          {{ state_attr('sensor.domotiapp_energy_current_advice', 'reason_code')
-             in ['missing_required_data', 'invalid_entity_state',
-                 'high_grid_load', 'high_grid_export'] }}
-        attributes:
-          advies: "{{ states('sensor.domotiapp_energy_current_advice') }}"
-          toelichting: "{{ state_attr('sensor.domotiapp_energy_current_advice', 'message') }}"
-```
-
-**Those four reason codes are the definition of "attention", and the choice matters.** They
-are the ones a person can act on: data is missing, an entity cannot be read, the connection is
-near its limit in either direction. `high_energy_price` is deliberately **not** among them —
-it is a warning, but it is the market twice a day, and a button that is red every evening is a
-button nobody looks at.
-
-`device_class: problem` is what makes the colour free: every core card shows a `problem`
-binary sensor red when it is on, with no template and no styling.
-
-### 2. The tile
+Paste this into any dashboard:
 
 ```yaml
 type: tile
-entity: binary_sensor.domotiapp_aandacht
+entity: binary_sensor.domotiapp_energy_attention
 name: Energie
 icon: mdi:home-lightning-bolt
-state_content: advies
+state_content: advice_title
 tap_action:
   action: navigate
   navigation_path: /domotiapp-energy
 ```
 
-`state_content: advies` puts the **advice title** on the second line instead of "Problem" —
-`state_content` accepts an attribute name, which is what lets one tile carry both the colour
-and the sentence.
+That is the whole thing. Grey with the current advice underneath when all is well, red with
+the reason when something needs you, and one tap into the panel either way.
 
-The result: grey with the current advice underneath when all is well, red with the same line
-when it is not, and one tap into the panel either way.
+### What makes it work
+
+`binary_sensor.domotiapp_energy_attention` carries `device_class: problem`, and every core
+card colours a `problem` sensor red when it is on — no template, no styling, no card-mod.
+
+It turns on for exactly four reasons, and the shortness of that list is the point: a tile that
+is red every evening is a tile nobody looks at.
+
+| Reason | What it means |
+|---|---|
+| `missing_required_data` | the setup is not finished |
+| `invalid_entity_state` | a source you selected cannot be read |
+| `high_grid_load` | the connection is near its limit |
+| `high_grid_export` | export is near its limit |
+
+A high price is deliberately **not** among them. It is a warning, but it is also the market
+twice a day, and nobody can do anything about it at that moment.
+
+Three attributes come along for a dashboard to use:
+
+| Attribute | Contents |
+|---|---|
+| `advice_title` | the advice title — this is what `state_content` puts on the second line |
+| `message` | the full sentence |
+| `reason_code` | the code, if you want an automation to react to one specific case |
+
+`state_content` accepts an attribute name, which is what lets a single tile carry both the
+colour and the sentence. Without it the tile reads "Probleem", which is true and tells you
+nothing.
+
+### Kiosk mode: leave the sidebar on
+
+The tile **navigates**; it does not open a dialog. On a wall tablet running Fully Kiosk that
+stays inside the same page — no new window, no address bar.
+
+**The way back is the sidebar.** If your kiosk dashboard hides it, there is no route from the
+panel to your dashboard, and the tablet is stuck on the energy panel until someone restarts
+the app. Either leave the sidebar visible, or put a tile on your dashboard *and* accept that
+the trip is one-way.
 
 ### Why not the other shapes
 
+Verified against Home Assistant 2026.7:
+
 | Shape | Why not |
 |---|---|
-| `button` card with `state_color: true` | works and colours, but shows "Problem" rather than the advice |
+| `button` card with `state_color: true` | works and colours, but shows "Probleem" rather than the advice |
 | `conditional` card around two tiles | works, needs two cards for one button, and the colour is the only difference |
-| more-info as the detail view | shows no attributes, and cannot navigate onward |
+| more-info as the detail view | does not render entity attributes at all, and cannot navigate onward |
 | `browser_mod` pop-up | a dependency on every installation, for a view the panel already is |
+| a `template` binary sensor in `configuration.yaml` | worked, but put a copy of our definition in every customer's config — which is where drift starts |
 
 ## Services
 

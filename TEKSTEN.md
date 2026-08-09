@@ -20,25 +20,26 @@ is dit de invoer en niet de uitvoer.
 - **Engelse regels staan apart**, onderaan. Een Engelse zin in dit product is
   een fout tenzij zij een identifier is: de UI is Nederlands (CLAUDE.md).
 
-**801 Nederlandse teksten**, waarvan 109 op meer dan één plek. En 9 Engelse regels om na te lopen.
+**802 Nederlandse teksten**, waarvan 109 op meer dan één plek. En 9 Engelse regels om na te lopen.
 
 
 ## `custom_components/domotiapp_energy/const.py`
 
 | Tekst | Waar | Regel |
 |---|---|---|
-| Current advice | module | 915 |
-| Data quality | module | 912 |
+| Attention | module | 923 |
+| Current advice | module | 920 |
+| Data quality | module | 917 |
 | DomotiApp | module | 21 |
 | DomotiApp Energy ↔ | module | 18 |
 | DomotiApp Energy ↔ | module | 39 |
 | Energy Coach | module | 22 |
-| Grid power | module | 913 |
-| Home consumption | module | 917 |
+| Grid power | module | 918 |
+| Home consumption | module | 922 |
 | Mijn woning | module | 29 |
-| Peak risk | module | 916 |
-| Score | module | 911 |
-| Solar surplus | module | 914 |
+| Peak risk | module | 921 |
+| Score | module | 916 |
+| Solar surplus | module | 919 |
 
 ## `custom_components/domotiapp_energy/coordinator.py`
 
