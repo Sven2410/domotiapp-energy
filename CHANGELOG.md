@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.11.1
+
+Een tegel die zichzelf tegensprak, en een map voor het logo.
+
+### Fixed
+
+- **De aandachtstegel stond rood naast "Geen actie nodig".** De vier redenen waren niet het
+  probleem — `neutral_energy_situation` stond er nooit tussen. De entiteit las een tweede
+  bron: elke onleesbare meting in de metrics zette hem aan, terwijl de tekst uit het
+  hoofdadvies bleef komen. Kleur en zin kwamen dus uit twee verschillende objecten en
+  konden elkaar tegenspreken.
+
+  Daar kwam bij dat "onleesbaar" ook het doodgewone geval dekt waarin een entiteit even
+  `unavailable` is — bij een herstart, een integratie die herlaadt, een omvormer die
+  uitvalt. Niet zeldzaam en niets aan te doen: precies wat de knop betekenisloos maakt.
+
+  **De regel is nu dat wat de tegel aanzet ook de zin levert**, en alleen het advies doet
+  dat. Drie redenen, en de tegenspraak is niet opgelost maar onmogelijk (SPEC §45.6).
+
+  Wat het kost, eerlijk gezegd: een bron die door geen checklistitem gevraagd wordt — een
+  groepenkastmeter, een thuisbatterij — kan onleesbaar zijn zonder dat de tegel rood wordt.
+  Dat blijft zichtbaar op de bronrij, in de datakwaliteit en in het logboek.
+
+### Added
+
+- **`custom_components/domotiapp_energy/brand/`** voor het logo, met een README erin die
+  precies zegt welke bestanden en formaten Home Assistant verwacht. Sinds HA 2026.3 draagt
+  een custom integration zijn eigen merkafbeeldingen; `home-assistant/brands` accepteert
+  daar geen pull requests meer voor. Geverifieerd tegen 2026.7.4.
+
+### Documentatie
+
+- **SPEC §39.9:** bij 320 CSS-pixels breekt de tabbalk naar drie regels. Gemeten, en op
+  besluit van Sven zo gelaten — de tightening is op 358px afgestemd en zijn klanten hebben
+  geen telefoons uit 2016.
+
 ## Nog niet uitgebracht
 
 ### Testgereedschap (raakt de integratie niet)

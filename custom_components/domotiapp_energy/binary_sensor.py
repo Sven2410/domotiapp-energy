@@ -28,7 +28,6 @@ from .const import (
     ENTITY_KEY_PEAK_RISK,
 )
 from .coordinator import DomotiAppEnergyConfigEntry, EnergyCoordinator
-from .engine.reason_codes import REASON_INVALID_ENTITY_STATE
 from .entity import DomotiAppEnergyEntity
 
 
@@ -119,17 +118,20 @@ class AttentionBinarySensor(DomotiAppEnergyEntity, BinarySensorEntity):
     def is_on(self) -> bool | None:
         """Return whether somebody should look, or None before the first result.
 
-        Two sources, and the second is the one a single list would have missed.
-        The primary advice covers what the coach is saying; the metrics cover an
-        entity that cannot be read at all, which is **never an advice reason**
-        — a dead inverter on a home whose three unconditional checklist items
-        all pass produces "lage energieprijs" as its advice and nothing else.
+        **One source, and that is the fix of 0.11.1.** The reason is written out
+        in SPEC.md §45.6: until then this also turned on for any
+        `invalid_entity_state` in the metrics, while the attributes kept quoting
+        the advice — so the colour came from one object and the sentence from
+        another, and on Sven's dashboard the tile went red beside "Geen actie
+        nodig". A tile with `device_class: problem` that contradicts its own
+        text is worse than no tile.
+
+        Whatever lights it must therefore also supply its sentence, and only the
+        advice does that.
         """
         result = self.coordinator.data
         if result.primary_advice is None:
             return None
-        if REASON_INVALID_ENTITY_STATE in self.metrics.reason_codes:
-            return True
         return result.primary_advice.reason_code in ATTENTION_ADVICE_REASON_CODES
 
     @property

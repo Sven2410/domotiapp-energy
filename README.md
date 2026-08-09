@@ -262,18 +262,27 @@ the reason when something needs you, and one tap into the panel either way.
 `binary_sensor.domotiapp_energy_attention` carries `device_class: problem`, and every core
 card colours a `problem` sensor red when it is on — no template, no styling, no card-mod.
 
-It turns on for exactly four reasons, and the shortness of that list is the point: a tile that
-is red every evening is a tile nobody looks at.
+It turns on for exactly three reasons, and the shortness of that list is the point: a tile
+that is red every evening is a tile nobody looks at.
 
 | Reason | What it means |
 |---|---|
 | `missing_required_data` | the setup is not finished |
-| `invalid_entity_state` | a source you selected cannot be read |
 | `high_grid_load` | the connection is near its limit |
 | `high_grid_export` | export is near its limit |
 
 A high price is deliberately **not** among them. It is a warning, but it is also the market
 twice a day, and nobody can do anything about it at that moment.
+
+All three come from the advice, and that is a rule rather than a coincidence: **whatever
+turns the tile on also supplies the sentence beside it.** 0.11.0 also turned it on when a
+source could not be read at that moment, while the text kept quoting the advice — so the
+tile could go red beside "Geen actie nodig". A `problem` tile that contradicts its own text
+is worse than no tile.
+
+The cost is stated plainly: a source that no checklist item asks for — a submeter, a home
+battery — can be unreadable without turning the tile red. The panel's own source row, the
+data quality figure and the logbook are where that shows.
 
 Three attributes come along for a dashboard to use:
 
@@ -308,6 +317,29 @@ Verified against Home Assistant 2026.7:
 | more-info as the detail view | does not render entity attributes at all, and cannot navigate onward |
 | `browser_mod` pop-up | a dependency on every installation, for a view the panel already is |
 | a `template` binary sensor in `configuration.yaml` | worked, but put a copy of our definition in every customer's config — which is where drift starts |
+
+## The logo in Home Assistant and HACS
+
+Artwork goes in **`custom_components/domotiapp_energy/brand/`** — that folder has a README
+listing the files and sizes. Home Assistant serves whatever is there and prefers it over
+the brands CDN; no manifest entry and no configuration are involved.
+
+**There is no pull request to submit.** Since Home Assistant 2026.3 a custom integration
+carries its own brand images, and `home-assistant/brands` no longer accepts pull requests
+for custom integrations — its own pull request template says so, and recent
+custom-integration submissions there are closed unmerged. That is also why
+`.github/workflows/validate.yml` keeps `ignore: brands`: the HACS action checks for a
+domain in that repository, and ours will never be there.
+
+Verified against Home Assistant 2026.7.4: with `brand/icon.png` in place,
+`/api/brands/integration/domotiapp_energy/icon.png` returned that exact file and the
+artwork appeared on the integration page.
+
+**One caveat, and it is not ours to fix.** The HACS dashboard still reads icons from
+`data-v2.hacs.xyz` and shows a blank tile for integrations that only ship local brand
+images — an open HACS issue
+([hacs/integration#5171](https://github.com/hacs/integration/issues/5171)) with a fix
+proposed. Everywhere inside Home Assistant itself the local file is used.
 
 ## Services
 
