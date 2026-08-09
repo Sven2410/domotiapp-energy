@@ -42,6 +42,7 @@ from custom_components.domotiapp_energy.const import (
     CONTRACT_TYPES,
     CONTROL_MONITOR_ONLY,
     DEVICE_TYPE_HOME_BATTERY,
+    NEVER_ADVISED_DEVICE_TYPES,
     SOURCE_TYPE_HOME_BATTERY,
     SOURCE_TYPE_SOLAR,
 )
@@ -186,9 +187,12 @@ def is_advisable(device: DeviceProfile) -> bool:
     neither has a consumer, and demanding them is asking for a number that will
     never be read.
 
-    Three conditions, on two different axes on purpose:
+    Four conditions, on three different axes on purpose:
 
     - **usable** — enabled, and not quarantined for an unknown type.
+    - **a type the coach can address** (`NEVER_ADVISED_DEVICE_TYPES`). A home
+      battery has no moment anybody starts it, so there is no advice to give
+      about it however the other flags are set.
     - **flexible** — a `generic_monitor` or a `heat_pump` says "measure this,
       do not move it" (`INFLEXIBLE_BY_DEFAULT_DEVICE_TYPES`). The installer can
       override it per appliance, which is why this reads the flag and not the
@@ -199,10 +203,13 @@ def is_advisable(device: DeviceProfile) -> bool:
 
     Production finding, 2026-08-09: a tablet charger on a smart plug, added as
     `generic_monitor`, was told its energy per cycle was missing — a cycle
-    being exactly what that type says it does not have.
+    being exactly what that type says it does not have. The battery is the same
+    finding one type further along, and it needed its own axis: a battery is
+    flexible, so the flag could not carry it (SPEC.md §38.2).
     """
     return (
         device.is_usable
+        and device.device_type not in NEVER_ADVISED_DEVICE_TYPES
         and device.is_flexible
         and device.effective_control_mode != CONTROL_MONITOR_ONLY
     )

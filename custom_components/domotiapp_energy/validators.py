@@ -267,11 +267,6 @@ class ValidationIssue:
         }
 
 
-def has_errors(issues: list[ValidationIssue]) -> bool:
-    """Return whether any issue is severe enough to block use of the row."""
-    return any(issue.is_error for issue in issues)
-
-
 def validate_home_profile(home: HomeProfile) -> list[ValidationIssue]:
     """Return everything wrong with the home profile (SPEC.md §8 "Woning")."""
     issues: list[ValidationIssue] = []
