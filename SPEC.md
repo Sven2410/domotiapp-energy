@@ -3852,3 +3852,122 @@ enige plek die hem ooit heeft aangeroepen.
 - een verborgen veld overleeft een wijziging aan zijn buurveld, en een standaardwaarde wordt
   niet als verlies gemeld;
 - `validators.has_errors` bestaat niet meer.
+
+## 39. De visuele ronde: compacter, en groter waar het telt
+
+**Status: gebouwd in 0.8.0.** Verfijnen, geen herontwerp. Het layoutpatroon uit fase 8 is de
+norm gebleven: één kolom, hairlines in plaats van kaders, kleine kapitalen als stille
+structuurstem. Wat vaststond en niet is aangeraakt: het Liquid Glass-thema blijft leidend,
+`ha-card` krijgt geen eigen achtergrond, ronding, schaduw of `backdrop-filter`, kleur komt
+uitsluitend uit themavariabelen, en er is geen serif.
+
+### 39.1 Compacter en groter is één ruil, geen tegenstelling
+
+De lucht tussen rijen en de grootte van de getallen zijn twee verschillende budgetten. Het
+eerste was royaal begroot en kostte een schermvol scrollen per tabblad; het tweede was zuinig
+begroot en liet de getallen — waarvoor de klant het paneel opent — lezen als bodytekst.
+
+| | Was | Is | Waarom |
+|---|---|---|---|
+| `--domotiapp-space-row` | 20px | **14px** | de hairline scheidt, niet de witruimte |
+| `--domotiapp-space-section` | 40px | **26px** | drie kaarten passen weer op één scherm |
+| kaartpadding | 32px | **26px** (mobiel 16px) | op 358px bleef er weinig over voor inhoud |
+| `.stat-value` | 1,05rem | **1,2rem** | het getal is de regel, niet het etiket |
+| `.display-value` | 3rem | **3,4rem** (mobiel 2,6rem) | het kopgetal domineert nu echt |
+| `.card-title` | 1,5rem | **1,4rem** | een kop hoeft niet mee te groeien met een getal |
+
+Die laatste is de omkering die de ruil zichtbaar maakt: **de koppen gaan iets omlaag terwijl
+de cijfers omhoog gaan.** De hiërarchie op een kaart hoort van het getal uit te gaan, niet van
+de titel.
+
+### 39.2 De dialoog opent nog maar twee secties
+
+Fase 8 gaf de dialoog inklapbare secties; er stonden er drie open, en dat is op een telefoon
+in een meterkast bijna het hele scherm voordat er iets getypt is.
+
+Open: **Apparaat** en **Verbruik**. Dat is de hele eerste doorloop — de datakwaliteit vraagt
+niets buiten die twee. Wat erna komt is een tweede bezoek en kost één tik.
+
+De volgorde volgt wat een installateur als eerste invult: *Apparaat → Verbruik → Wanneer het
+mag draaien → Koppelingen → Aansturing → Notities.* Koppelingen zijn naar voren gehaald,
+vóór Aansturing: sensoren koppelen hoort bij de installatie, het bedieningsniveau stuurt in
+deze release niets aan. Notities zijn een eigen sectie geworden, zoals bij Energiebronnen —
+dat waren twee verschillende indelingen voor hetzelfde soort dialoog.
+
+**De aanvechtbare helft:** *Wanneer het mag draaien* is dichtgegaan, en die sectie bevat het
+gereed-venster dat een punt waard is op de datakwaliteit. Het is alleen geen punt voor
+*compleetheid* (§16), en het is de enige sectie die de bewoner op zijn eigen scherm opent in
+plaats van de installateur bij oplevering.
+
+### 39.3 Een lege rij: bestaan volgt de configuratie, waarde volgt de meting
+
+Bij een woning zonder panelen stonden er drie regels over zonne-apparatuur: *Zonneproductie —
+Nog niet ingesteld*, *Zonneoverschot — Niet beschikbaar*, *Zelfbenutting — Niet beschikbaar*.
+Drie tekortkomingen die de bewoner nooit kan opheffen, over hardware waarvan de installateur
+al heeft gezegd dat zij er niet is.
+
+> **Een rij bestaat op grond van wat de woning heeft; haar waarde volgt uit wat er nu gemeten
+> wordt.**
+
+Dat zijn twee vragen, en ze door elkaar halen gaat in beide richtingen mis:
+
+| Fout | Gevolg |
+|---|---|
+| rij verbergen omdat er *nu* geen waarde is | een storing verdwijnt mee — een onleesbare netmeter is dan gewoon van de kaart |
+| rij tonen die deze woning *nooit* kan vullen | een gebrek melden dat niet bestaat |
+
+Daarom hangt het **bestaan** van een rij aan de configuratie, die stabiel is en niet knippert,
+en betekent *"Niet beschikbaar"* weer wat het hoort te betekenen: **deze woning heeft het ding
+wel en we kunnen het nu niet lezen.**
+
+Dat is precies het onderscheid tussen *kan niet* en *nu even niet*, en het is dezelfde lezing
+van een bronrij als overal elders: een rij is de uitspraak van de installateur dat de woning
+het ding heeft, in- of uitgeschakeld (`engine/completeness.py`).
+
+Concreet weg bij een woning zonder zonnerij: Zonneproductie, Zonneoverschot, Zelfbenutting en
+de batterijzin. Weg wanneer geen enkel apparaat een vermogensentiteit koppelt: *Apparaten die
+nu draaien*. Blijven staan, altijd: netvermogen, percentage van maximum en de prijs — dat zijn
+de onvoorwaardelijke items, en een lege regel daar is een storing die gezien moet worden.
+
+### 39.4 Wat de consistentiecontrole opleverde
+
+Nagelopen over alle zes tabbladen: kaartindeling, kopstijl, knopplaatsing en lege statussen.
+
+**Al consistent, en het patroon staat hier zodat het zo blijft:**
+
+- **Knoppen.** Een actie die bij één kaart hoort staat *in* die kaart (`Opnieuw berekenen`,
+  `Apparaat toevoegen`, `Bron toevoegen`, `Logboek wissen`); een actie die het hele tabblad
+  opslaat staat *na* de kaarten in `.tab-actions` (Woning, Mijn voorkeuren). Een opslaknop
+  onder een onderwerpkop leest anders alsof hij dat onderwerp opslaat.
+- **Eén primaire knop per scherm.** Blauw is voorbehouden aan koppen, links en die ene knop.
+  `Logboek wissen` is bewust niet primair.
+- **Lege lijsten** gaan overal via `createRowList({ emptyText })`, lege waarden via de
+  `empty`-tekst van `statRow`.
+- **Dialoogacties** staan overal in dezelfde volgorde: Annuleren, dan Opslaan.
+
+**Rechtgezet:** de sectie-indeling van de apparaatdialoog en die van de brondialoog liepen
+uiteen (§39.2).
+
+**Bewuste uitzondering:** `.subheading` wordt precies één keer gebruikt, voor *Waarschuwingen*
+binnen de Advieskaart. Dat is wat een subkop is: een tweede lijst binnen één kaart. Er een
+eigen kaart van maken zou een kaart toevoegen aan het drukste tabblad, tegen §39.1 in.
+
+### 39.5 Mobiel
+
+Getoetst met de paneelbreedte op **358px** — dat is wat de containerquery meet, en dat is de
+eerlijke toets: met de Home Assistant-zijbalk open op een tablet is het scherm ruim en het
+paneel niet.
+
+- één kolom, geen enkele horizontale scroll — geen element in de shadow root heeft
+  `scrollWidth > clientWidth`;
+- elk tikdoel ≥ 44px, gemeten in plaats van aangenomen: nul knoppen, tabbladen of
+  sectiekoppen eronder;
+- **de knoppen van een rij gaan over de volle breedte en delen de regel.** Op een telefoon
+  stonden *Bewerken* en *Verwijderen* als twee etiketgrote doelen tegen de rechterrand; nu
+  heeft een duim een halve regel.
+
+**Niet getoetst, en dat is een echte beperking:** de dialoog wordt schermvullend via een
+`@media (max-width: 600px)` op het *viewport*, en het browservenster liet zich in deze
+omgeving niet verkleinen — `resize_window` meldt succes en `window.innerWidth` blijft 1920.
+De containerquery is dus wel echt getoetst en de mediaquery niet. Die CSS is ongewijzigd
+sinds de ronde waarin zij wel is nagelopen.

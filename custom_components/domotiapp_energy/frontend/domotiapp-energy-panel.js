@@ -30,7 +30,7 @@ import { logbookTab } from './tabs/logbook.js';
 import { overviewTab } from './tabs/overview.js';
 import { preferencesTab } from './tabs/preferences.js';
 
-const VERSION = '0.7.2';
+const VERSION = '0.8.0';
 
 /**
  * Tab order as SPEC.md §33.6 lists it.
@@ -93,14 +93,25 @@ const STYLES = `
      */
     --domotiapp-font-heading: var(--ha-font-family-heading, inherit);
 
-    /* Rhythm. Generous by design: this style breathes, and a crowded card
-       turns muddy under the customer's Liquid Glass theme. */
-    --domotiapp-space-row: 20px;
-    --domotiapp-space-section: 40px;
+    /*
+     * Rhythm, and the trade it makes.
+     *
+     * "Compacter maar groter" is not a contradiction: the air between rows and
+     * the size of the figures are two different budgets. The first was spent
+     * generously and cost a screenful of scrolling on every tab; the second was
+     * spent carefully and left the numbers — the thing a customer opens this
+     * panel for — reading like body text.
+     *
+     * So the vertical rhythm comes in by about a third and the figures go up.
+     * The hairline between rows still does the separating, which is what makes
+     * the tightening safe: it was never the whitespace that grouped them.
+     */
+    --domotiapp-space-row: 14px;
+    --domotiapp-space-section: 26px;
 
     display: block;
-    padding: 32px 16px;
-    padding-bottom: calc(32px + env(safe-area-inset-bottom));
+    padding: 24px 16px;
+    padding-bottom: calc(24px + env(safe-area-inset-bottom));
     box-sizing: border-box;
     color: var(--primary-text-color);
     touch-action: manipulation;
@@ -172,17 +183,17 @@ const STYLES = `
 
   .card-title {
     margin: 0;
-    padding: 32px 32px 0;
+    padding: 22px 26px 0;
     font-family: var(--domotiapp-font-heading);
-    font-size: 1.5rem;
+    font-size: 1.4rem;
     font-weight: 400;
     letter-spacing: 0.01em;
   }
   .card-body {
-    padding: 24px 32px 32px;
+    padding: 14px 26px 22px;
   }
   .subheading {
-    margin: var(--domotiapp-space-section) 0 12px;
+    margin: var(--domotiapp-space-section) 0 8px;
     font-family: var(--domotiapp-font-heading);
     font-size: 1.1rem;
     font-weight: 400;
@@ -195,14 +206,14 @@ const STYLES = `
   .display-row {
     display: flex;
     flex-wrap: wrap;
-    gap: 40px;
-    margin-bottom: var(--domotiapp-space-section);
+    gap: 18px 32px;
+    margin-bottom: var(--domotiapp-space-row);
   }
   .display-metric {
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    min-width: 120px;
+    gap: 4px;
+    min-width: 110px;
   }
   .display-figure {
     display: flex;
@@ -210,7 +221,7 @@ const STYLES = `
     gap: 8px;
   }
   .display-value {
-    font-size: 3rem;
+    font-size: 3.4rem;
     font-weight: 300;
     line-height: 1;
     font-variant-numeric: lining-nums tabular-nums;
@@ -239,7 +250,7 @@ const STYLES = `
     text-align: right;
   }
   .stat-value {
-    font-size: 1.05rem;
+    font-size: 1.2rem;
     font-variant-numeric: lining-nums tabular-nums;
     overflow-wrap: anywhere;
   }
@@ -248,7 +259,7 @@ const STYLES = `
     font-style: italic;
   }
   .stat-hint {
-    margin-top: 4px;
+    margin-top: 2px;
     font-size: 0.8rem;
     color: var(--secondary-text-color);
   }
@@ -258,7 +269,7 @@ const STYLES = `
   .notice {
     display: flex;
     align-items: flex-start;
-    gap: 12px;
+    gap: 10px;
     margin-top: var(--domotiapp-space-row);
     padding-top: var(--domotiapp-space-row);
     border-top: 1px solid var(--divider-color);
@@ -284,7 +295,7 @@ const STYLES = `
   .advice-message {
     margin: 0 0 var(--domotiapp-space-row);
     max-width: 58ch;
-    line-height: 1.6;
+    line-height: 1.5;
     color: var(--secondary-text-color);
   }
   .advice-list {
@@ -302,7 +313,7 @@ const STYLES = `
   .advice-item-message {
     margin: 0;
     max-width: 58ch;
-    line-height: 1.6;
+    line-height: 1.5;
     color: var(--secondary-text-color);
   }
 
@@ -314,8 +325,8 @@ const STYLES = `
   .actions {
     display: flex;
     flex-wrap: wrap;
-    gap: 16px;
-    margin-top: var(--domotiapp-space-section);
+    gap: 12px;
+    margin-top: var(--domotiapp-space-row);
     padding-top: var(--domotiapp-space-row);
     border-top: 1px solid var(--divider-color);
   }
@@ -353,7 +364,7 @@ const STYLES = `
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 12px 16px;
+    gap: 10px 16px;
     padding: var(--domotiapp-space-row) 0;
     border-top: 1px solid var(--divider-color);
   }
@@ -362,8 +373,8 @@ const STYLES = `
     min-width: 0;
   }
   .row-name {
-    margin: 0 0 4px;
-    font-size: 1.05rem;
+    margin: 0 0 2px;
+    font-size: 1.1rem;
     overflow-wrap: anywhere;
   }
   .row-meta {
@@ -379,7 +390,7 @@ const STYLES = `
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    margin-top: 6px;
+    margin-top: 4px;
     font-size: 0.8rem;
     color: var(--secondary-text-color);
   }
@@ -472,7 +483,7 @@ const STYLES = `
     list-style: none;
   }
   .plain-item {
-    padding: 12px 0;
+    padding: 10px 0;
     border-top: 1px solid var(--divider-color);
   }
 
@@ -616,17 +627,42 @@ const STYLES = `
       gap: var(--domotiapp-space-row);
     }
     .card-title {
-      padding: 20px 20px 0;
-      font-size: 1.3rem;
+      padding: 18px 16px 0;
+      font-size: 1.25rem;
     }
     .card-body {
-      padding: 16px 20px 24px;
+      padding: 12px 16px 18px;
     }
     .display-row {
-      gap: 24px;
+      gap: 14px 24px;
     }
+    /*
+     * Still the largest thing on the screen, and now it fits three abreast on
+     * a 360 px column without wrapping into three lines of one.
+     */
     .display-value {
-      font-size: 2.4rem;
+      font-size: 2.6rem;
+    }
+    .display-metric {
+      min-width: 96px;
+    }
+    /*
+     * The label and the value stay on one line, which is the compact shape and
+     * the one that was already right. Stacking them was tried here and looked
+     * worse: the value column keeps its own right edge under space-between, so
+     * left-aligning the text inside it left every figure starting at a ragged
+     * position while its hint still ended at the margin.
+     */
+    /*
+     * The buttons of a row go full width and share the line, so a thumb has a
+     * whole half to hit instead of a label-sized target at the right edge.
+     */
+    .row-buttons {
+      width: 100%;
+    }
+    .row-buttons .button {
+      flex: 1 1 0;
+      padding: 0 12px;
     }
   }
 
