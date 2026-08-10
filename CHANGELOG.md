@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.19.0
+
+Twee regels over eenheden, en waarom ze verschillen. SPEC §57, uit §54.6.
+
+### Fixed
+
+- **Een geweigerde vermogenssensor wordt niet meer stil overgeslagen.** Koppelde je een
+  entiteit die niet in W of kW meet — een meterstand in kWh is de klassieke misgreep, waar het
+  bronformulier in zoveel woorden voor waarschuwt — dan toonde de rij niets, precies zoals bij
+  een apparaat waaraan niemand iets gekoppeld had.
+
+  De rij zegt nu: *"De gekoppelde vermogenssensor is niet te gebruiken: hij moet in W of kW
+  meten en een waarde melden."* Weigeren mag, zwijgen niet.
+
+- **Het formulier zegt nu welke van de twee eenheidsregels waar geldt.** Op Energiebronnen
+  kiest de installateur de eenheid zelf en leest hij dat die van de entiteit nooit gebruikt
+  wordt; bij een apparaatkoppeling is het andersom, en daar stond geen woord over.
+
+### Overwogen en niet gedaan
+
+- **De twee regels gelijktrekken.** Het verschil is terecht en volgt uit het gevolg: de
+  eenheid van een bron bepaalt het netvermogen, het overschot, de score en elke zin die
+  daarop rust, terwijl die van een apparaatkoppeling één getal op één rij bepaalt.
+  Gelijktrekken zou ofwel een nutteloos veld op elk apparaat opleveren, ofwel een bron die de
+  entiteit gelooft in precies het geval waarin dat honderden keren misgaat.
+
+### Openstaand
+
+- **§54.7 op echte hardware.** Sven heeft zelf een Easee; de simulatie van woning 3 gebruikte
+  verzonnen entiteiten. SPEC §57.3 beschrijft wat er ingevuld moet worden — welke waarde in
+  `min_power_w` hoort bij één of drie fasen, welke sensor de juiste `power_entity` is, en
+  waar op te letten als het advies uitblijft.
+
+
 ## 0.18.0
 
 De twee structurele gaten van woning 3, samen. SPEC §56.

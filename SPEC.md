@@ -6040,3 +6040,118 @@ metrics al aan, precies zodat die tak er later bij kan zonder dat het advies ver
    dat verdient zijn eigen verificatie in de browser.
 
 Drie stappen, elk apart te mergen en elk apart terug te draaien.
+
+## 57. Twee regels over eenheden, en waarom ze verschillen
+
+**Gebouwd in 0.19.0**, uit §54.6.
+
+Twee plekken beantwoorden "in welke eenheid meet deze sensor?" verschillend:
+
+| | Waar de eenheid vandaan komt |
+|---|---|
+| Energiebron (`grid_meter`, `solar`, `current_price`, …) | de **installateur** kiest hem; die van de entiteit wordt nooit gebruikt |
+| Apparaatkoppeling (`power_entity`) | van de **entiteit**; alleen `W` en `kW` worden geaccepteerd |
+
+### 57.1 Het verschil is terecht, en dat was de verrassing
+
+De eerste neiging was ze gelijk te trekken. Bij het nalopen bleek dat verkeerd, en de reden
+is het **gevolg**, niet de vorm:
+
+- De eenheid van een **bron** bepaalt het netvermogen, het zonneoverschot, de energiescore en
+  elke zin die daarop gebouwd is. Een meterintegratie die een kWh-stand levert waar een
+  vermogen verwacht werd, zit er honderden keren naast — en niets op het scherm zou dat
+  verraden. Daar is een expliciete uitspraak van de installateur op zijn plaats.
+- De eenheid van een **apparaatkoppeling** bepaalt één getal op één rij en de teller
+  *"apparaten die nu draaien"*. Zij raakt het overschot niet, de score niet en het advies
+  niet. Daar is de eenheid die de entiteit zelf declareert goed genoeg — en wat níét
+  declareert wordt geweigerd, nooit als watt aangenomen.
+
+**Gelijktrekken zou dus het slechtste van twee werelden opleveren:** ofwel een veld op elk
+apparaat dat nergens toe doet, ofwel een bron die de entiteit gelooft in precies het geval
+waarin dat honderden keren misgaat.
+
+### 57.2 Wat er dan wél mis was: het zwijgen
+
+Twee dingen, en het tweede is het echte defect.
+
+**Nergens stond welke regel waar geldt.** De installateur leest op Energiebronnen letterlijk
+dat de eenheid van de entiteit nooit gebruikt wordt, koppelt daarna een vermogenssensor op
+een apparaat, en moet maar aannemen dat het daar goed gaat. De hulptekst bij
+*Vermogensentiteit* zegt het nu.
+
+**En een geweigerde koppeling werd stil overgeslagen.** `_device_powers` deed `continue` bij
+een eenheid buiten `W`/`kW`, en de rij toonde dan geen vermogensregel — ononderscheidbaar van
+een apparaat waaraan niemand iets gekoppeld had. Een kWh-meterstand is precies de verkeerde
+keuze waar het bronformulier voor waarschuwt, en juist die werd hier zonder één woord
+genegeerd.
+
+`EnergySnapshot.device_power_unusable` draagt nu de apparaten waarvan de koppeling niet
+bruikbaar was, en de rij zegt het:
+
+> *"De gekoppelde vermogenssensor is niet te gebruiken: hij moet in W of kW meten en een
+> waarde melden."*
+
+Dezelfde vorm als overal: **weigeren mag, zwijgen niet.**
+
+### 57.3 Openstaande verificatie: een echte Easee
+
+**Sven heeft zelf een Easee-laadpaal en toetst §54.7 op echte hardware zodra het uitkomt.**
+Dat is nodig, want de simulatie van woning 3 gebruikte **verzonnen** Easee-entiteiten. Wat
+zijn integratie werkelijk levert kan afwijken in namen, in eenheden en in wat de statussensor
+meldt.
+
+#### Wat er ingevuld moet worden
+
+**`min_power_w` bij een driefasenaansluiting.** Zes ampère is de ondergrens waaronder niet
+geladen wordt, maar het aantal fasen dat telt is dat van de **auto**, niet van de paal:
+
+| Situatie | `min_power_w` |
+|---|---|
+| Auto laadt op drie fasen | 6 × 3 × 230 = **4140 W** |
+| Auto laadt op één fase (veel auto's, ook op een driefasenpaal) | 6 × 230 = **1380 W** |
+
+**Bij twijfel is meten beter dan rekenen:** zet de paal op zijn laagste stand met de auto
+eraan en lees af wat de vermogenssensor meldt. Dat getal is het antwoord, en het is meteen de
+controle of de goede sensor gekoppeld is.
+
+Een te hoge waarde is de veilige kant: dan zwijgt het advies bij een overschot dat eigenlijk
+genoeg was. Een te lage waarde adviseert laden waar de auto niets doet.
+
+**Welke sensor de `power_entity` is.** De Easee-integratie levert er meerdere, en er is er
+maar één die klopt:
+
+| Sensor | Bruikbaar |
+|---|---|
+| het **actuele laadvermogen** (kW) | **ja** — dit is de juiste |
+| `session_energy` / totaal geladen (kWh) | nee: een totaal, geen vermogen |
+| laadstroom (A) | nee: alleen `W` en `kW` worden geaccepteerd |
+| energie per uur (kWh/h) | nee |
+
+Sinds §57.2 hoeft dat niet meer geraden te worden: een verkeerde keuze **zegt het** op de rij
+in plaats van niets te tonen. Dat is de snelste controle die er is — koppel, kijk naar de rij.
+
+#### Waar op te letten als het advies niet komt
+
+In deze volgorde, want zo loopt de motor:
+
+1. **Is `min_power_w` ingevuld?** Zonder dat getal doet `can_modulate` niets — dat is de
+   bewuste veilige standaard van §56.2, en het is de meest waarschijnlijke oorzaak.
+2. **Is het overschot groot genoeg?** Het moet boven `min_power_w` liggen **én** boven het
+   *minimale zonneoverschot* bij Woning (standaard 500 W).
+3. **Krijgt de paal überhaupt advies?** Ingeschakeld, *verplaatsbaar in de tijd* aan, en niet
+   op *alleen meekijken*.
+4. **Staat vandaag in de dagen?** `days_of_week`, niet te verwarren met `ready_days` — dat
+   tweede onderdrukt alleen de deadline, niet het zonneadvies (§56.1).
+5. **Een niet-draaien-venster?** Dan verschijnt er wél een zin die dat zegt (§51), dus dit is
+   te herkennen aan wat er staat in plaats van aan wat er ontbreekt.
+6. **Wint een ander apparaat?** Er is één advies per apparaat en de lijst is begrensd door
+   *maximaal aantal adviezen*. Een vaatwasser die ook past kan voorgaan.
+7. **Een thuisbatterij die niet te lezen is.** Dan wordt het overschot als mogelijk overschat
+   beschouwd en blijft het zonneadvies helemaal weg (0.4.1). Dat is de enige oorzaak in deze
+   lijst die niets met de laadpaal te maken heeft, en de makkelijkste om over het hoofd te
+   zien.
+
+**Wat er waarschijnlijk afwijkt van de simulatie:** de entiteitsnamen (die van Easee bevatten
+het serienummer van de paal), en mogelijk de eenheid — de simulatie ging uit van kW, wat de
+integratie ook levert, maar dat is precies het soort aanname dat een echte installatie hoort
+te weerleggen of te bevestigen.

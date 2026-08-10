@@ -157,7 +157,15 @@ const ENTITY_LINKS = [
     name: 'power_entity',
     label: 'Vermogensentiteit',
     types: null,
-    helper: 'Het actuele vermogen van dit apparaat.',
+    // **Says which of the two unit rules applies here** (SPEC.md §57). On
+    // Energiebronnen the installer picks the unit himself and reads that the
+    // entity's own unit is never used; here it is exactly the other way round,
+    // and without a word about it he has to guess which he is looking at.
+    helper:
+      'Het actuele vermogen van dit apparaat. Anders dan bij een energiebron ' +
+      'wordt de eenheid hier van de entiteit zelf overgenomen: hij moet in W ' +
+      'of kW meten. Een meterstand in kWh is een totaal en geen vermogen, en ' +
+      'wordt geweigerd — de rij zegt dat dan ook.',
   },
   {
     name: 'energy_entity',
@@ -1109,6 +1117,7 @@ export const devicesTab = {
     // appliances that link a power entity appear in it, which is what keeps an
     // unlinked one from getting an empty line (SPEC.md §37).
     let devicePower = {};
+    let powerUnusable = [];
 
     const rowList = createRowList({
       emptyText:
@@ -1246,10 +1255,19 @@ export const devicesTab = {
           // fault where there is none — the same rule the tile texts follow.
           const watts = devicePower[device.id];
           const hasReading = typeof watts === 'number';
+          // **A refused link is not the same as no link** (SPEC.md §57). A
+          // power entity that reports a kWh total — the classic wrong pick — is
+          // refused rather than read as watts, and until now that looked
+          // exactly like an appliance nobody had linked anything to.
+          const refused = !hasReading && powerUnusable.includes(device.id);
           power.textContent = hasReading
             ? `Nu: ${formatNumber(watts)} W`
-            : '';
-          setVisible(power, hasReading);
+            : refused
+              ? 'De gekoppelde vermogenssensor is niet te gebruiken: hij moet ' +
+                'in W of kW meten en een waarde melden.'
+              : '';
+          power.dataset.tone = refused ? 'warning' : '';
+          setVisible(power, hasReading || refused);
           // A resident opens the same dialog and can change six fields in it,
           // so "Instellen" rather than "Bewerken" or "Bekijken": he is not
           // editing the appliance, and he is not only looking either.
@@ -1751,6 +1769,7 @@ export const devicesTab = {
         applyRoleToTab();
       }
       devicePower = panelState.live?.metrics?.device_power_w || {};
+      powerUnusable = panelState.live?.metrics?.device_power_unusable || [];
       rowList.sync(config.devices || []);
       for (const { form } of forms) {
         form.setHass(getHass());

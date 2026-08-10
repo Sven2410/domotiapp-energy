@@ -1584,6 +1584,9 @@ class EnergySnapshot:
     # with the others rather than being attached afterwards — see the note on
     # `Calculator.calculate` for the bug that taught us the difference.
     device_power_w: dict[str, float] = field(default_factory=dict)
+    # Appliances whose linked power entity could not be used (SPEC.md §57).
+    # Refusing in silence made a wrong link look like no link at all.
+    device_power_unusable: list[str] = field(default_factory=list)
     # Always the all-in price: the calculator normalises on reading (SPEC.md
     # §16), so nothing downstream has to know what the source reported.
     current_price_eur_kwh: float | None = None
@@ -1824,6 +1827,9 @@ class EnergyMetrics:
     # than an empty one, because a column of blanks reads as a fault where
     # nothing is wrong (SPEC.md §37).
     device_power_w: dict[str, float] = field(default_factory=dict)
+    # Appliances whose linked power entity could not be used (SPEC.md §57).
+    # Refusing in silence made a wrong link look like no link at all.
+    device_power_unusable: list[str] = field(default_factory=list)
     reason_codes: list[str] = field(default_factory=list)
 
     @property
@@ -1893,6 +1899,7 @@ class EnergyMetrics:
             "not_applicable_components": list(self.not_applicable_components),
             "component_unavailable_reasons": dict(self.component_unavailable_reasons),
             "device_power_w": dict(self.device_power_w),
+            "device_power_unusable": list(self.device_power_unusable),
             "running_device_count": self.running_device_count,
             "score_unavailable_reason": self.score_unavailable_reason,
             "reason_codes": list(self.reason_codes),
@@ -1950,6 +1957,7 @@ class EnergyMetrics:
                 data.get("component_unavailable_reasons")
             ),
             device_power_w=_as_number_mapping(data.get("device_power_w")),
+            device_power_unusable=_as_str_list(data.get("device_power_unusable")),
             score_unavailable_reason=_as_choice(
                 data.get("score_unavailable_reason"), SCORE_UNAVAILABLE_REASONS, None
             ),

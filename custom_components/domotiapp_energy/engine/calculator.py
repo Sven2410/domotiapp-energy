@@ -143,6 +143,7 @@ class Calculator:
         """Read every usable source into one normalised snapshot."""
         readings = self._read_sources(config)
 
+        device_powers, device_power_unusable = self.read_device_power(config)
         return EnergySnapshot(
             timestamp=dt_util.utcnow(),
             grid_power_w=readings.values.get(SOURCE_TYPE_GRID_METER),
@@ -151,7 +152,8 @@ class Calculator:
                 SOURCE_TYPE_GENERAL_CONSUMPTION
             ),
             battery_power_w=readings.values.get(SOURCE_TYPE_HOME_BATTERY),
-            device_power_w=self.read_device_power(config),
+            device_power_w=device_powers,
+            device_power_unusable=device_power_unusable,
             current_price_eur_kwh=readings.values.get(SOURCE_TYPE_CURRENT_PRICE),
             market_price_eur_kwh=readings.market_price,
             feed_in_price_eur_kwh=readings.values.get(SOURCE_TYPE_FEED_IN_PRICE),
@@ -161,7 +163,9 @@ class Calculator:
             reason_codes=readings.reason_codes,
         )
 
-    def read_device_power(self, config: StoredConfiguration) -> dict[str, float]:
+    def read_device_power(
+        self, config: StoredConfiguration
+    ) -> tuple[dict[str, float], list[str]]:
         """Return the live power per appliance, for the ones that link one.
 
         **`power_entity` had no reader until 0.6.0.** It was asked of the
@@ -170,12 +174,21 @@ class Calculator:
         and changed nothing else. A field that asks for attention and does
         nothing costs trust at every installation (Sven, 2026-08-09).
 
-        The unit comes from the entity itself, and only ``W`` and ``kW`` are
-        accepted. A power sensor that declares neither is left out rather than
-        assumed to be watts: a kilowatt read as a watt is off by a thousand,
-        and that is exactly the sort of silent guess SPEC.md §15 forbids.
+        **The unit comes from the entity here, and from the installer on a
+        source — and that difference is deliberate** (SPEC.md §57). A source's
+        unit decides the grid power, the surplus, the score and every sentence
+        built on them, and a meter integration that reports a kWh total where a
+        power was expected is off by a factor of hundreds; that is worth an
+        explicit statement. This number is shown on one row and counted in
+        "apparaten die nu draaien", so an entity that declares its own unit is
+        trusted for it — and one that declares nothing usable is refused, never
+        assumed to be watts.
+
+        Returns the readings **and the appliances whose link could not be used**,
+        so the panel can say so instead of looking like nothing was linked.
         """
         powers: dict[str, float] = {}
+        unusable: list[str] = []
         for device in config.devices:
             entity_id = device.entity_links.get(DEVICE_LINK_POWER)
             if not device.is_usable or not entity_id:
@@ -184,6 +197,12 @@ class Calculator:
             state = self._hass.states.get(entity_id)
             unit = state.attributes.get("unit_of_measurement") if state else None
             if unit not in (UNIT_W, UNIT_KW):
+                # **Refused, and no longer in silence** (SPEC.md §57). Skipping
+                # left the row looking exactly like an appliance with nothing
+                # linked, so an installer who linked the wrong entity — a meter
+                # total in kWh is the classic one — had no way to tell that from
+                # having linked nothing.
+                unusable.append(device.id)
                 continue
 
             result = read_entity_value(
@@ -191,7 +210,11 @@ class Calculator:
             )
             if result.ok and result.value is not None:
                 powers[device.id] = result.value
-        return powers
+            else:
+                # Linked, readable unit, and still no number: the entity is
+                # unavailable or reports something that is not one.
+                unusable.append(device.id)
+        return powers, unusable
 
     def calculate(self, config: StoredConfiguration) -> EnergyMetrics:
         """Read the sources and derive everything the advisor needs.
@@ -247,6 +270,7 @@ class Calculator:
             grid_power_w=snapshot.grid_power_w,
             solar_power_w=snapshot.solar_power_w,
             device_power_w=dict(snapshot.device_power_w),
+            device_power_unusable=list(snapshot.device_power_unusable),
             home_consumption_w=consumption,
             home_consumption_unavailable_reason=consumption_reason,
             solar_surplus_w=surplus,
