@@ -1,15 +1,5 @@
 # Changelog
 
-## Onuitgebracht
-
-### Documentatie
-
-- **SPEC §49: woning 2, tweede helft.** Bevindingenronde zonder code — apparaten, het
-  gereed-venster en de bewonersweergave, ingericht met SPEC.md dicht. Zes bevindingen,
-  waarvan twee stil gegevensverlies en één een onterechte foutmelding op precies de
-  configuratie waarvoor het gereed-venster gebouwd is. Plus wat goed ging, en de
-  voorgestelde volgorde van afhandelen.
-
 ## 0.13.1
 
 De voorrangsregel van 0.13.0 omgedraaid waar zij verkeerd was.
@@ -40,6 +30,17 @@ De voorrangsregel van 0.13.0 omgedraaid waar zij verkeerd was.
 
 - **CLAUDE.md:** Sven tagt pas nadat de merge gemeld is. De release-workflow vergelijkt de
   tag met de versienummers, niet of die commit op `main` staat.
+
+- **SPEC §49: woning 2, tweede helft.** Bevindingenronde zonder code — apparaten, het
+  gereed-venster en de bewonersweergave, ingericht met SPEC.md dicht. Zes bevindingen,
+  waarvan twee stil gegevensverlies en één een onterechte foutmelding op precies de
+  configuratie waarvoor het gereed-venster gebouwd is. Plus wat goed ging, en de
+  voorgestelde volgorde van afhandelen.
+
+- **`_validate_price_components`:** de docstring beweerde dat een vast contract
+  `current_price_eur_kwh` nooit raadpleegt. Dat is sinds 0.13.0 onwaar; het gat eronder
+  (vast contract, marktbasis-bron, leeg tariefveld) is erin opgeschreven in plaats van
+  stil gedicht.
 
 ## 0.13.0
 
