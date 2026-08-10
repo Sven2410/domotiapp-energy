@@ -1,5 +1,16 @@
 # Changelog
 
+## Onuitgebracht
+
+### Documentatie
+
+- **SPEC §54: woning 3, het rijtjeshuis met de laadpaal.** Bevindingenronde zonder code.
+  Negen bevindingen, waarvan **twee structureel** en allebei op het laadpaalpad — dat nog
+  nooit op een echte installatie was gelopen.
+
+- **SPEC §55: voorstel voor een deadline die niet elke dag geldt.** Op papier, vóór er code
+  komt, want het raakt het datamodel. Voorlopig akkoord van Sven; nog niet gebouwd.
+
 ## 0.17.0
 
 De opruimronde van §49.2: dezelfde regel, drie keer, en drie keer een andere reparatie.

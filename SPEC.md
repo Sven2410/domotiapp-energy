@@ -5522,3 +5522,343 @@ opgeslagen antwoord mag houden. Het script hoort zich aan te passen, niet de API
   draait om een aanroep te controleren vóórdat je hem afvuurt.
 
 `home/update` en `preferences/update` staan er niet bij: die voegen sinds §49.3 samen.
+
+## 54. Woning 3: het rijtjeshuis met de laadpaal
+
+**Bevindingenronde, 2026-08-10. Geen code in deze ronde.** Zelfde opzet als woning 2: de
+woning eerst in gewone taal beschreven met SPEC.md dicht, en pas daarna ingericht. Alles wat
+ik daarna moest verzinnen is een bevinding.
+
+**Beukenhof 7**, rijtjeshuis 1998, eenfase 35 A (verzwaard voor de laadpaal), twaalf panelen
+via een Growatt-cloudkoppeling, een **Easee-laadpaal** met een Volvo EX30, een dynamisch
+contract bij Tibber, geen batterij. Wasmachine, droger en vaatwasser in de bijkeuken, en een
+vijftien jaar oude vrieskist in de garage die alleen gemeten wordt.
+
+**Deze woning stond als eerste op de lijst omdat zij het dichtst bij Sven's eerste klant
+staat**, en omdat het laadpaalpad (§34) nog nooit op een echte installatie was gelopen. Die
+verwachting is uitgekomen: er zitten **twee structurele gaten** in, en allebei raken zij de
+manier waarop vrijwel iedereen met een auto en een baan laadt.
+
+De entiteiten dragen de namen die de integraties zelf geven — `Easee home EH845213 power`,
+`Growatt MIN 5000TL X output power`, `Tibber electricity price Beukenhof 7` — want een
+installateur hernoemt die niet: "dan werkt de update niet meer".
+
+### 54.1 De eerste instructie wijst naar een tabblad dat niet bestaat
+
+Verse installatie, Overzicht, nog niets gekoppeld:
+
+> *"Er zijn nog geen energiebronnen gekoppeld. Ga naar het tabblad
+> **Energiebronnen** om je slimme meter of omvormer te koppelen."*
+
+De tabbladen zijn Overzicht, Energiecoach, Apparaten, Mijn voorkeuren,
+Installatie en Logboek. **Energiebronnen is een sectie binnen Installatie**,
+geen tabblad.
+
+Dit stond al op de lijst na de eerste productie-installatie en is blijven
+staan. Wat de woningronde toevoegt is *waar* het staat: dit is de allereerste
+zin die een nieuwe installateur leest, op een scherm waar verder niets te doen
+is. De eerste aanwijzing van het product wijst naar iets dat er niet is.
+
+### 54.2 De eerste klik na een herlaadbeurt registreert niet
+
+Drie keer opgemerkt, ook in woning 2: na een `location.href` of een harde
+herlaadbeurt doet de eerste klik op een tabblad niets, de tweede wel. Klein,
+maar een installateur die het paneel voor het eerst opent doet precies dat.
+
+### 54.3 De laadpaalvragen passen zich aan, en dat is goed
+
+`nominal_power_w` heet hier *"Maximaal laadvermogen"*, `energy_per_cycle_kwh`
+*"Energie per laadsessie"*, `duration_minutes` *"Duur van een laadsessie"*.
+Het formulier spreekt de taal van het apparaat. Dat werkt.
+
+### 54.4 De zin van de bewoner heeft geen plek in het formulier
+
+**De zwaarste bevinding tot nu toe, en waarschijnlijk functie-groot.**
+
+Wat de bewoner zegt:
+
+> *"Laad hem vol als ik morgen weg moet, en anders alleen wanneer het gunstig
+> is."*
+
+Hij rijdt vier dagen per week en vertrekt dan om 06:15; op die dagen moet de
+auto **vol**. Op de andere dagen mag de paal wachten op zon of een lage prijs,
+en 60% is prima.
+
+Wat het formulier kan:
+
+| Wat hij wil | Wat er is | Past het? |
+|---|---|---|
+| deadline op werkdagen | `ready_before` | ja, maar **elke dag** |
+| geen deadline op de andere dagen | `runs_any_time` | ja, maar **elke dag** |
+| alleen op deze dagen adviseren | `days_of_week` | ja — maar dan krijgt hij op de overige dagen **helemaal geen advies** |
+
+De drie sluiten elkaar uit. `days_of_week` beperkt wanneer het apparaat
+überhaupt geadviseerd mag worden, dus "maandag t/m donderdag" betekent dat de
+paal in het weekend **niets** meer zegt — terwijl de bewoner juist dan het
+zonneadvies wil.
+
+**Er is geen manier om te zeggen: op deze dagen een deadline, op die dagen
+niet.** En dat is niet een randgeval van deze woning: het is hoe vrijwel
+iedereen met een auto en een baan laadt.
+
+### 54.5 "Energie per laadsessie" is voor een auto geen vast getal
+
+Een vaatwasser gebruikt elke keer ongeveer evenveel. Een laadsessie is de ene
+dag 8 kWh en de andere 45, afhankelijk van hoe leeg hij thuiskomt.
+
+Het formulier vraagt één getal. Tegelijk is er een koppeling *Batterijniveau*
+— en die staat hier op `input_number.volvo_ex30_battery_level`, dus het
+systeem kán weten hoe leeg de auto is. Wat de installateur invult is dus een
+schatting van iets dat live beschikbaar is.
+
+Ik weet niet of die koppeling gelezen wordt; dat is precies het soort vraag
+dat SPEC.md dicht houden oplevert. **Bevinding: als installateur kan ik niet
+zien of dit getal nog nodig is wanneer ik het batterijniveau koppel.**
+
+### 54.6 Twee plekken beantwoorden "in welke eenheid meet deze sensor?" verschillend
+
+**De negende variant, in het wild, één dag nadat we hem opschreven.**
+
+De Easee rapporteert in kW. Dat gaat goed — `_device_powers` in de calculator leest de
+eenheid **van de entiteit** en accepteert alleen `W` of `kW`.
+
+Maar een **bron** doet het omgekeerde, en zegt dat met zoveel woorden op het scherm:
+
+> *"De eenheid waarin deze entiteit meet. Zoals jij hem vaststelt: de eenheid van de
+> entiteit zelf wordt nooit gebruikt om te converteren."*
+
+Dus:
+
+| | Waar de eenheid vandaan komt |
+|---|---|
+| Energiebron (`grid_meter`, `solar`, …) | de installateur kiest hem; die van de entiteit wordt **nooit** gebruikt |
+| Apparaatkoppeling (`power_entity`) | **van de entiteit**, en zonder eenheid wordt de sensor overgeslagen |
+
+Beide zijn op zichzelf verdedigbaar — geen van tweeën raadt. Maar het is dezelfde vraag met
+twee antwoorden, en dat is precies de vorm die geen enkele test kan zien: elke kant is groen
+op zijn eigen voorwaarden.
+
+**Waarom het uitmaakt voor deze woning:** de installateur die net bij Energiebronnen heeft
+gelezen dat wij de eenheid van de entiteit nooit gebruiken, koppelt даarna een laadpaal die
+in kW rapporteert — en moet maar aannemen dat het daar wél goed gaat. Er staat geen woord
+over.
+
+**Niet meteen repareren.** Welke van de twee regels de juiste is, is een ontwerpvraag: de
+bronregel bestaat omdat meterintegraties liegen over hun eenheid, de apparaatregel omdat een
+extra veld op elk apparaat te duur leek. Ze horen alleen niet zwijgend naast elkaar te staan.
+
+### 54.7 Een laadpaal wordt behandeld als een vaatwasser: alles of niets
+
+**De tweede structurele bevinding, en misschien de belangrijkste van deze woning.**
+
+Situatie: 2100 W zonneoverschot, auto op 42%, bewoner wil laden "wanneer het gunstig is".
+
+Wat het advies zegt:
+
+> *"Er is momenteel zonneoverschot beschikbaar. Dit is een gunstig moment om **Wasmachine**
+> te gebruiken."*
+
+De laadpaal wordt niet genoemd. De reden staat in `_fits_in_surplus`:
+
+```python
+return device.nominal_power_w <= surplus     # 3680 > 2100 -> valt af
+```
+
+Voor een wasmachine klopt die regel volkomen: die draait op 2100 W of hij draait niet, en
+hem adviseren op 600 W overschot zou 1500 W van het net "je eigen overschot" noemen. Dat is
+precies het defect dat deze regel ooit repareerde.
+
+**Maar een laadpaal moduleert.** Een Easee laadt op 6, 8, 10 of 16 ampère. Met 2100 W
+overschot kun je uitstekend op ongeveer 9 A laden — dat is exact wat een zonneladende
+installatie de hele dag doet. De installateur heeft de paal zelfs op 16 A begrensd, dus het
+begrip "minder dan vol vermogen" zit al in deze woning.
+
+Het gevolg: **in de meest voorkomende Nederlandse situatie — auto thuis, panelen leveren
+minder dan het maximale laadvermogen — zwijgt de paal.** En dat is precies waar de bewoner
+hem voor wil.
+
+De regel is niet fout; hij is te grof voor één apparaattype. Een apparaat dat zijn vermogen
+kan aanpassen hoort te worden beoordeeld op *een* bruikbaar vermogen, niet op zijn maximum.
+
+**Ook dit is een ontwerpbeslissing en geen reparatie.** Hij raakt `_fits_in_surplus`, het
+begrip "past dit apparaat", en waarschijnlijk een minimum-laadvermogen (onder ~6 A laadt een
+auto niet). Niet in deze ronde bouwen.
+
+### 54.8 "Apparaten die nu draaien: 1" is permanent de vrieskist
+
+Het Overzicht toont een teller. In deze woning staat er `1`, en dat blijft zo — het is de
+vrieskist in de garage, die per definitie altijd aanstaat.
+
+De teller is technisch juist en vertelt de bewoner niets. Erger: hij ziet er informatief uit,
+dus hij zal er een keer naar kijken en concluderen dat er iets draait wat hij kan uitzetten.
+
+§37 zegt dat sluimerverbruik niet als draaiend telt, en 78 W is inderdaad geen sluimerstand.
+Het onderscheid dat hier ontbreekt is een ander: **een continue last tegenover een cyclus.**
+Een vrieskist "draait" niet in de zin waarin een wasmachine draait.
+
+### 54.9 De rij van een alleen-gemeten apparaat zegt het twee keer
+
+> *"Overig, alleen meten · Garage · Alleen monitoren"*
+
+Het type zegt al "alleen meten", en het bedieningsniveau zegt daarna "alleen monitoren".
+Twee formuleringen van hetzelfde, naast elkaar. §38.3 heeft deze regel al een keer opgeruimd
+(toen stond er ook nog een prioriteit bij); dit is wat er van over is.
+
+Klein, en het staat op de rij die een installateur het vaakst voorbij scrollt.
+
+### 54.10 Wat goed ging
+
+- **De laadpaalvragen spreken de taal van het apparaat**: "Maximaal laadvermogen", "Energie
+  per laadsessie", "Duur van een laadsessie".
+- **De Easee rapporteert in kW en dat gaat vanzelf goed** — `_device_powers` accepteert `W`
+  en `kW` en rekent om. Dat het tegelijk een inconsistentie blootlegt (bevinding 6) doet daar
+  niets aan af: dit pad werkt.
+- **Lange, Engelse integratienamen zijn geen enkel probleem.** `Easee home EH845213 power`,
+  `Growatt MIN 5000TL X output power`, `Tibber electricity price Beukenhof 7` — allemaal
+  gevonden via de entiteitkiezer, geen enkele aanname over de naam.
+- **De datakwaliteit haalde 100** zonder dat ik iets hoefde te verzinnen: `runs_any_time` op
+  de drie huishoudelijke apparaten en een deadline op de laadpaal was genoeg. Dat is §52 die
+  in de eerste vreemde woning na zijn bouw meteen zijn werk doet.
+- **`monitor_only` op de vrieskist doet precies wat het moet**: geen advies, wel het
+  vermogen op de rij.
+
+## 55. Voorstel: een deadline die niet elke dag geldt
+
+Uit bevinding §54.4. **Op papier, vóór er code komt** — Sven's voorwaarde, omdat dit het
+datamodel raakt en dat duur is om terug te draaien. Zijn stand: een voorlopig ja.
+
+Naar aanleiding van bevinding 4, woning 3. **Op papier, vóór er code komt.**
+
+### 55.0 Eerst een correctie op de vraagstelling
+
+> *"`days_of_week` doet nu twee dingen: wanneer mag hij draaien, en wanneer geldt de
+> deadline."*
+
+**Dat is niet wat het doet, en het verschil bepaalt de oplossing.**
+
+`days_of_week` heeft precies één lezer, `_allowed_today`, en die wordt op twee plaatsen
+aangeroepen: in de kandidatenfilter voor het zonne- en prijsadvies, én in het
+urgentie-advies. Beide vragen hetzelfde: *doet dit apparaat vandaag mee?*
+
+Het echte probleem zit een laag dieper:
+
+> **De deadline heeft geen eigen dagdimensie, dus hij erft die van `days_of_week`.**
+
+`ready_before` geldt op elke dag dat het apparaat meedoet. Meedoen impliceert de deadline;
+er is geen manier om het ene te hebben zonder het andere. Dat is de aanname die je aanwees —
+alleen zit zij niet in `days_of_week` maar in het **ontbreken** van een dagdimensie op het
+gereed-venster.
+
+Dat is goed nieuws: een ontbrekende dimensie is goedkoper te repareren dan een veld dat twee
+banen heeft.
+
+### 55.1 Optie A — meerdere vensters per apparaat
+
+`DeviceProfile.schedules: list[Schedule]`, elk met eigen dagen, gereed-venster en
+`runs_any_time`.
+
+**Dit is de deur die niet meer dichtgaat, en ik raad hem af.**
+
+| Wat het kost | Waarom het blijft kosten |
+|---|---|
+| Elke lezer wordt "welke regel geldt nu?" | `latest_start`, `earliest_start`, `has_ready_window`, `may_run_at`, `_within_window`, de checklist, het urgentie-advies, de validator |
+| Overlappende regels worden mogelijk | nieuwe validatie, nieuwe zin, nieuwe randgevallen |
+| Het formulier krijgt een herhaalbaar blok | een UI-patroon dat nergens anders in dit paneel bestaat |
+| `devices/set_operation` moet een lijst toestaan | de rechtengrens is nu per veld; die wordt per regel-per-veld |
+| Migratie van elk bestaand apparaat | naar een lijst van één |
+
+En het permanente deel: **elke toekomstige vraag over een apparaat wordt "voor welke
+regel?"**. De checklistvraag *"heeft dit apparaat een tijdvenster"* wordt *"hebben al zijn
+regels er een"*. Dat is precies de soort betekenisverschuiving die §49.1 zo duur maakte.
+
+Voor één woning met één laadpaal is dat een onevenredige prijs.
+
+### 55.2 Optie B — een dagenlijst op de deadline (het voorstel)
+
+Eén nieuw optioneel veld:
+
+```
+ready_days: list[int] | None = None      # None = elke dag dat het apparaat meedoet
+```
+
+De betekenis, en de twee blijven expliciet gescheiden:
+
+| Veld | Vraag |
+|---|---|
+| `days_of_week` | Op welke dagen doet dit apparaat mee? |
+| `ready_days` | Op welke van die dagen geldt de deadline? |
+
+De zin van de bewoner wordt dan letterlijk invulbaar:
+
+```
+days_of_week = ma t/m zo        (de paal doet elke dag mee)
+ready_before = 06:15            (dan moet hij vol zijn)
+ready_days   = ma, di, wo, do   (maar alleen op werkdagen)
+```
+
+Op vrijdag t/m zondag is de paal gewoon kandidaat voor zonne- en prijsadvies, en er is geen
+deadline — dus geen urgentie-advies en geen vensterbeperking. Dat is exact wat hij vroeg.
+
+### Wat er verandert, en het is minder dan het lijkt
+
+**Twee runtime-lezers**, en beide hebben de weekdag al bij de hand:
+
+- `_within_window` in de advisor — heeft `context`;
+- `latest_start_minutes` in `scheduling.py`, die het urgentie-advies voedt — idem.
+
+**Twee statische lezers veranderen niet:**
+
+- `has_ready_window` (checklist) vraagt *is er iets gezegd*, en dat is dagonafhankelijk;
+- `_deadline_is_reachable` (validator) toetst interne consistentie, en die moet op elke dag
+  waarop de deadline geldt kloppen — dus die redenering blijft staan.
+
+**Geen migratie.** `None` betekent "elke dag dat het apparaat meedoet", wat exact het
+huidige gedrag is. Elk bestaand apparaat blijft doen wat het deed.
+
+### Wat er bewaakt moet worden
+
+1. **`ready_days` buiten `days_of_week`** is een deadline op een dag dat het apparaat niet
+   mag draaien. Eigen melding; niet stilzwijgend snijden.
+2. **`ready_days` leeg.** `_as_days_of_week` maakt van een lege lijst "alle dagen" — hier zou
+   dat het omgekeerde betekenen van wat de installateur aanklikte. Dit veld moet een lege
+   lijst dus **niet** normaliseren maar weigeren, of `None` blijven. Let op: dit is precies
+   de valkuil waar een gedeelde helper hem in trekt.
+3. **Twee manieren om hetzelfde te zeggen.** `runs_any_time = true` en `ready_days = []`
+   zouden allebei "nooit een deadline" betekenen. Voorstel: `runs_any_time` schakelt
+   `ready_days` net zo uit als het de tijdvelden uitschakelt, zodat er één weg is.
+4. **Bewonersveld**, naast `ready_before` — de spiegelhelft-regel van §52: hij mag een
+   deadline zetten, dus hij mag zeggen wanneer die geldt.
+
+### 55.3 Optie C — twee apparaatrijen voor één laadpaal
+
+Geen modelwijziging: "Laadpaal werkdagen" en "Laadpaal weekend", beide aan dezelfde entiteit.
+
+**Afgeraden.** Twee rijen voor één ding tellen twee keer in de datakwaliteit en in
+`has_movable_load`, tonen allebei hetzelfde vermogen, en spreken de afspraak van §34 tegen
+dat er één auto per paal is. Het is de goedkoopste optie in code en de duurste op het scherm.
+
+### 55.4 Wat er sindsdien bij is gekomen
+
+Dit voorstel is geschreven halverwege de laadpaal, en Sven hield het bewust op een
+**voorlopig** ja tot de ronde af was — juist om niet twee keer over hetzelfde datamodel te
+beslissen. Dat was de goede volgorde, want de tweede helft leverde §54.7 op: **een laadpaal
+wordt beoordeeld op zijn maximale vermogen, terwijl hij moduleert.**
+
+De twee gaten staan los van elkaar en raken verschillende code:
+
+| | Waar het zit | Wat het is |
+|---|---|---|
+| §54.4 | het datamodel — de deadline mist een dagdimensie | `ready_days` |
+| §54.7 | de adviesregel — `_fits_in_surplus` kent geen regelbaar apparaat | een eigen beslissing |
+
+**Ze hoeven dus niet samen beslist te worden, en waarschijnlijk ook niet samen gebouwd.**
+Maar ze komen wel samen uit bij dezelfde bewoner: hij wil dat de auto op werkdagen vol is
+(§54.4) en dat de paal in het weekend meelift op de zon (§54.7). Wordt er maar één van de
+twee gebouwd, dan is zijn zin nog steeds niet waar te maken.
+
+**De valstrik uit §55.2 blijft gelden, en Sven vroeg hem expliciet vast te leggen:**
+`_as_days_of_week` maakt van een lege lijst "alle dagen". Voor `days_of_week` is dat juist —
+"geen enkele dag" zou een apparaat betekenen dat nooit mag draaien, en daar is uitschakelen
+voor. Voor `ready_days` zou diezelfde normalisatie het **omgekeerde** betekenen van wat de
+installateur aanklikte: hij vinkt alle dagen uit om te zeggen "nooit een deadline", en krijgt
+"elke dag een deadline" terug. Die helper mag hier niet hergebruikt worden.
