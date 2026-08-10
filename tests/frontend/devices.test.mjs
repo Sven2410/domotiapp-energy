@@ -446,6 +446,145 @@ describe('saving a device', () => {
     assert.equal(rows(tab).length, 1);
   });
 
+  /**
+   * A conflicting write, with the current configuration alongside it — the
+   * shape the backend really sends (SPEC.md §14).
+   */
+  function conflictingHass(config, { on = 'domotiapp_energy/devices/update' } = {}) {
+    const hass = fakeHass({ config });
+    const original = hass.callWS;
+    let refuse = true;
+    hass.callWS = async (message) => {
+      if (message.type === on && refuse) {
+        refuse = false;
+        throw {
+          code: 'revision_conflict',
+          message: 'stale',
+          revision: 9,
+          config: { ...config, revision: 9 },
+        };
+      }
+      return original(message);
+    };
+    return hass;
+  }
+
+  const DISHWASHER = {
+    id: 'd1',
+    name: 'Vaatwasser',
+    device_type: 'dishwasher',
+    enabled: true,
+    nominal_power_w: 1200,
+    energy_per_cycle_kwh: 1.2,
+    duration_minutes: 120,
+  };
+
+  it('keeps a filled-in dialog when something else changed', async () => {
+    // SPEC.md §49.4, from the field: a complete appliance was lost because a
+    // source was added on another screen. The revision counts the whole
+    // configuration, so a conflict usually says nothing about this row.
+    const hass = conflictingHass(sampleConfig({ devices: [DISHWASHER] }));
+    const { panel, tab } = await openDevicesTab(hass);
+    buttonIn(rows(tab)[0], 'Bewerken').click();
+    await settle();
+    change(panel, { name: 'Vaatwasser keuken', duration_minutes: 135 });
+    buttonIn(formDialog(panel), 'Opslaan').click();
+    await settle();
+
+    assert.equal(isVisible(formDialog(panel)), true);
+    assert.equal(formData(panel).name, 'Vaatwasser keuken');
+    assert.equal(formData(panel).duration_minutes, 135);
+    assert.ok(
+      noticeTexts(formDialog(panel)).some((t) => t.includes('niet aan dit apparaat')),
+    );
+  });
+
+  it('saves on the second press, against the revision that came back', async () => {
+    // Keeping the input is only worth anything if it can then be saved: the
+    // dialog has to adopt the revision the refusal carried.
+    const hass = conflictingHass(sampleConfig({ devices: [DISHWASHER] }));
+    const { panel, tab } = await openDevicesTab(hass);
+    buttonIn(rows(tab)[0], 'Bewerken').click();
+    await settle();
+    change(panel, { name: 'Vaatwasser keuken' });
+    buttonIn(formDialog(panel), 'Opslaan').click();
+    await settle();
+
+    buttonIn(formDialog(panel), 'Opslaan').click();
+    await settle();
+
+    assert.equal(isVisible(formDialog(panel)), false);
+    assert.ok(noticeTexts(tab).some((t) => t.includes('is bijgewerkt')));
+  });
+
+  it('says so when this very appliance changed too', async () => {
+    // Here the old reasoning holds — saving replaces somebody else's change —
+    // so the installer is told, and still not robbed of what he typed.
+    const config = sampleConfig({ devices: [DISHWASHER] });
+    const hass = fakeHass({ config });
+    const original = hass.callWS;
+    hass.callWS = async (message) => {
+      if (message.type === 'domotiapp_energy/devices/update') {
+        throw {
+          code: 'revision_conflict',
+          message: 'stale',
+          revision: 9,
+          config: {
+            ...config,
+            revision: 9,
+            devices: [{ ...DISHWASHER, name: 'Door iemand anders hernoemd' }],
+          },
+        };
+      }
+      return original(message);
+    };
+
+    const { panel, tab } = await openDevicesTab(hass);
+    buttonIn(rows(tab)[0], 'Bewerken').click();
+    await settle();
+    change(panel, { name: 'Mijn naam' });
+    buttonIn(formDialog(panel), 'Opslaan').click();
+    await settle();
+
+    assert.equal(isVisible(formDialog(panel)), true);
+    assert.equal(formData(panel).name, 'Mijn naam');
+    assert.ok(
+      noticeTexts(formDialog(panel)).some((t) =>
+        t.includes('vervangt hij die andere wijziging'),
+      ),
+    );
+  });
+
+  it('says so when the appliance was removed elsewhere', async () => {
+    const config = sampleConfig({ devices: [DISHWASHER] });
+    const hass = fakeHass({ config });
+    const original = hass.callWS;
+    hass.callWS = async (message) => {
+      if (message.type === 'domotiapp_energy/devices/update') {
+        throw {
+          code: 'revision_conflict',
+          message: 'stale',
+          revision: 9,
+          config: { ...config, revision: 9, devices: [] },
+        };
+      }
+      return original(message);
+    };
+
+    const { panel, tab } = await openDevicesTab(hass);
+    buttonIn(rows(tab)[0], 'Bewerken').click();
+    await settle();
+    change(panel, { name: 'Mijn naam' });
+    buttonIn(formDialog(panel), 'Opslaan').click();
+    await settle();
+
+    // No false hope: pressing Opslaan again cannot work, and the sentence says
+    // what would (SPEC.md §26 — one whole sentence per situation).
+    assert.ok(
+      noticeTexts(formDialog(panel)).some((t) => t.includes('ergens anders verwijderd')),
+    );
+  });
+
   it('places a backend validation issue on the field it is about', async () => {
     const hass = fakeHass({
       config: sampleConfig({

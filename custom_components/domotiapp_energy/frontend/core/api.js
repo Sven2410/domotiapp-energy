@@ -140,6 +140,46 @@ export function isRevisionConflict(error) {
   return error?.code === ERROR_REVISION_CONFLICT;
 }
 
+/**
+ * What a revision conflict actually means for the row being edited.
+ *
+ * **The revision counts the whole configuration, not one row.** A conflict
+ * therefore says "something changed", and until SPEC.md §49.4 every form read
+ * it as "your row changed" and threw the filled-in dialog away. An installer
+ * lost a complete appliance — name, location, power, energy per cycle,
+ * duration, ready window — because a source was added on another screen.
+ *
+ * Reloading was justified with "keeping the draft would invite overwriting a
+ * change nobody here has seen". That is true only when the change touched
+ * *this* row, and that is what this tells apart:
+ *
+ * - `'unrelated'` — the row is untouched, or there is no row yet because this
+ *   is a new one. Adopting the new revision and saving again overwrites
+ *   nothing, so the input can stay.
+ * - `'same-row'` — this row changed too. The input stays, because throwing it
+ *   away helps nobody, but saving now replaces what the other change made and
+ *   the form has to say so.
+ * - `'removed'` — the row is gone. Saving cannot succeed.
+ *
+ * `rows` is the list from the config that came back with the error; `id` is
+ * null for a row being created.
+ */
+export function conflictKind(rows, id, opened) {
+  if (id == null) {
+    return 'unrelated';
+  }
+  const current = (rows || []).find((row) => row.id === id);
+  if (!current) {
+    return 'removed';
+  }
+  // A shallow comparison of the stored representation. Both sides come from
+  // the backend as plain JSON, so this asks exactly the right question: does
+  // what is stored still look like what this dialog was opened on?
+  return JSON.stringify(current) === JSON.stringify(opened)
+    ? 'unrelated'
+    : 'same-row';
+}
+
 /** Turn any thrown value into a readable Dutch sentence (SPEC.md §21). */
 export function describeError(error) {
   if (!error) {

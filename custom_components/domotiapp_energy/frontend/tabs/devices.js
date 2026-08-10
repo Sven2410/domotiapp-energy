@@ -30,6 +30,7 @@
  */
 
 import {
+  conflictKind,
   createApi,
   describeError,
   fieldErrors,
@@ -1471,11 +1472,15 @@ export const devicesTab = {
         );
       } catch (error) {
         if (isRevisionConflict(error)) {
+          // The dialog stays open and keeps every field (SPEC.md §49.4). A
+          // stale revision means "your base is old", not "your input is
+          // wrong", and this is the longest form in the panel.
           state.setConfig(error.config);
-          dialog.close();
-          listNotice.set(
-            'De configuratie is intussen ergens anders gewijzigd. Je wijzigingen ' +
-              'zijn niet opgeslagen; de lijst is opnieuw geladen.',
+          revision = error.config?.revision ?? revision;
+          dialogNotice.set(
+            conflictSentence(
+              conflictKind(error.config?.devices, editing?.id ?? null, editing),
+            ),
             { tone: 'warning' },
           );
         } else {
@@ -1487,6 +1492,34 @@ export const devicesTab = {
         state.setSaving(false);
         setBusy(false);
       }
+    }
+
+    /**
+     * What to tell the installer when the configuration moved under him.
+     *
+     * One whole sentence per situation rather than one sentence with a tail,
+     * because the three situations ask him to do three different things
+     * (SPEC.md §26 and §49.4).
+     */
+    function conflictSentence(kind) {
+      if (kind === 'removed') {
+        return (
+          'Dit apparaat is intussen ergens anders verwijderd. Je invoer staat ' +
+          'hier nog, maar opslaan lukt niet meer; maak het opnieuw aan als je ' +
+          'het terug wilt.'
+        );
+      }
+      if (kind === 'same-row') {
+        return (
+          'Dit apparaat is intussen ook ergens anders gewijzigd. Je invoer ' +
+          'staat er nog; als je nu opslaat, vervangt hij die andere wijziging.'
+        );
+      }
+      return (
+        'Er is intussen ergens anders iets aan de configuratie gewijzigd, maar ' +
+        'niet aan dit apparaat. Je invoer staat er nog; druk opnieuw op ' +
+        'Opslaan om hem te bewaren.'
+      );
     }
 
     /** Fold one write answer into the panel state, without re-reading. */

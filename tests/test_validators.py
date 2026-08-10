@@ -27,6 +27,7 @@ from custom_components.domotiapp_energy.const import (
     DEVICE_TYPE_EV_CHARGER,
     DEVICE_TYPE_GENERIC_MONITOR,
     DEVICE_TYPE_GENERIC_SCHEDULABLE,
+    DEVICE_TYPE_WASHING_MACHINE,
     ENTITY_STALE_AFTER_MINUTES,
     EXPORT_STALE_MINUTES,
     MAX_ADVICE_COUNT,
@@ -76,6 +77,7 @@ from custom_components.domotiapp_energy.models import (
     EntityBinding,
     HomeProfile,
     UserPreferences,
+    minutes_since_midnight,
 )
 from custom_components.domotiapp_energy.validators import (
     ReadResult,
@@ -891,8 +893,14 @@ def test_a_run_fitting_inside_a_midnight_window_is_accepted() -> None:
     assert validate_device_profile(device) == []
 
 
-def test_a_run_too_long_for_a_midnight_window_is_rejected() -> None:
-    """The length wraps as (finish - start) mod 1440, so ten hours does not fit."""
+def test_a_cycle_longer_than_its_midnight_window_is_accepted() -> None:
+    """Ten hours of running against an eight hour finish window is fine.
+
+    It used to be an error, and that was the old `earliest_start` /
+    `latest_finish` meaning surviving the rename (SPEC.md §49.1). Both bounds
+    are *finish* times now: this device starts between 12:00 and 20:00 and is
+    done between 22:00 and 06:00, exactly as the resident asked.
+    """
     device = DeviceProfile(
         id="d1",
         device_type=DEVICE_TYPE_DISHWASHER,
@@ -901,10 +909,7 @@ def test_a_run_too_long_for_a_midnight_window_is_rejected() -> None:
         ready_before="06:00",
     )
 
-    issues = validate_device_profile(device)
-
-    assert _fields(issues) == {"duration_minutes"}
-    assert VALIDATION_INVALID_TIME_WINDOW in _codes(issues)
+    assert validate_device_profile(device) == []
 
 
 def test_an_equal_start_and_finish_is_rejected() -> None:
@@ -977,6 +982,71 @@ def test_half_a_ready_window_is_allowed() -> None:
     assert validate_device_profile(only_before) == []
 
 
+def test_an_impossible_hour_from_the_form_is_reported_not_swallowed() -> None:
+    """The message exists; until §49.2 it could never fire from the panel.
+
+    Home Assistant's hour box is an `<input type="number" max="23"
+    maxlength="2">`, and `maxlength` does nothing on a number input, so typing
+    "0730" in one go is accepted by the control and arrives as an impossible
+    hour. `_as_time` turned that into `None` — indistinguishable from "not
+    filled in" — so the save reported success and the field was empty on the
+    way back, and this validator saw nothing to complain about.
+
+    `_kept_time` keeps it, so the installer is told which field to fix.
+    """
+    device = DeviceProfile.from_dict(
+        {
+            "id": "d1",
+            "device_type": DEVICE_TYPE_DISHWASHER,
+            "ready_before": "0730:00",
+        }
+    )
+
+    # Kept rather than dropped: that is what makes the message reachable.
+    assert device.ready_before == "0730:00"
+
+    issues = validate_device_profile(device)
+
+    assert _fields(issues) == {"ready_before"}
+    assert VALIDATION_INVALID_TIME_WINDOW in _codes(issues)
+
+
+def test_a_kept_broken_time_still_yields_no_bound_downstream() -> None:
+    """Keeping it must not let it reach the engine as a real time.
+
+    Every consumer goes through `minutes_since_midnight`, which still refuses
+    it, so the device behaves as one without that bound while the panel shows
+    the error.
+    """
+    device = DeviceProfile.from_dict(
+        {
+            "id": "d1",
+            "device_type": DEVICE_TYPE_DISHWASHER,
+            "duration_minutes": 120,
+            "ready_before": "0730:00",
+        }
+    )
+
+    assert minutes_since_midnight(device.ready_before) is None
+    assert device.latest_start is None
+
+
+def test_an_empty_time_still_means_absent() -> None:
+    """Clearing a bound has to stay expressible (SPEC.md §32.2)."""
+    device = DeviceProfile.from_dict(
+        {
+            "id": "d1",
+            "device_type": DEVICE_TYPE_DISHWASHER,
+            "ready_from": "",
+            "ready_before": None,
+        }
+    )
+
+    assert device.ready_from is None
+    assert device.ready_before is None
+    assert validate_device_profile(device) == []
+
+
 def test_a_malformed_time_is_rejected() -> None:
     """A directly constructed profile can still hold a broken time string."""
     device = DeviceProfile(
@@ -992,14 +1062,45 @@ def test_a_malformed_time_is_rejected() -> None:
     assert VALIDATION_INVALID_TIME_WINDOW in _codes(issues)
 
 
-def test_a_run_that_does_not_fit_its_window_is_rejected() -> None:
-    """A four hour cycle cannot run inside a two hour window."""
+def test_the_washing_machine_of_woning_2_validates_cleanly() -> None:
+    """The configuration the ready window exists for is not an error.
+
+    **The regression test for SPEC.md §49.1**, written from the resident's own
+    words: the washing is not to sit wet, so it may not be finished before
+    07:00; they leave at 08:00, so it must be finished by then; the programme
+    takes 90 minutes.
+
+    Until this revision that produced a severity-`error` on `duration_minutes`
+    — the one number the resident is certain of — because 90 > 60. The device
+    starts between 05:30 and 06:30 and finishes inside the hour the resident
+    named. Nothing about it is wrong.
+    """
+    device = DeviceProfile(
+        id="wasmachine",
+        name="Wasmachine",
+        device_type=DEVICE_TYPE_WASHING_MACHINE,
+        nominal_power_w=2000.0,
+        energy_per_cycle_kwh=0.9,
+        duration_minutes=90,
+        ready_from="07:00",
+        ready_before="08:00",
+    )
+
+    assert validate_device_profile(device) == []
+
+
+def test_a_cycle_of_a_full_day_cannot_carry_a_ready_window() -> None:
+    """The one duration-versus-clock rule that does hold (SPEC.md §49.1).
+
+    `latest_start` subtracts the duration modulo 1440, so a 25-hour programme
+    with a 07:30 deadline would report a latest start of 06:30 — an hour before
+    the finish — and say nothing about it.
+    """
     device = DeviceProfile(
         id="d1",
         device_type=DEVICE_TYPE_DISHWASHER,
-        duration_minutes=240,
-        ready_from="09:00",
-        ready_before="11:00",
+        duration_minutes=25 * 60,
+        ready_before="07:30",
     )
 
     issues = validate_device_profile(device)
@@ -1008,14 +1109,16 @@ def test_a_run_that_does_not_fit_its_window_is_rejected() -> None:
     assert VALIDATION_INVALID_TIME_WINDOW in _codes(issues)
 
 
-def test_a_run_that_exactly_fills_its_window_is_accepted() -> None:
-    """Fitting exactly is still fitting."""
+def test_a_long_cycle_without_a_ready_window_is_not_asked_about() -> None:
+    """No bound to subtract from, so the clock rule does not apply.
+
+    A requirement is not stated where the value it guards is never used —
+    the rule of SPEC.md §16, applied to this check.
+    """
     device = DeviceProfile(
         id="d1",
         device_type=DEVICE_TYPE_DISHWASHER,
-        duration_minutes=120,
-        ready_from="09:00",
-        ready_before="11:00",
+        duration_minutes=25 * 60,
     )
 
     assert validate_device_profile(device) == []
@@ -1209,13 +1312,19 @@ def test_a_market_source_with_the_components_produces_no_issues() -> None:
     assert validate_configuration(home, sources, [], UserPreferences()) == {}
 
 
-def test_a_fixed_contract_is_not_asked_for_the_price_components() -> None:
-    """A fixed contract never consults the live price, so it needs no formula.
+def test_a_fixed_contract_with_a_market_source_is_asked_too() -> None:
+    """The dead end of SPEC.md §49.10, and the inversion of an older test.
 
-    Asking anyway sent the installer after two fields that go nowhere — and the
-    panel hides both on a fixed contract, so the message landed against a field
-    that was not on screen and they saw nothing at all
-    (production finding, 2026-08-07).
+    That test read "a fixed contract never consults the live price, so it needs
+    no formula". True when it was written; false since 0.13.0, which lets a
+    fixed contract fall back to the source when the tariff field is empty. The
+    result was a home with a linked market-price source, no price at all, no
+    message, and no way to reach the fields that would have fixed it — the
+    silent refusal this check exists to prevent, arriving from the other side.
+
+    The 2026-08-07 finding underneath it still stands and is still honoured: a
+    message must not land on a hidden field. `contractSchema` in `home.js` now
+    shows the composition fields on the same condition this fires on.
     """
     home = HomeProfile(
         contract_type=CONTRACT_TYPE_FIXED,
@@ -1231,7 +1340,25 @@ def test_a_fixed_contract_is_not_asked_for_the_price_components() -> None:
         )
     ]
 
-    assert validate_configuration(home, sources, [], UserPreferences()) == {}
+    issues = validate_configuration(home, sources, [], UserPreferences())
+
+    assert "energy_tax_eur_kwh" in _fields(issues["home"])
+
+
+def test_a_fixed_contract_without_a_market_source_is_not_asked() -> None:
+    """The rule is the market price, not the contract — so this stays silent.
+
+    The half that keeps the 2026-08-07 finding fixed: nothing to convert means
+    nothing to ask, on any contract.
+    """
+    home = HomeProfile(
+        contract_type=CONTRACT_TYPE_FIXED,
+        fixed_import_price_eur_kwh=0.24171,
+        energy_tax_eur_kwh=None,
+        supplier_markup_eur_kwh=None,
+    )
+
+    assert validate_configuration(home, [], [], UserPreferences()) == {}
 
 
 def test_a_dynamic_contract_is_still_asked() -> None:

@@ -23,6 +23,7 @@ from custom_components.domotiapp_energy.const import (
     ATTR_REVISION,
     CONF_HOME_NAME,
     CONF_MANUAL_SETUP_ACKNOWLEDGED,
+    CONTRACT_TYPE_DYNAMIC,
     CONTROL_AUTOMATIC,
     CONTROL_MONITOR_ONLY,
     DEFAULT_HOME_NAME,
@@ -296,12 +297,116 @@ async def test_updating_the_home_also_updates_the_config_entry(
     assert entry.title == "Woning Noord"
 
 
+async def test_updating_one_home_field_leaves_the_others_alone(
+    hass: HomeAssistant, entry: MockConfigEntry, hass_ws_client: WebSocketGenerator
+) -> None:
+    """A partial payload updates what it names and nothing else (SPEC.md §49.3).
+
+    The regression test for a configuration that was destroyed in the field.
+    Naming one amount used to reset the other twelve values to their defaults —
+    name, phases, fuse, maximum power, contract type, tax, markup, thresholds —
+    and answer `success` with a fresh revision.
+    """
+    client = await hass_ws_client(hass)
+    store = entry.runtime_data.store
+
+    await _send(
+        client,
+        {
+            "type": WS_HOME_UPDATE,
+            ATTR_EXPECTED_REVISION: store.revision,
+            "home": {
+                "home_name": "Beukenlaan 14",
+                "phases": 3,
+                "main_fuse_a": 25,
+                "max_grid_power_w": 17250,
+                "contract_type": CONTRACT_TYPE_DYNAMIC,
+            },
+        },
+    )
+
+    await _send(
+        client,
+        {
+            "type": WS_HOME_UPDATE,
+            ATTR_EXPECTED_REVISION: store.revision,
+            "home": {"feed_in_markup_eur_kwh": 0.02},
+        },
+    )
+
+    home = store.config.home
+    assert home.feed_in_markup_eur_kwh == 0.02
+    assert home.home_name == "Beukenlaan 14"
+    assert home.phases == 3
+    assert home.main_fuse_a == 25
+    assert home.max_grid_power_w == 17250
+    assert home.contract_type == CONTRACT_TYPE_DYNAMIC
+
+
+async def test_an_explicit_null_still_clears_a_home_field(
+    hass: HomeAssistant, entry: MockConfigEntry, hass_ws_client: WebSocketGenerator
+) -> None:
+    """Absent means "leave alone"; null means "clear" (SPEC.md §49.3).
+
+    The panel depends on exactly this split: `payload()` sends every editable
+    field and writes a cleared one as `null`, so clearing has to stay
+    expressible now that omission no longer resets anything.
+    """
+    client = await hass_ws_client(hass)
+    store = entry.runtime_data.store
+
+    await _send(
+        client,
+        {
+            "type": WS_HOME_UPDATE,
+            ATTR_EXPECTED_REVISION: store.revision,
+            "home": {"main_fuse_a": 25},
+        },
+    )
+    assert store.config.home.main_fuse_a == 25
+
+    await _send(
+        client,
+        {
+            "type": WS_HOME_UPDATE,
+            ATTR_EXPECTED_REVISION: store.revision,
+            "home": {"main_fuse_a": None},
+        },
+    )
+
+    assert store.config.home.main_fuse_a is None
+
+
 async def test_updating_the_preferences(
     hass: HomeAssistant, entry: MockConfigEntry, hass_ws_client: WebSocketGenerator
 ) -> None:
-    """Preferences are replaced as a whole, the way the form submits them."""
+    """Preferences take the same rule as the home profile (SPEC.md §49.3).
+
+    This used to read "replaced as a whole, the way the form submits them", and
+    it only passed because it asserted the two fields it set. Setting the quiet
+    hours alone reset the other seven preferences.
+
+    **The fields checked for survival are set to non-default values first, on
+    purpose.** Asserting the defaults would be green either way — the untouched
+    fields would come back as defaults under replacement too, and the test would
+    confirm the defect instead of catching it (CLAUDE.md, the fixture that
+    codifies the bug).
+    """
     client = await hass_ws_client(hass)
     store = entry.runtime_data.store
+
+    await _send(
+        client,
+        {
+            "type": WS_PREFERENCES_UPDATE,
+            ATTR_EXPECTED_REVISION: store.revision,
+            "preferences": {
+                "quiet_hours_end": "06:30",
+                "show_technical_explanation": False,
+                "min_savings_eur": 0.25,
+            },
+        },
+    )
 
     response = await _send(
         client,
@@ -314,6 +419,10 @@ async def test_updating_the_preferences(
 
     assert response["result"][ATTR_ITEM]["max_advice_count"] == 5
     assert store.config.preferences.quiet_hours_start == "23:00"
+    # None of these are defaults, so they can only be here by surviving.
+    assert store.config.preferences.quiet_hours_end == "06:30"
+    assert store.config.preferences.show_technical_explanation is False
+    assert store.config.preferences.min_savings_eur == 0.25
 
 
 # --- Refusals ---------------------------------------------------------------

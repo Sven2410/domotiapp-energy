@@ -30,7 +30,6 @@ from homeassistant.util import dt as dt_util
 
 from .const import (
     ALLOWED_PHASES,
-    CONTRACT_TYPE_DYNAMIC,
     CONTRACT_TYPES,
     CONTROL_CAPABILITIES,
     CONTROL_MODES,
@@ -750,6 +749,26 @@ def _validate_time_window(device: DeviceProfile) -> list[ValidationIssue]:
     **Half a window is allowed**, unlike the start window this replaced. The two
     bounds answer different questions — "not before" guards against spoilage,
     "not after" is the deadline — and a resident may well have only one of them.
+
+    **There is deliberately no "does the cycle fit in the window" check any
+    more, and its removal is the point of this revision (SPEC.md §49.1).** Both
+    bounds are *finish* times: the device runs over ``[ready_from - duur,
+    ready_before]`` and finishes inside ``[ready_from, ready_before]``. Nothing
+    has to fit inside anything, so a duration longer than the window is not an
+    error — it is the ordinary case. A 90-minute wash that must be done between
+    07:00 and 08:00 simply starts between 05:30 and 06:30.
+
+    That check was carried over unchanged from ``earliest_start`` /
+    ``latest_finish``, where the pair really did bound a *run*. Under the
+    current meaning it can never fire correctly, and it fired on precisely the
+    configuration the ready window exists for: it put a severity-``error`` on
+    ``duration_minutes`` — the one number the resident is sure of — and the only
+    way out was to widen a window that was right. :func:`_within_ready_window`
+    in the advisor already worked to the new meaning and says so in its own
+    docstring; it was worked around rather than corrected.
+
+    What replaces it is the one duration-versus-clock rule that does hold: a
+    cycle of a full day or more cannot be placed on a 24-hour clock at all.
     """
     malformed = [
         ValidationIssue(
@@ -766,6 +785,26 @@ def _validate_time_window(device: DeviceProfile) -> list[ValidationIssue]:
     if malformed:
         return malformed[:1]
 
+    # A cycle of a full day or more has no start time on a 24-hour clock: both
+    # `latest_start` and `earliest_start` subtract the duration and wrap modulo
+    # 1440, so a 25-hour programme with a 07:30 deadline reports a latest start
+    # of 06:30 — an hour *before* the finish, silently. This is the only rule
+    # that ties the duration to the window, and it needs a bound to subtract
+    # from, so a device without any ready window is not asked about it.
+    if (
+        device.has_ready_window
+        and device.duration_minutes is not None
+        and device.duration_minutes >= MINUTES_PER_DAY
+    ):
+        return [
+            ValidationIssue(
+                "duration_minutes",
+                VALIDATION_INVALID_TIME_WINDOW,
+                "Een cyclus van 24 uur of langer is niet te combineren met een "
+                "gereed-venster: er is dan geen starttijd op de klok te bepalen.",
+            )
+        ]
+
     start_minutes = minutes_since_midnight(device.ready_from)
     finish_minutes = minutes_since_midnight(device.ready_before)
     if start_minutes is None or finish_minutes is None:
@@ -780,17 +819,6 @@ def _validate_time_window(device: DeviceProfile) -> list[ValidationIssue]:
                 "ready_before",
                 VALIDATION_INVALID_TIME_WINDOW,
                 "De begin- en eindtijd van het gereed-venster mogen niet gelijk zijn.",
-            )
-        ]
-
-    if device.duration_minutes is not None and (
-        device.duration_minutes > window_length_minutes(start_minutes, finish_minutes)
-    ):
-        return [
-            ValidationIssue(
-                "duration_minutes",
-                VALIDATION_INVALID_TIME_WINDOW,
-                "Het apparaat past niet binnen het opgegeven gereed-venster.",
             )
         ]
 
@@ -873,24 +901,31 @@ def _validate_price_components(
     reports. Without them the calculator refuses the price silently as far as
     the installer can see, and this is what makes it visible (SPEC.md §16).
 
-    **Only on a dynamic contract**, because the panel only shows the two fields
-    there. Reporting the issue on a fixed contract would put a message against a
-    field that is not on screen, and the installer would see nothing at all
-    (production finding, 2026-08-07).
+    **Asked exactly when there is a market price to convert**, and no longer
+    only on a dynamic contract (SPEC.md §49.10).
 
-    **The reason underneath that has expired, and this is not the fix.** The
-    scoping was justified by "a fixed contract never consults
-    ``current_price_eur_kwh``". Since 0.13.0 it does: with the tariff field left
-    empty, :func:`import_price_now` falls back to the source. So a fixed
-    contract with a market-basis source and no tariff typed in gets no price and
-    no explanation, and cannot reach the fields that would fix it — the exact
-    silent refusal this function exists to prevent, reintroduced from the other
-    side. Making the panel show the composition fields whenever there is a
-    market price to convert (rather than whenever the contract is dynamic) is
-    what closes it; that is a decision about what the installer sees, so it is
-    Sven's to make and it is reported, not smuggled in here (2026-08-10).
+    The old scoping had a good reason and it expired. It was justified by "a
+    fixed contract never consults ``current_price_eur_kwh``", which stopped
+    being true in 0.13.0: with the tariff field left empty,
+    :func:`import_price_now` falls back to the source. A fixed contract with a
+    market-basis source and nothing typed in then got no price, no explanation,
+    and no way to reach the fields that would fix it — the exact silent refusal
+    this function exists to prevent, reintroduced from the other side.
+
+    The 2026-08-07 finding that produced the old scoping is still respected:
+    a message must not land on a field that is not on screen. That is why this
+    changed together with ``contractSchema`` in ``home.js``, which now shows the
+    three composition fields whenever a market-basis source exists rather than
+    whenever the contract is dynamic. The two conditions are deliberately the
+    same one.
+
+    Note that this fires even when the entered tariff outranks the source
+    (SPEC.md §48.1). That is not an oversight: the source is still read every
+    cycle, and without these fields it cannot be converted at all, so it is
+    reported as unreadable. A row that cannot work is worth a message whether or
+    not its value would have won.
     """
-    if home.contract_type != CONTRACT_TYPE_DYNAMIC or home.has_price_components:
+    if home.has_price_components:
         return []
 
     needs_components = any(

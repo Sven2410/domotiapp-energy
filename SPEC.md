@@ -5070,3 +5070,151 @@ Een bevindingenlijst zonder dit deel geeft een vertekend beeld.
 3. **§49.3** — stil gegevensverlies bij een normale API-aanroep.
 4. **§49.4** — werk kwijt bij een conflict dat te herstellen is.
 5. **§49.5 en §49.6** — beslissingen voor Sven, geen defecten.
+
+### 49.10 De doodlopende weg bij een vast contract met een marktprijsbron
+
+Gevonden op 2026-08-10 bij het beantwoorden van de vraag of `current_price` bij een vast
+contract in de keuzelijst hoort (§48). Het antwoord is ja, en bij het uitzoeken bleek er één
+combinatie te bestaan waarin die keuze nergens toe leidt:
+
+> **Vast contract + prijsbron op marktbasis + leeg tariefveld = geen prijs, geen melding, en
+> geen veld om het op te lossen.**
+
+De drie samenstellingsvelden — energiebelasting, opslag, btw — werden op het
+Woning-formulier gefilterd op *contractsoort*. Bij een vast contract stonden ze er dus niet.
+Zonder die velden geeft `all_in_price_eur_kwh` `None`, dus is de bron onbruikbaar, dus is er
+geen prijs. En `_validate_price_components` sloeg óók af op contractsoort, dus er kwam geen
+melding.
+
+De installateur las dan *"Nog geen prijs bekend — koppel een prijsbron of vul het vaste
+leveringstarief in"* terwijl hij er één gekoppeld had.
+
+**Dat was de stille weigering die `_validate_price_components` juist moest voorkomen**,
+binnengekomen langs de andere kant: de scoping op `dynamic` was verantwoord met *"een vast
+contract raadpleegt `current_price_eur_kwh` nooit"*, en dat is sinds 0.13.0 niet meer waar.
+
+## 50. De reparatieronde van §49
+
+**Gebouwd in 0.14.0.** De volgorde is die van Sven (2026-08-10): eerst de onterechte fout,
+dan het stille gegevensverlies aan beide kanten, dan het weggegooide formulier, dan de
+doodlopende weg.
+
+### 50.1 Het venster-predicaat draagt nu de betekenis van het model (§49.1)
+
+De toets *"past de cyclus in het venster"* is **verdwenen**, niet gecorrigeerd, want onder de
+huidige betekenis kan zij nooit terecht aanslaan. Beide grenzen zijn eindtijden; het apparaat
+draait over `[ready_from − duur, ready_before]` en er hoeft niets ergens in te passen.
+
+**Wat ervoor in de plaats komt is de enige duur-versus-klok-regel die wél geldt:** een cyclus
+van 24 uur of langer heeft geen starttijd op een 24-uursklok. `latest_start` trekt de duur
+eraf modulo 1440, dus een programma van 25 uur met een deadline van 07:30 meldde een laatste
+starttijd van 06:30 — een uur vóór het einde, zonder er iets over te zeggen. De regel wordt
+alleen gesteld wanneer er een grens is om vanaf te rekenen (§16).
+
+De drie tests die de oude betekenis vasthielden zijn vervangen. In hun plaats staat onder
+meer `test_the_washing_machine_of_woning_2_validates_cleanly`, geschreven uit de woorden van
+de bewoner: de was mag niet vóór 07:00 klaar zijn, moet vóór 08:00 klaar zijn, en het
+programma duurt 90 minuten.
+
+**De advisor werkte al naar de nieuwe betekenis** en zei het ook: zijn docstring merkte op
+dat de validator *"checked that the duration fitted the window, not that there was still
+enough of the window left"*. Er is dus omheen gewerkt in plaats van dat het is rechtgezet.
+Dat is het waarschuwingsteken om te onthouden — een omweg in de ene laag is een melding over
+de andere.
+
+### 50.2 Een onleesbare tijd wordt bewaard en gemeld (§49.2)
+
+`_as_time()` blijft wat hij is: hij gooit weg wat hij niet kan lezen, en dat is het juiste
+antwoord waar een tijd *gelezen* wordt om mee te rekenen. Ernaast staat nu **`_kept_time()`**,
+en die staat op de schrijfweg vanuit de GUI.
+
+**Quarantaine in plaats van degradatie, toegepast op de schrijfweg.** Precies wat er met een
+onbekend brontype gebeurt: de waarde blijft staan, en er komt een melding.
+
+Dat maakt een zin bereikbaar die al bestond en nooit kon afgaan — *"Gebruik een geldige tijd
+in de vorm uu:mm."* — omdat de waarde `None` was tegen de tijd dat de validator keek, en
+`None` betekent "niet ingevuld". In de browser geverifieerd: `0730` in het uurvak levert nu
+een rode regel op de rij (*"Nog niet compleet: Gebruik een geldige tijd in de vorm uu:mm."*)
+en de fout op het veld zelf, waar eerst een lege deadline stond zonder één woord.
+
+Niets stroomafwaarts loopt gevaar door de bewaarde waarde: elke lezer gaat door
+`minutes_since_midnight`, die hem nog steeds weigert, dus het apparaat gedraagt zich als een
+apparaat zonder die grens.
+
+**`None` en de lege string blijven "afwezig"**, want een grens wissen moet uitdrukbaar
+blijven (§32.2).
+
+### 50.3 Een ontbrekende sleutel betekent "laat staan" (§49.3)
+
+`home/update` en `preferences/update` **voegen nu samen**: een afwezige sleutel laat het veld
+met rust, een expliciete `null` wist het.
+
+De oude redenering — *"a partial update would silently keep a value the installer just
+cleared"* — is getoetst aan wat het paneel werkelijk doet, en zij houdt geen stand. **Het
+paneel wist niet door weglating.** `payload()` in zowel `home.js` als `preferences.js` bouwt
+elk bewerkbaar veld op en schrijft een gewist veld als `null`, precies zodat de backend de
+twee uit elkaar kan houden. Het gevaar dat voor vervanging pleitte bestond dus niet voor de
+enige client die wij uitleveren, terwijl het omgekeerde gevaar echt was en een configuratie
+vernietigde.
+
+**`devices/update` en `sources/update` blijven vervangingen, en dat is geen inconsistentie.**
+Het apparaatformulier wist *wél* door weglating: het laat een veld weg waar het gekozen type
+geen antwoord op heeft, in plaats van een antwoord te bewaren op een vraag die nooit gesteld
+is. Een test in `tests/frontend/devices.test.mjs` legt dat vast. De twee commando's
+verschillen dus omdat hun formulieren verschillen, niet bij toeval.
+
+**De testval die hier bijna toesloeg.** De eerste versie van de voorkeurentest toetste of
+`quiet_hours_end` en `show_technical_explanation` overleefden — met hun *defaultwaarden*. Die
+test is groen onder vervanging én onder samenvoegen, want een gewist veld komt als default
+terug. Hij bevestigde het defect in plaats van het te vangen. De test zet die velden nu eerst
+op niet-standaardwaarden.
+
+### 50.4 Een revisieconflict gooit geen ingevuld formulier meer weg (§49.4)
+
+**De revision telt de hele configuratie, niet één rij.** Een conflict zegt dus "er is iets
+gewijzigd", en alle vier de formulieren lazen dat als "jouw rij is gewijzigd".
+
+`conflictKind()` in `core/api.js` houdt de twee uit elkaar, en de drie uitkomsten krijgen elk
+een eigen hele zin (§26):
+
+| Uitkomst | Wat er gebeurt |
+|---|---|
+| `unrelated` | De rij is onaangeroerd, of er is nog geen rij. Invoer blijft, nieuwe revision wordt overgenomen, opnieuw opslaan werkt. |
+| `same-row` | Deze rij is óók gewijzigd. Invoer blijft, en de zin zegt dat opslaan die andere wijziging vervangt. |
+| `removed` | De rij is weg. Invoer blijft zichtbaar, en de zin zegt dat opslaan niet meer lukt. |
+
+De twee inline-formulieren (Woning, Mijn voorkeuren) volgen dezelfde splitsing, met één
+verschil dat uit hun vorm volgt: raakte de wijziging *deze* velden, dan laden zij wél opnieuw
+— daar zou de draft bovenop de wijziging van iemand anders liggen en die verbergen.
+
+In de browser geverifieerd met echte kliks: apparaatformulier ingevuld, van buitenaf een bron
+toegevoegd, Opslaan → dialoog blijft staan met alle velden en de zin *"…maar niet aan dit
+apparaat"*; tweede druk op Opslaan → *"Het apparaat 'Vaatwasser keuken' is bijgewerkt."*
+
+### 50.5 De samenstellingsvelden volgen de marktprijs, niet het contract (§49.10)
+
+Eén regel, op twee plekken hetzelfde:
+
+> **Vraag de energiebelasting, de opslag en de btw precies wanneer er een marktprijs is om om
+> te rekenen.**
+
+`contractSchema()` in `home.js` toont de drie velden zodra er een `current_price`-bron op
+marktbasis is, ongeacht de contractsoort; `_validate_price_components` meldt op dezelfde
+voorwaarde. De twee zijn met opzet één en dezelfde vraag, want de bevinding van 2026-08-07
+staat nog overeind: **een melding mag niet landen op een veld dat niet op het scherm staat.**
+
+De melding komt ook wanneer het ingevulde tarief de bron overruled (§48.1). Dat is geen
+vergissing: de bron wordt elke cyclus gelezen en is zonder deze velden niet om te rekenen,
+dus zij wordt als onleesbaar gerapporteerd. Een rij die niet kan werken verdient een melding,
+of haar waarde nu gewonnen zou hebben of niet.
+
+### 50.6 Wat deze ronde bewust niet aanraakt
+
+- **De stille uren kennen dezelfde vorm als §49.2 en zijn niet meegenomen.** Een onleesbare
+  `quiet_hours_start` valt terug op de *default* (22:00), niet op `None`, en `validate_preferences`
+  heeft dezelfde onbereikbare zin. De faalmodus is daar anders: het veld is verplicht en heeft
+  een zinnige default, dus "bewaren en melden" zou betekenen dat de stille uren stoppen te
+  gelden terwijl er een fout op het scherm staat. Dat is een keuze over wat er 's nachts
+  gebeurt en die is aan Sven.
+- **§49.5 en §49.6** wachten op een voorstel, op Sven's verzoek — hij wil dat zien voordat er
+  gebouwd wordt.

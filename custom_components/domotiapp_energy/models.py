@@ -245,7 +245,14 @@ def _as_choice(value: Any, allowed: Sequence[Any], default: Any) -> Any:
 
 
 def _as_time(value: Any, default: str | None = None) -> str | None:
-    """Normalise "HH:MM" or "HH:MM:SS" to "HH:MM"; else return the default."""
+    """Normalise "HH:MM" or "HH:MM:SS" to "HH:MM"; else return the default.
+
+    **This discards what it cannot read, so use it only where that is the
+    honest answer** — reading a moment to compare against, where an unreadable
+    time is simply no time. For a value that came from the installer, use
+    :func:`_kept_time`: throwing away what someone typed is exactly the
+    invisible degradation this project refuses everywhere else (SPEC.md §49.2).
+    """
     if not isinstance(value, str):
         return default
     parts = value.strip().split(":")
@@ -259,6 +266,34 @@ def _as_time(value: Any, default: str | None = None) -> str | None:
     if not (0 <= hour <= MAX_HOUR and 0 <= minute <= MAX_MINUTE):
         return default
     return f"{hour:02d}:{minute:02d}"
+
+
+def _kept_time(value: Any) -> str | None:
+    """Return a stored time, keeping an unreadable one instead of dropping it.
+
+    **Quarantine rather than degrade, applied to the write path (SPEC.md
+    §49.2).** An unrecognised source type keeps its type, is disabled and is
+    reported; a time that cannot be read used to become ``None``, which is
+    indistinguishable from "not filled in". The installer then typed a deadline,
+    was told the save succeeded, and found the field empty on his way back.
+
+    That is not hypothetical. Home Assistant's own hour box is an
+    ``<input type="number" max="23" maxlength="2">``, and ``maxlength`` does
+    nothing on a number input, so typing ``0730`` in one go is accepted by the
+    control and arrives here as an impossible hour.
+
+    Keeping the raw string makes the message that already exists reachable:
+    :func:`validators._validate_time_window` reports *"Gebruik een geldige tijd
+    in de vorm uu:mm."* against the field it is about. Nothing downstream is
+    endangered by the kept value, because every consumer goes through
+    :func:`minutes_since_midnight`, which still refuses it and yields no bound.
+
+    ``None`` and an empty string both mean *absent*, and stay absent: clearing a
+    bound has to remain expressible (SPEC.md §32.2).
+    """
+    if not isinstance(value, str) or not value.strip():
+        return None
+    return _as_time(value, default=value.strip())
 
 
 def minutes_since_midnight(value: str | None) -> int | None:
@@ -307,7 +342,9 @@ def migrate_time_window(data: Mapping[str, Any]) -> tuple[str | None, str | None
     the translated values reach the disk with the next save the installer makes.
     """
     if "ready_from" in data or "ready_before" in data:
-        return _as_time(data.get("ready_from")), _as_time(data.get("ready_before"))
+        # Kept, not dropped: these two are what the installer typed, and an
+        # unreadable one has to reach the validator to be reported (§49.2).
+        return _kept_time(data.get("ready_from")), _kept_time(data.get("ready_before"))
 
     earliest = _as_time(data.get("earliest_start"))
     latest = _as_time(data.get("latest_finish"))

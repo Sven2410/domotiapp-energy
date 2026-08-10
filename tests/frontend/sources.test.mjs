@@ -540,7 +540,10 @@ describe('saving', () => {
     assert.equal(form(panel).data.name, 'Slimme meter');
   });
 
-  it('reloads instead of overwriting on a revision conflict', async () => {
+  it('keeps a new source on screen when another row changed', async () => {
+    // This used to close the dialog and discard the input (SPEC.md §49.4). The
+    // conflict is about `grid`; nothing about the row being created is stale,
+    // so there is nothing to protect by throwing it away.
     const theirs = sampleConfig({
       revision: 9,
       sources: [{ id: 'grid', name: 'Door iemand anders hernoemd', type: 'grid_meter' }],
@@ -560,7 +563,12 @@ describe('saving', () => {
     buttonIn(formDialog(panel), 'Opslaan').click();
     await settle();
 
-    assert.ok(noticeTexts(tab).some((t) => t.includes('intussen ergens anders gewijzigd')));
+    assert.equal(isVisible(formDialog(panel)), true);
+    assert.equal(form(panel).data.name, 'Mijn bron');
+    assert.ok(
+      noticeTexts(formDialog(panel)).some((t) => t.includes('niet aan deze bron')),
+    );
+    // The other change is adopted underneath, so the list is current.
     assert.match(rows(tab)[0].textContent, /Door iemand anders hernoemd/);
   });
 
