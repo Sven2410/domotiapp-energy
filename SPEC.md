@@ -6041,6 +6041,34 @@ metrics al aan, precies zodat die tak er later bij kan zonder dat het advies ver
 
 Drie stappen, elk apart te mergen en elk apart terug te draaien.
 
+### 56.8 Openstaand: het uurbedrag dat niet te berekenen is, legt niet uit waarom
+
+**Gevonden bij 0.20.0, bewust daar niet opgelost** (besluit Sven, 2026-08-10).
+
+Een modulerend apparaat waarvan `_solar_savings_rate` `None` teruggeeft — geen
+leesbaar vermogen, of geen `self_consumption_margin_eur_kwh` omdat de
+prijsinformatie ontbreekt — toont sinds 0.20.0 geen van beide bedragrijen, en
+`_surplus_message` zegt er niets over. De niet-modulerende tak doet dat wél: die
+noemt via `_why_no_amount` het veld dat de som stopte.
+
+**Waarom dat gat niet met `_why_no_amount` gedicht mag worden.** Die functie
+begint bij `energy_per_cycle_kwh`, en dat is precies het veld dat een modulerende
+paal niet gebruikt. Hem hier aanroepen levert dus de fout op die de docstring van
+`_surplus_message` al beschrijft: een paal met een prima tarief die de
+installateur naar een veld stuurt dat hij net had ingevuld. Dat is in 0.18.0 één
+keer gebeurd en in de browser gevonden.
+
+**Wat het wél nodig heeft:** `_why_no_amount` splitsen in de cyclus-controle en
+een `_why_no_margin` met de prijs- en terugleververhalen, zodat de modulerende
+tak alleen het tweede krijgt — plus een eigen zin voor het geval dat het bruikbare
+vermogen onbekend is. Dat is een wijziging aan de adviesteksten van §56 en hoort
+in een ronde die de advisor aanraakt, niet in een tekstronde.
+
+**Waarom het nu geen blokkade is:** de ontbrekende prijsinformatie wordt al twee
+keer gemeld — in de datakwaliteit en in het antwoord van de coach op *"welke
+gegevens ontbreken nog?"*. Wat ontbreekt is de verwijzing op de plek waar de
+bewoner het bedrag verwachtte.
+
 ## 57. Twee regels over eenheden, en waarom ze verschillen
 
 **Gebouwd in 0.19.0**, uit §54.6.

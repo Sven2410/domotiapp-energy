@@ -45,8 +45,10 @@ Een lege plek zegt nu niets in plaats van "mislukt". SPEC §58.2, uitgewerkt in 
 - **Een modulerend apparaat waarvan ook het uurbedrag niet te berekenen is** — geen leesbare
   prijs, dus geen marge — toont nu geen van beide rijen, en het advies legt niet uit waarom.
   De datakwaliteit en het antwoord op *"welke gegevens ontbreken nog?"* melden de ontbrekende
-  prijsinformatie wel. Het uitleggen hoort bij `_surplus_message` en dus bij §56; zie §58.4
-  voor waarom `_why_no_amount` daar niet zomaar op losgelaten mag worden.
+  prijsinformatie wel. **Genoteerd bij §56 als §56.8**, want het uitleggen hoort bij
+  `_surplus_message`: `_why_no_amount` begint bij de energie per cyclus, en dat veld gebruikt
+  een modulerende paal niet. Die functie wees in 0.18.0 al een keer de verkeerde schuldige
+  aan, en dat is genoeg reden om hem hier niet op los te laten.
 
 - **§54.7 op echte hardware.** Ongewijzigd sinds 0.19.0: SPEC §57.3 beschrijft wat er voor
   Svens eigen Easee ingevuld moet worden.
