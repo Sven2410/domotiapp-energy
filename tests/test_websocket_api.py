@@ -6,6 +6,7 @@ stale ``expected_revision`` — plus the answer shape every write shares and the
 logbook entries the writes produce.
 """
 
+from datetime import date
 from typing import Any
 from unittest.mock import patch
 
@@ -1337,3 +1338,74 @@ def test_the_allow_list_and_the_schema_cannot_drift() -> None:
     schema_fields = {str(key) for key in _OPERATION_SCHEMA.schema}
 
     assert schema_fields == set(DEVICE_OPERATION_FIELDS)
+
+
+async def test_an_unreadable_net_metering_date_is_refused(
+    hass: HomeAssistant, entry: MockConfigEntry, hass_ws_client: WebSocketGenerator
+) -> None:
+    """SPEC.md §53: refused at the boundary, not dropped in the model.
+
+    "1-1-2027" is how a Dutch installer writes it, and until now it became
+    `None` — which on this field does not mean "unknown" but **"this home does
+    not net-meter"**. So a typo silently switched the savings regime, with
+    `success` and a fresh revision.
+
+    The panel could never send it, because its date selector emits ISO. Every
+    other client can, and `ha_check.py --field` is one.
+    """
+    client = await hass_ws_client(hass)
+    store = entry.runtime_data.store
+    before = store.config.home.net_metering_until
+
+    response = await _send(
+        client,
+        {
+            "type": WS_HOME_UPDATE,
+            ATTR_EXPECTED_REVISION: store.revision,
+            "home": {"net_metering_until": "1-1-2027"},
+        },
+    )
+
+    assert response["success"] is False
+    assert response["error"]["code"] == ERR_INVALID_FORMAT
+    # And nothing moved: no silent regime change, no revision spent.
+    assert store.config.home.net_metering_until == before
+
+
+async def test_an_explicit_null_net_metering_date_is_still_allowed(
+    hass: HomeAssistant, entry: MockConfigEntry, hass_ws_client: WebSocketGenerator
+) -> None:
+    """Null is the deliberate answer "this home does not net-meter"."""
+    client = await hass_ws_client(hass)
+    store = entry.runtime_data.store
+
+    response = await _send(
+        client,
+        {
+            "type": WS_HOME_UPDATE,
+            ATTR_EXPECTED_REVISION: store.revision,
+            "home": {"net_metering_until": None},
+        },
+    )
+
+    assert response["success"] is True
+    assert store.config.home.net_metering_until is None
+
+
+async def test_a_readable_net_metering_date_passes_through(
+    hass: HomeAssistant, entry: MockConfigEntry, hass_ws_client: WebSocketGenerator
+) -> None:
+    """The ordinary case has to keep working, which is half of this check."""
+    client = await hass_ws_client(hass)
+    store = entry.runtime_data.store
+
+    await _send(
+        client,
+        {
+            "type": WS_HOME_UPDATE,
+            ATTR_EXPECTED_REVISION: store.revision,
+            "home": {"net_metering_until": "2027-01-01"},
+        },
+    )
+
+    assert store.config.home.net_metering_until == date(2027, 1, 1)

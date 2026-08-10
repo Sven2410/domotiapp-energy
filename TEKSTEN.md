@@ -20,7 +20,7 @@ is dit de invoer en niet de uitvoer.
 - **Engelse regels staan apart**, onderaan. Een Engelse zin in dit product is
   een fout tenzij zij een identifier is: de UI is Nederlands (CLAUDE.md).
 
-**844 Nederlandse teksten**, waarvan 114 op meer dan één plek. En 9 Engelse regels om na te lopen.
+**846 Nederlandse teksten**, waarvan 114 op meer dan één plek. En 9 Engelse regels om na te lopen.
 
 
 ## `custom_components/domotiapp_energy/const.py`
@@ -951,36 +951,38 @@ is dit de invoer en niet de uitvoer.
 
 | Tekst | Waar | Regel |
 |---|---|---|
-| Apparaat gewijzigd | handle_devices_update | 813 |
-| Apparaat toegevoegd ↔ | handle_devices_create | 775 |
-| Apparaat verwijderd ↔ | handle_devices_delete | 849 |
-| Bediening gewijzigd | handle_devices_set_operation | 922 |
-| De adviesvoorkeuren zijn bijgewerkt. | handle_preferences_update | 616 |
-| De configuratie is inmiddels gewijzigd. De actuele gegevens zijn opnieuw opgehaald. | _send_revision_conflict | 290 |
-| De configuratie kon niet worden opgeslagen. | _async_write | 270 |
-| De energiebron '{...}' is bijgewerkt. | handle_sources_update | 698 |
-| De energiebron '{...}' is toegevoegd. | handle_sources_create | 660 |
-| De energiebron '{...}' is verwijderd. | handle_sources_delete | 734 |
-| De instellingen van '{...}' zijn bijgewerkt. | handle_devices_set_operation | 923 |
-| De woninggegevens zijn bijgewerkt. | handle_home_update | 554 |
-| Deze energiebron ↔ | _apply | 689 |
-| Deze energiebron ↔ | _apply | 724 |
-| Dit apparaat ↔ | _apply | 805 |
-| Dit apparaat ↔ | _apply | 840 |
-| Dit apparaat ↔ | _apply | 886 |
-| Dit apparaat heeft een onbekend type en is buiten werking gesteld. | _apply | 896 |
-| DomotiApp Energy is niet geladen. | _async_get_data | 236 |
-| Energiebron gewijzigd | handle_sources_update | 697 |
-| Energiebron toegevoegd | handle_sources_create | 659 |
-| Energiebron verwijderd | handle_sources_delete | 733 |
-| Er bestaat al een apparaat met dit ID. | _apply | 765 |
-| Er bestaat al een energiebron met dit ID. | _apply | 649 |
-| Het apparaat '{...}' is bijgewerkt. | handle_devices_update | 814 |
-| Het apparaat '{...}' is toegevoegd. | handle_devices_create | 776 |
-| Het apparaat '{...}' is verwijderd. | handle_devices_delete | 850 |
-| Voorkeuren gewijzigd | handle_preferences_update | 615 |
-| Woninggegevens gewijzigd | handle_home_update | 553 |
-| {...} bestaat niet. | _find | 383 |
+| Apparaat gewijzigd | handle_devices_update | 852 |
+| Apparaat toegevoegd ↔ | handle_devices_create | 814 |
+| Apparaat verwijderd ↔ | handle_devices_delete | 888 |
+| Bediening gewijzigd | handle_devices_set_operation | 961 |
+| De adviesvoorkeuren zijn bijgewerkt. | handle_preferences_update | 655 |
+| De configuratie is inmiddels gewijzigd. De actuele gegevens zijn opnieuw opgehaald. | _send_revision_conflict | 329 |
+| De configuratie kon niet worden opgeslagen. | _async_write | 309 |
+| De energiebron '{...}' is bijgewerkt. | handle_sources_update | 737 |
+| De energiebron '{...}' is toegevoegd. | handle_sources_create | 699 |
+| De energiebron '{...}' is verwijderd. | handle_sources_delete | 773 |
+| De instellingen van '{...}' zijn bijgewerkt. | handle_devices_set_operation | 962 |
+| De woninggegevens zijn bijgewerkt. | handle_home_update | 593 |
+| Deze energiebron ↔ | _apply | 728 |
+| Deze energiebron ↔ | _apply | 763 |
+| Dit apparaat ↔ | _apply | 844 |
+| Dit apparaat ↔ | _apply | 879 |
+| Dit apparaat ↔ | _apply | 925 |
+| Dit apparaat heeft een onbekend type en is buiten werking gesteld. | _apply | 935 |
+| DomotiApp Energy is niet geladen. | _async_get_data | 275 |
+| Energiebron gewijzigd | handle_sources_update | 736 |
+| Energiebron toegevoegd | handle_sources_create | 698 |
+| Energiebron verwijderd | handle_sources_delete | 772 |
+| Er bestaat al een apparaat met dit ID. | _apply | 804 |
+| Er bestaat al een energiebron met dit ID. | _apply | 688 |
+| Gebruik een datum in de vorm jjjj-mm-dd, of null als deze woning niet saldeert. | _iso_date | 184 |
+| Gebruik een datum in de vorm jjjj-mm-dd, of null. | _iso_date | 188 |
+| Het apparaat '{...}' is bijgewerkt. | handle_devices_update | 853 |
+| Het apparaat '{...}' is toegevoegd. | handle_devices_create | 815 |
+| Het apparaat '{...}' is verwijderd. | handle_devices_delete | 889 |
+| Voorkeuren gewijzigd | handle_preferences_update | 654 |
+| Woninggegevens gewijzigd | handle_home_update | 592 |
+| {...} bestaat niet. | _find | 422 |
 
 
 ## Engelse regels
@@ -995,4 +997,4 @@ is dit de invoer en niet de uitvoer.
 | Energy source %s has unrecognised type %r and is disabled | `custom_components/domotiapp_energy/storage.py:257` |
 | Device profile %s has unrecognised type %r and is disabled | `custom_components/domotiapp_energy/storage.py:276` |
 | Energy source %s could not be read from %s (%s) | `custom_components/domotiapp_energy/storage.py:327` |
-| Could not persist a configuration change | `custom_components/domotiapp_energy/websocket_api.py:266` |
+| Could not persist a configuration change | `custom_components/domotiapp_energy/websocket_api.py:305` |

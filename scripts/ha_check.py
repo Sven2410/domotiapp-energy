@@ -510,9 +510,87 @@ def _run_websocket(env: dict[str, str], args: argparse.Namespace) -> int:
     if not token:
         raise HomeAssistantError(f"{ENV_FILE.name} has no {key}")
 
-    result = call_websocket(env, token, args.ws, _build_payload(args))
+    payload = _build_payload(args)
+    if args.merge:
+        payload = _merged_payload(env, token, args.ws, payload)
+    else:
+        _warn_if_replacing(args.ws, payload)
+
+    result = call_websocket(env, token, args.ws, payload)
     print(json.dumps(result, indent=2, ensure_ascii=False))
     return 0 if result.get("success") else 1
+
+
+# Commands that **replace** their subject rather than patching it. Sending one
+# of these a partial object silently resets everything it does not mention.
+#
+# That is deliberate in the integration and it is not a defect: the device form
+# clears a field by leaving it out, because a field the chosen type has no
+# answer for must not keep a stored answer (SPEC.md §49.3). `home/update` and
+# `preferences/update` merge instead, so they are not listed here.
+#
+# It is a bad fit for `--field`, though, which invites you to name one thing.
+# Both times this script wiped half a row it was in exactly this way.
+_REPLACING_COMMANDS: dict[str, str] = {
+    "domotiapp_energy/sources/update": "source",
+    "domotiapp_energy/devices/update": "device",
+}
+
+
+def _warn_if_replacing(command_type: str, payload: dict[str, Any]) -> None:
+    """Say out loud that this command replaces rather than patches."""
+    key = _REPLACING_COMMANDS.get(command_type)
+    if key is None or not isinstance(payload.get(key), dict):
+        return
+    print(
+        f"Let op: {command_type} vervangt de hele rij. Velden die je hier niet "
+        f"noemt worden teruggezet op hun standaardwaarde.\n"
+        f"         Gebruik --merge om de opgeslagen rij op te halen en alleen "
+        f"deze velden te wijzigen.\n",
+        file=sys.stderr,
+    )
+
+
+def _merged_payload(
+    env: dict[str, str], token: str, command_type: str, payload: dict[str, Any]
+) -> dict[str, Any]:
+    """Return the payload with the stored row underneath it.
+
+    Reads the current configuration, finds the row this command names, and lays
+    the given fields on top — so a replacing command carries the whole object
+    and changes only what was asked for.
+
+    Refuses rather than guesses when the row cannot be found: creating a row by
+    accident, out of a command meant to change one, is worse than an error.
+    """
+    key = _REPLACING_COMMANDS.get(command_type)
+    if key is None:
+        raise HomeAssistantError(
+            f"--merge only applies to {', '.join(sorted(_REPLACING_COMMANDS))}"
+        )
+
+    given = payload.get(key)
+    if not isinstance(given, dict) or not given.get("id"):
+        raise HomeAssistantError(f"--merge needs {key}.id to know which row to read")
+
+    answer = call_websocket(env, token, "domotiapp_energy/config/get", {})
+    if not answer.get("success"):
+        raise HomeAssistantError(f"could not read the configuration: {answer}")
+
+    collection = f"{key}s"
+    rows = answer["result"].get(collection, [])
+    stored = next((row for row in rows if row.get("id") == given["id"]), None)
+    if stored is None:
+        raise HomeAssistantError(f"no {key} with id {given['id']!r} to merge into")
+
+    merged = {**stored, **given}
+    changed = sorted(k for k in given if k != "id" and stored.get(k) != given[k])
+    print(
+        f"--merge: {len(stored)} opgeslagen velden gelezen, "
+        f"{len(changed)} gewijzigd ({', '.join(changed) or 'geen'}).",
+        file=sys.stderr,
+    )
+    return {**payload, key: merged}
 
 
 def main() -> int:
@@ -559,6 +637,15 @@ def main() -> int:
         ),
     )
     parser.add_argument(
+        "--merge",
+        action="store_true",
+        help=(
+            "read the stored row first and change only the named fields; "
+            "for sources/update and devices/update, which otherwise replace "
+            "the whole row"
+        ),
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="print the frame --ws would send and stop, without connecting",
@@ -577,7 +664,11 @@ def main() -> int:
             # quoted should not need a token or a running instance.
             if not args.ws:
                 raise HomeAssistantError("--dry-run only applies to --ws")
-            frame = {"id": 1, "type": args.ws, **_build_payload(args)}
+            payload = _build_payload(args)
+            # The warning belongs here too, and arguably most of all: --dry-run
+            # is what you run to check an invocation *before* firing it.
+            _warn_if_replacing(args.ws, payload)
+            frame = {"id": 1, "type": args.ws, **payload}
             print(json.dumps(frame, indent=2, ensure_ascii=False))
             return 0
 

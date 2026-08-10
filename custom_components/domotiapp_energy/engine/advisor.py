@@ -893,6 +893,19 @@ def _in_quiet_hours(config: StoredConfiguration, hour: int, minute: int) -> bool
     """Return whether now falls inside the quiet hours.
 
     Supports a window across midnight, which is the normal case (22:00-07:00).
+
+    **An unreadable time means no quiet hours, and that is a deliberate trade**
+    (SPEC.md §53). Until then a typo was silently replaced by 22:00 and the
+    window kept working, which sounds safer and is not: the resident saw hours
+    he never entered and had no way to find out. Now the value is kept, the
+    panel reports it against the field, and the window does not apply while it
+    is wrong.
+
+    The cost is real and worth naming: advice can appear during what the
+    resident *meant* to be his quiet hours until he fixes the typo. It is
+    bounded — this integration sends no notifications, so the advice sits in a
+    panel and a sensor — and it comes with an error on screen that says exactly
+    what to correct, which the silent substitution never did.
     """
     start = minutes_since_midnight(config.preferences.quiet_hours_start)
     end = minutes_since_midnight(config.preferences.quiet_hours_end)

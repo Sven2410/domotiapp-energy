@@ -1,5 +1,45 @@
 # Changelog
 
+## 0.17.0
+
+De opruimronde van §49.2: dezelfde regel, drie keer, en drie keer een andere reparatie.
+SPEC §53.
+
+### Fixed
+
+- **Een onleesbare stille-urentijd wordt niet meer stil vervangen.** Hij viel terug op 22:00
+  of 07:00 — een tijd die de bewoner nooit invoerde, die er volkomen normaal uitziet, en die
+  hij dus nooit als fout zou herkennen. Dat is slechter dan het lege veld dat het
+  gereed-venster overhield: een verkeerde waarde die zich voordoet als een antwoord.
+
+  De waarde blijft nu staan en de melding *"Gebruik een geldige tijd in de vorm uu:mm."*
+  landt op het veld. **Zolang de fout er staat gelden de stille uren niet** — dat is bewust:
+  de fout is zichtbaar, en deze integratie stuurt geen meldingen, dus het advies staat in een
+  paneel en maakt niemand wakker.
+
+  Een *afwezige* waarde neemt nog steeds de default. Alleen een waarde die er staat en niet
+  te lezen is, blijft staan.
+
+- **Een onleesbare salderingsdatum wordt geweigerd in plaats van weggegooid.** `1-1-2027` —
+  precies zoals een Nederlandse installateur het schrijft — werd `None`, en `None` betekent
+  op dit veld niet "onbekend" maar **"deze woning saldeert niet"**. Een typefout verlegde zo
+  stilzwijgend de hele besparingsformule, met `success` en een nieuwe revision.
+
+  Nu geweigerd aan de WebSocket-grens met `invalid_format`. Dat kan hier omdat het paneel
+  deze fout niet kán maken: zijn datumkiezer levert altijd ISO. Op de laadweg blijft een
+  corrupt bestand `None` opleveren, want daar moet er íets uitkomen.
+
+### Overig
+
+- **`scripts/ha_check.py --merge`.** `devices/update` en `sources/update` vervangen de hele
+  rij — bewust, want het apparaatformulier wist een veld door het weg te laten — en `--field`
+  nodigt uit om één ding te noemen. Die combinatie wiste twee keer op één dag de helft van
+  een rij.
+
+  `--merge` haalt de opgeslagen rij op, legt de genoemde velden erover en meldt wat er
+  veranderde. Zonder `--merge` waarschuwt het script, ook bij `--dry-run` — juist daar, want
+  dat draai je om een aanroep te controleren vóór je hem afvuurt.
+
 ## 0.16.0
 
 "Maakt niet uit wanneer hij klaar is" is nu een antwoord in plaats van een gat. SPEC §52.
