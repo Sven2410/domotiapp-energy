@@ -2245,3 +2245,239 @@ async def test_a_usable_appliance_beats_a_banned_one(
 
     assert REASON_SOLAR_SURPLUS_AVAILABLE in codes
     assert REASON_OUTSIDE_ALLOWED_WINDOW not in codes
+
+
+# --- The deadline that does not apply every day (SPEC.md §56.1) -------------
+
+
+def _at(day: date, hour: int, minute: int) -> datetime:
+    """Return the UTC instant at which TIME_ZONE reads this wall clock moment.
+
+    The weekday matters here as much as the hour, which is why these tests pin
+    a date rather than only a time (SPEC.md §56.1).
+    """
+    return datetime(
+        day.year, day.month, day.day, hour, minute, tzinfo=ZoneInfo(TIME_ZONE)
+    ).astimezone(UTC)
+
+
+def _charger(**overrides: Any) -> DeviceProfile:
+    """Return the charger of woning 3: full by 06:15 on the days he drives."""
+    data: dict[str, Any] = {
+        "id": "laadpaal",
+        "name": "Laadpaal oprit",
+        "device_type": DEVICE_TYPE_EV_CHARGER,
+        "nominal_power_w": 3680.0,
+        "energy_per_cycle_kwh": 25.0,
+        "duration_minutes": 408,
+        "ready_before": "06:15",
+        "ready_days": [0, 1, 2, 3],
+        "is_noisy": False,
+    }
+    return DeviceProfile.from_dict(data | overrides)
+
+
+async def test_no_urgency_advice_on_a_day_without_a_deadline(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """Saturday: he has no 06:15, so nothing may claim he does (SPEC.md §56.1).
+
+    Before this the charger was told every morning to start now for a deadline
+    that only exists on the days he drives.
+    """
+    # 2026-08-15 is a Saturday; 23:27 is inside the urgency window for 06:15.
+    freezer.move_to(_at(date(2026, 8, 15), 23, 27))
+    config = _config()
+    config.devices.append(_charger())
+
+    codes = _codes(Advisor().generate(config, _metrics()))
+
+    assert REASON_DEADLINE_APPROACHING not in codes
+
+
+async def test_the_urgency_advice_still_fires_on_a_workday(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """The other half, and the reason this is not simply "never advise"."""
+    # 2026-08-17 is a Monday.
+    freezer.move_to(_at(date(2026, 8, 17), 23, 27))
+    config = _config()
+    config.devices.append(_charger())
+
+    codes = _codes(Advisor().generate(config, _metrics()))
+
+    assert REASON_DEADLINE_APPROACHING in codes
+
+
+# --- A charger that moves with the sun (SPEC.md §56.2 and §56.3) ------------
+
+
+def _modulating_charger(**overrides: Any) -> DeviceProfile:
+    """Return the Easee of woning 3, limited to 16 A by the installer.
+
+    3680 W maximum, 1380 W minimum — six amps on one phase, which is the floor
+    below which a car does not charge at all.
+    """
+    return _charger(can_modulate=True, min_power_w=1380.0, ready_days=None, **overrides)
+
+
+async def test_a_modulating_charger_is_advised_on_a_partial_surplus(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """The finding of SPEC.md §54.7, in the situation that produced it.
+
+    2100 W of surplus against a 3680 W charger. Before this the charger was
+    silent and the washing machine was advised — on the ordinary Dutch
+    afternoon, which is the moment the customer bought this for.
+    """
+    freezer.move_to(local(14, 0))
+    config = _config(min_solar_surplus_w=500.0)
+    config.devices.append(_modulating_charger())
+    metrics = _metrics(solar_surplus_w=2100.0)
+
+    advice = Advisor().generate(config, metrics)
+    item = next(i for i in advice if i.reason_code == REASON_SOLAR_SURPLUS_AVAILABLE)
+
+    assert item.related_device_ids == ["laadpaal"]
+
+
+async def test_a_surplus_below_the_minimum_still_leaves_it_out(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """Below six amps a car does not charge, so there is nothing to advise."""
+    freezer.move_to(local(14, 0))
+    config = _config(min_solar_surplus_w=500.0)
+    config.devices.append(_modulating_charger())
+    metrics = _metrics(solar_surplus_w=900.0)
+
+    codes = _codes(Advisor().generate(config, metrics))
+
+    assert REASON_SOLAR_SURPLUS_AVAILABLE not in codes
+
+
+async def test_a_washing_machine_is_still_judged_on_its_full_power(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """The half that must not change (SPEC.md §56.3).
+
+    A 2100 W machine on 600 W of surplus would import 1500 W while the advice
+    called it "using your own surplus". That defect stays fixed: the new rule is
+    additive and hangs on a switch that is off for every appliance that cannot
+    accept a partial surplus.
+    """
+    freezer.move_to(local(14, 0))
+    config = _config(min_solar_surplus_w=500.0)
+    config.devices.append(
+        _device(nominal_power_w=2100.0, is_noisy=False, runs_any_time=True)
+    )
+    metrics = _metrics(solar_surplus_w=600.0)
+
+    codes = _codes(Advisor().generate(config, metrics))
+
+    assert REASON_SOLAR_SURPLUS_AVAILABLE not in codes
+
+
+async def test_a_charger_without_a_minimum_behaves_as_it_always_did(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """The upgrade is safe because the second field has no default.
+
+    `can_modulate` defaults to true for a charger, and on its own that changes
+    nothing: a minimum cannot be derived from the type — six amps is 1380 W on
+    one phase and 4140 W on three (SPEC.md §56.2).
+    """
+    freezer.move_to(local(14, 0))
+    config = _config(min_solar_surplus_w=500.0)
+    charger = _charger(ready_days=None)
+    config.devices.append(charger)
+    metrics = _metrics(solar_surplus_w=2100.0)
+
+    assert charger.can_modulate is True
+    assert charger.modulates is False
+    assert REASON_SOLAR_SURPLUS_AVAILABLE not in _codes(
+        Advisor().generate(config, metrics)
+    )
+
+
+async def test_the_amount_for_a_modulating_charger_is_a_rate(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """SPEC.md §56.4: no total, because the advice has no end.
+
+    And the total stays **empty** rather than wrong, which matters twice: a
+    plausible EUR 1,20 under advice about the next twenty minutes is worse than
+    no number, and `estimated_savings_eur` is what `min_savings_eur` is measured
+    against — a rate in that field would be compared to a per-advice threshold.
+    """
+    freezer.move_to(local(14, 0))
+    config = _config(min_solar_surplus_w=500.0, feed_in_cost_eur_kwh=0.02)
+    config.devices.append(_modulating_charger())
+    metrics = _metrics(solar_surplus_w=2100.0, self_consumption_margin_eur_kwh=0.05)
+
+    advice = Advisor().generate(config, metrics)
+    item = next(i for i in advice if i.reason_code == REASON_SOLAR_SURPLUS_AVAILABLE)
+
+    assert item.estimated_savings_eur is None
+    # 2100 W of the surplus at EUR 0,05/kWh is about eleven cents an hour.
+    assert item.savings_rate_eur_per_hour == 0.11
+
+
+async def test_a_cycle_appliance_keeps_its_total_and_gets_no_rate(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """The pair: the two amounts never appear on the same advice."""
+    freezer.move_to(local(14, 0))
+    config = _config(min_solar_surplus_w=500.0, feed_in_cost_eur_kwh=0.02)
+    config.devices.append(_device(is_noisy=False, runs_any_time=True))
+    metrics = _metrics(solar_surplus_w=2100.0, self_consumption_margin_eur_kwh=0.05)
+
+    advice = Advisor().generate(config, metrics)
+    item = next(i for i in advice if i.reason_code == REASON_SOLAR_SURPLUS_AVAILABLE)
+
+    assert item.estimated_savings_eur is not None
+    assert item.savings_rate_eur_per_hour is None
+
+
+async def test_a_charger_is_never_dropped_by_the_savings_threshold(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """The second reason the total stays empty (SPEC.md §56.4).
+
+    A threshold that means "per advice" may not decide about advice that runs
+    per hour. `_filter_by_savings` already leaves advice without a calculable
+    saving alone, so this follows from the choice above rather than from a new
+    exception — but it is the consequence worth pinning.
+    """
+    freezer.move_to(local(14, 0))
+    config = _config(min_solar_surplus_w=500.0, feed_in_cost_eur_kwh=0.02)
+    config.preferences = UserPreferences(min_savings_eur=5.0)
+    config.devices.append(_modulating_charger())
+    metrics = _metrics(solar_surplus_w=2100.0, self_consumption_margin_eur_kwh=0.05)
+
+    assert REASON_SOLAR_SURPLUS_AVAILABLE in _codes(Advisor().generate(config, metrics))
+
+
+async def test_the_charger_sentence_does_not_blame_a_missing_amount(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """The sentence and the figure must agree (SPEC.md §56.4).
+
+    Found in the browser and nowhere else: the total is empty on purpose for a
+    modulating appliance, and `_surplus_message` read that as "the sum could not
+    be made" — so a charger with a perfectly good rate underneath it told the
+    installer to go and fill in a feed-in cost he had just entered.
+
+    Every layer below agreed with itself, which is why no test caught it.
+    """
+    freezer.move_to(local(14, 0))
+    config = _config(min_solar_surplus_w=500.0, feed_in_cost_eur_kwh=0.02)
+    config.devices.append(_modulating_charger())
+    metrics = _metrics(solar_surplus_w=2100.0, self_consumption_margin_eur_kwh=0.05)
+
+    advice = Advisor().generate(config, metrics)
+    item = next(i for i in advice if i.reason_code == REASON_SOLAR_SURPLUS_AVAILABLE)
+
+    assert "niet te berekenen" not in item.message
+    assert "terugleverkosten" not in item.message
+    # And the rate really is there, so the silence is not itself a gap.
+    assert item.savings_rate_eur_per_hour is not None

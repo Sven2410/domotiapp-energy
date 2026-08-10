@@ -215,6 +215,21 @@ export const coachTab = {
           })}`,
         );
       }
+      // **Its own sentence, never the same one with another unit** (SPEC.md
+      // §56.4). An appliance that takes whatever is spare has no cycle to
+      // price, so what it earns is a rate — and "€ 1,20" next to "€ 0,12" would
+      // be two true numbers answering different questions.
+      if (
+        prefs.show_estimated_savings !== false &&
+        item.savings_rate_eur_per_hour !== null &&
+        item.savings_rate_eur_per_hour !== undefined
+      ) {
+        parts.push(
+          `levert ongeveer € ${formatNumber(item.savings_rate_eur_per_hour, {
+            decimals: 2,
+          })} per uur op zolang dit overschot er is`,
+        );
+      }
       return parts.join(' · ');
     }
 

@@ -534,6 +534,33 @@ geldt omdat …" en niet "dit is zo". `SOURCE_STALE_MINUTES` doet dat nu per bro
 een guard-test dwingt af dat een nieuw type zijn eigen keuze krijgt in plaats van er
 stilzwijgend een te erven (SPEC.md §47).
 
+### Een vraag opschrijven is niet hetzelfde als hem stellen
+
+**De regel die de negen varianten hieronder pas laat werken** (Sven, 2026-08-10).
+
+De varianten staan er, elk met een vraag die hem vangt. Maar niets dwingt af dat je ze
+langsloopt, en dat is precies wat er misging: de negende variant is opgeschreven, en **de dag
+erna werd hij gevonden door toeval** — bij het natrekken of een laadpaal in kW goed gelezen
+werd — en niet doordat de vraag gesteld was.
+
+> **Loop de varianten expliciet langs vóór je een ontwerp neerlegt of een nieuw predicaat
+> schrijft.** Niet achteraf ter controle: vooraf, als onderdeel van het ontwerpen.
+
+Het bewijs dat het werkt komt uit dezelfde week. Bij het ontwerp van SPEC §56 is de negende
+variant wél vooraf gesteld — *stelt iets anders in dit project deze vraag al, en wat antwoordt
+het?* — en dat leverde twee vondsten op die het ontwerp veranderden:
+
+- `_solar_savings` rekent met energie per cyclus en niet met vermogen, dus modulatie maakt de
+  formule niet stuk maar laat hem doorrekenen over een cyclus die niet bestaat;
+- `estimated_savings_eur` wordt óók door `_filter_by_savings` gelezen en tegen `min_savings_eur`
+  gelegd, dus een bedrag per uur in dat veld zou het advies stilzwijgend wegfilteren.
+
+Geen van beide was met een test te vinden, en geen van beide zou zijn opgevallen bij het
+schrijven van de code — ze zaten in de vraag "wie leest dit nog meer".
+
+**Praktisch:** de goedkoopste vorm is een grep op de velden en functies waar je ontwerp aan
+raakt, met de vraag *wie leest dit, en wat betekent het daar?* — vóór de eerste regel code.
+
 ### Negende variant: twee plekken die dezelfde vraag anders beantwoorden
 
 **Twee keer voorgekomen, en de tweede keer had ik hem moeten zien aankomen.**

@@ -79,6 +79,7 @@ from .const import (
     MIN_VAT_PERCENT,
     MINUTES_PER_DAY,
     MINUTES_PER_HOUR,
+    MODULATING_BY_DEFAULT_DEVICE_TYPES,
     NOISY_BY_DEFAULT_DEVICE_TYPES,
     NOMINAL_VOLTAGE_PER_PHASE,
     PERCENT_MAX,
@@ -392,6 +393,38 @@ def migrate_time_window(data: Mapping[str, Any]) -> tuple[str | None, str | None
     if start_minutes is None:
         return None, latest
     return time_at_minutes(start_minutes + duration), latest
+
+
+def _as_ready_days(value: Any) -> list[int] | None:
+    """Return the days a deadline applies on, or None for "every day".
+
+    **Deliberately not :func:`_as_days_of_week`, and this is the trap SPEC.md
+    §56.1 exists to name.** That helper turns an empty list into every day,
+    which is right for `days_of_week`: "no day at all" would be an appliance
+    that may never run, and disabling it is what that is for.
+
+    Here the same normalisation would mean **the opposite of what the installer
+    clicked**. He unticks every day to say *"never a deadline"* and would get
+    *"a deadline every day"* back.
+
+    So an empty list is refused rather than normalised: it maps to `None`, which
+    means "no day list stated" and leaves the deadline on every participating
+    day. Saying "never a deadline" has its own field — `runs_any_time` (§52) —
+    and one way to say a thing is enough.
+    """
+    if not isinstance(value, (list, tuple, set)):
+        return None
+    days = {
+        day
+        for item in value
+        if (
+            day := _as_optional_int(
+                item, minimum=MIN_DAY_OF_WEEK, maximum=MAX_DAY_OF_WEEK
+            )
+        )
+        is not None
+    }
+    return sorted(days) if days else None
 
 
 def _as_days_of_week(value: Any) -> list[int]:
@@ -938,6 +971,10 @@ class DeviceProfile:
     # Independent of the no-run window above it: a dryer can have no deadline
     # *and* be banned at night. The two answer different questions.
     runs_any_time: bool = False
+    # On which of the participating days the deadline applies (SPEC.md §56.1).
+    # `None` means every day the appliance participates, which is exactly what
+    # the ready window did before this existed — so nothing migrates.
+    ready_days: list[int] | None = None
     days_of_week: list[int] = field(default_factory=lambda: list(ALL_DAYS_OF_WEEK))
     notes: str | None = None
     # Left as TYPE_DEFAULT unless the installer chose a value; __post_init__
@@ -945,6 +982,15 @@ class DeviceProfile:
     # gets the same defaults as one rebuilt from storage.
     is_noisy: bool = TYPE_DEFAULT
     is_flexible: bool = TYPE_DEFAULT
+    # Whether this appliance can run at less than its full power (SPEC.md §56).
+    # A property of the hardware with a sensible default per type, like the two
+    # above it: an Easee modulates, an older charger may not.
+    can_modulate: bool = TYPE_DEFAULT
+    # The least it can draw and still do anything. **No default, ever**: six
+    # amps is the standard floor for a charger, but that is 1380 W on one phase
+    # and 4140 W on three, so it follows the connection and not the type.
+    # Without it the appliance is treated as non-modulating (SPEC.md §56.2).
+    min_power_w: float | None = None
     # What this hardware can do, as opposed to control_mode, which is what the
     # installer wants from it. Registering only in 0.1.0 (SPEC.md §12).
     capabilities: list[str] = field(default_factory=list)
@@ -960,6 +1006,8 @@ class DeviceProfile:
         """Resolve the flags that depend on the device type (SPEC.md §8)."""
         if self.is_noisy is TYPE_DEFAULT:
             self.is_noisy = self.device_type in NOISY_BY_DEFAULT_DEVICE_TYPES
+        if self.can_modulate is TYPE_DEFAULT:
+            self.can_modulate = self.device_type in MODULATING_BY_DEFAULT_DEVICE_TYPES
         if self.is_flexible is TYPE_DEFAULT:
             self.is_flexible = (
                 self.device_type not in INFLEXIBLE_BY_DEFAULT_DEVICE_TYPES
@@ -984,10 +1032,15 @@ class DeviceProfile:
             "no_run_from": self.no_run_from,
             "no_run_until": self.no_run_until,
             "runs_any_time": self.runs_any_time,
+            "ready_days": (
+                list(self.ready_days) if self.ready_days is not None else None
+            ),
             "days_of_week": list(self.days_of_week),
             "notes": self.notes,
             "is_noisy": self.is_noisy,
             "is_flexible": self.is_flexible,
+            "can_modulate": self.can_modulate,
+            "min_power_w": self.min_power_w,
             "capabilities": list(self.capabilities),
             "control_forbidden": self.control_forbidden,
             "control_forbidden_reason": self.control_forbidden_reason,
@@ -1036,12 +1089,16 @@ class DeviceProfile:
             # silently start passing). No migration is needed, which is exactly
             # why the checklist reads "window OR this" (SPEC.md §52).
             runs_any_time=_as_bool(data.get("runs_any_time"), False),
+            # Its own reader, never `_as_days_of_week` — see that function.
+            ready_days=_as_ready_days(data.get("ready_days")),
             days_of_week=_as_days_of_week(data.get("days_of_week")),
             notes=_as_optional_str(data.get("notes")),
             # Absent or unusable leaves the sentinel in place, so __post_init__
             # applies the type default. The rule lives in one place only.
             is_noisy=_as_bool(data.get("is_noisy"), TYPE_DEFAULT),
             is_flexible=_as_bool(data.get("is_flexible"), TYPE_DEFAULT),
+            can_modulate=_as_bool(data.get("can_modulate"), TYPE_DEFAULT),
+            min_power_w=_as_optional_float(data.get("min_power_w"), minimum=0.0),
             capabilities=_as_capabilities(data.get("capabilities")),
             control_forbidden=_as_bool(data.get("control_forbidden"), False),
             control_forbidden_reason=_as_optional_str(
@@ -1107,6 +1164,54 @@ class DeviceProfile:
         when you ask (SPEC.md §32).
         """
         return self.ready_from is not None and self.ready_before is not None
+
+    @property
+    def modulates(self) -> bool:
+        """Return whether this appliance can genuinely run at partial power.
+
+        **Both fields, and the second is what makes the change safe** (SPEC.md
+        §56.2). `can_modulate` may default to true for a charger, because that
+        is the truth about almost all of them; but nothing behaves differently
+        until somebody enters the minimum, because a minimum is not derivable
+        from the type. An existing installation therefore sees no change on
+        upgrade.
+        """
+        return self.can_modulate and self.min_power_w is not None
+
+    def usable_power_w(self, surplus: float | None) -> float | None:
+        """Return the power this appliance would actually draw from a surplus.
+
+        For a modulating appliance that is as much of the surplus as it can
+        take; for every other one it is the only power it has (SPEC.md §56.3).
+
+        ``None`` when the nominal power is unknown, which keeps the one rule
+        this project does not bend: a missing value is never filled in.
+        """
+        if self.nominal_power_w is None:
+            return None
+        if not self.modulates or surplus is None:
+            return self.nominal_power_w
+        return min(self.nominal_power_w, surplus)
+
+    def deadline_applies_on(self, weekday: int) -> bool:
+        """Return whether the ready window applies on this weekday.
+
+        **The dimension the deadline was missing** (SPEC.md §56.1). It used to
+        inherit `days_of_week`, so participating implied a deadline and there
+        was no way to have one without the other. That is the charger of woning
+        3: full by 06:15 on the four days he drives, and on the other days just
+        "when it is favourable" — which is participating *without* a deadline.
+
+        `None` means every participating day, which is what the ready window did
+        before this field existed. Nothing migrates.
+
+        This says nothing about whether the appliance may run today at all —
+        that stays `days_of_week`, and it is asked separately by the caller.
+        Keeping the two apart is the whole point of the field.
+        """
+        if self.ready_days is None:
+            return True
+        return weekday in self.ready_days
 
     @property
     def has_no_run_window(self) -> bool:
@@ -1906,6 +2011,16 @@ class AdviceItem:
     confidence: str
     recommended_time: str | None = None
     estimated_savings_eur: float | None = None
+    # What following this advice earns **per hour**, for advice that has no
+    # bounded extent (SPEC.md §56.4).
+    #
+    # Its own field rather than a second meaning for the one above, and that is
+    # not a matter of taste: `estimated_savings_eur` is compared against the
+    # resident's `min_savings_eur` threshold, which is per advice. A rate in
+    # that field would be measured against a total, and a charger earning
+    # EUR 0,12 an hour would vanish behind a EUR 0,25 threshold — not because it
+    # is not worth it, but because the number is on a different scale.
+    savings_rate_eur_per_hour: float | None = None
     related_device_ids: list[str] = field(default_factory=list)
     measurements: dict[str, float | str] = field(default_factory=dict)
 
@@ -1920,6 +2035,7 @@ class AdviceItem:
             "confidence": self.confidence,
             "recommended_time": self.recommended_time,
             "estimated_savings_eur": self.estimated_savings_eur,
+            "savings_rate_eur_per_hour": self.savings_rate_eur_per_hour,
             "related_device_ids": list(self.related_device_ids),
             "measurements": dict(self.measurements),
         }
@@ -1939,6 +2055,9 @@ class AdviceItem:
             ),
             recommended_time=_as_optional_str(data.get("recommended_time")),
             estimated_savings_eur=_as_optional_float(data.get("estimated_savings_eur")),
+            savings_rate_eur_per_hour=_as_optional_float(
+                data.get("savings_rate_eur_per_hour")
+            ),
             related_device_ids=_as_str_list(data.get("related_device_ids")),
             measurements=_as_measurements(data.get("measurements")),
         )

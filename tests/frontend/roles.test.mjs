@@ -59,6 +59,7 @@ const RESIDENT_DEVICE_FIELDS = [
   'ready_from',
   'ready_before',
   'runs_any_time',
+  'ready_days',
   'days_of_week',
   'is_noisy',
   'priority',

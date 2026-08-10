@@ -1985,3 +1985,58 @@ def test_absent_quiet_hours_still_take_the_default() -> None:
     assert preferences.quiet_hours_start == "22:00"
     assert preferences.quiet_hours_end == "07:00"
     assert validate_preferences(preferences) == []
+
+
+# --- A deadline that does not apply every day (SPEC.md §56.1) ---------------
+
+
+def test_an_empty_ready_days_is_not_read_as_every_day() -> None:
+    """The trap SPEC.md §56.1 exists to name.
+
+    `_as_days_of_week` turns an empty list into every day, which is right for
+    `days_of_week`: "no day at all" would be an appliance that may never run.
+    For `ready_days` the same normalisation means **the opposite of what the
+    installer clicked** — he unticks everything to say "never a deadline" and
+    would get "a deadline every day" back.
+
+    So an empty list maps to `None`, which means "no day list stated"; saying
+    "never a deadline" has its own field, `runs_any_time` (§52).
+    """
+    device = DeviceProfile.from_dict(
+        {"id": "d1", "device_type": DEVICE_TYPE_EV_CHARGER, "ready_days": []}
+    )
+
+    assert device.ready_days is None
+    # And "no list stated" keeps the old meaning: every participating day.
+    assert all(device.deadline_applies_on(day) for day in range(7))
+
+
+def test_the_charger_of_woning_3_has_a_deadline_only_on_workdays() -> None:
+    """The regression test for SPEC.md §54.4, in the resident's own words.
+
+    *"Laad hem vol als ik morgen weg moet, en anders alleen wanneer het gunstig
+    is."* He drives four days a week and leaves at 06:15; on the other days the
+    charger should still be advised on solar, just without a deadline.
+    """
+    charger = DeviceProfile.from_dict(
+        {
+            "id": "laadpaal",
+            "device_type": DEVICE_TYPE_EV_CHARGER,
+            "ready_before": "06:15",
+            "ready_days": [0, 1, 2, 3],
+        }
+    )
+
+    assert [day for day in range(7) if charger.deadline_applies_on(day)] == [0, 1, 2, 3]
+    # And it still participates every day: that is `days_of_week`, untouched.
+    assert charger.days_of_week == [0, 1, 2, 3, 4, 5, 6]
+
+
+def test_a_device_without_ready_days_is_unchanged() -> None:
+    """No migration: absent means every participating day, as it always did."""
+    device = DeviceProfile.from_dict(
+        {"id": "d1", "device_type": DEVICE_TYPE_DISHWASHER, "ready_before": "07:30"}
+    )
+
+    assert device.ready_days is None
+    assert all(device.deadline_applies_on(day) for day in range(7))

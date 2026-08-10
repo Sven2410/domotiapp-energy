@@ -221,6 +221,11 @@ _OPERATION_SCHEMA = vol.Schema(
         # "Any moment is fine" is his answer to give, for the same reason the
         # deadline above it is (SPEC.md §52).
         vol.Optional("runs_any_time"): bool,
+        # The days his deadline applies on, or null for every participating
+        # day (SPEC.md §56.1). His to set, like the deadline itself.
+        vol.Optional("ready_days"): vol.Any(
+            [vol.All(int, vol.Range(min=MIN_DAY_OF_WEEK, max=MAX_DAY_OF_WEEK))], None
+        ),
         vol.Optional("days_of_week"): [
             vol.All(int, vol.Range(min=MIN_DAY_OF_WEEK, max=MAX_DAY_OF_WEEK))
         ],

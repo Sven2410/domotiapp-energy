@@ -5948,33 +5948,54 @@ afviel — dat defect ("benut je zonneoverschot" op een netimport van 1500 W) bl
 De reden dat het bij een laadpaal anders ligt, in één zin: **een wasmachine kan het overschot
 niet aannemen, een laadpaal wel.**
 
-### 56.4 De geschatte besparing: dit is de moeilijkste
+### 56.4 De geschatte besparing: wat er in dat veld hoort te staan
 
 `_solar_savings` rekent `energy_per_cycle_kwh × marge`. Er komt geen vermogen in voor — en
 dat is precies het probleem, want de formule **blijft rekenen** over een cyclus die voor een
-modulerende paal niet bestaat.
+modulerende paal niet bestaat. `energy_per_cycle_kwh = 25` levert dan "€ 1,20" op voor een
+advies dat over de eerstvolgende twintig minuten zon gaat. Een getal dat plausibel oogt en
+iets belooft wat niet gebeurt, is gevaarlijker dan een fout die opvalt.
 
-Een laadsessie is geen cyclus. Zij duurt zolang er zon is, en levert wat er op dat moment over
-is. `energy_per_cycle_kwh = 25` zou dan "€ 1,20 besparing" opleveren voor een advies dat gaat
-over de eerstvolgende twintig minuten zon.
+**Het antwoord is niet "welke van drie vormen leest het beste", maar volgt uit wie dat veld
+leest.** `estimated_savings_eur` heeft een tweede lezer naast het scherm:
 
-**Voorstel: een tweede soort bedrag, met een eigen zin.**
+```python
+# _filter_by_savings
+if item.estimated_savings_eur is None
+   or item.estimated_savings_eur <= 0
+   or item.estimated_savings_eur >= minimum      # min_savings_eur
+```
 
-| | Grondslag | Zin |
-|---|---|---|
-| Niet-modulerend | de hele cyclus | *"levert ongeveer € 0,34 op"* |
-| Modulerend | per uur, op het bruikbare vermogen | *"levert ongeveer € 0,12 per uur op zolang dit overschot er is"* |
+Het wordt vergeleken met de drempel `min_savings_eur`, die de bewoner instelt en die per
+*advies* geldt. Een bedrag per uur in dat veld wordt dus tegen een drempel per cyclus gelegd,
+en een paal die € 0,12 per uur oplevert verdwijnt bij een drempel van € 0,25 — **niet omdat
+het de moeite niet waard is, maar omdat het getal op een andere schaal staat.** Dat is de
+negende variant nog eens: één veld, twee betekenissen, en geen test die het ziet.
 
-De rekensom voor de tweede: `bruikbaar_vermogen_kW × 1 h × marge`.
+**Het besluit:**
 
-**De twee bedragen mogen nooit door elkaar lopen**, en dat is geen stijlkwestie: € 1,20 en
-€ 0,12 zijn allebei waar en beantwoorden een andere vraag. Ze krijgen daarom elk een eigen
-hele zin (§26) en niet één zin met een variabele staart. Het veld `estimated_savings_eur` moet
-dus vergezeld gaan van *waar het over gaat*, of er komen twee velden — dat is de enige
-implementatiekeuze die dit deel nog openlaat.
+| | `estimated_savings_eur` | Eigen veld | Zin |
+|---|---|---|---|
+| Niet-modulerend | de hele cyclus | — | *"levert ongeveer € 0,34 op"* |
+| Modulerend | **leeg** | `savings_rate_eur_per_hour` | *"levert ongeveer € 0,12 per uur op zolang dit overschot er is"* |
 
-**Wat er níét verandert:** de marge zelf (`self_consumption_margin_eur_kwh`), en dus alles wat
-§35.4d erover zegt. Alleen de schaal verandert.
+Drie eigenschappen van dat besluit, en ze horen alle drie bij elkaar:
+
+1. **Leeg is hier geen gebrek maar het juiste antwoord.** Het advies "laad nu op wat er over
+   is" heeft geen begrensde omvang, dus er ís geen totaalbedrag. Dat veld leeg laten is
+   dezelfde eerlijkheid als een terugleverkost die niet ingevuld is (§16): onbekend en nul
+   zijn verschillende uitspraken.
+2. **Het advies wordt daardoor nooit weggefilterd.** `_filter_by_savings` laat advies zonder
+   berekenbare besparing met opzet staan, en dat is hier precies goed: een drempel per cyclus
+   mag niet beslissen over een advies dat per uur loopt.
+3. **Het tarief krijgt een eigen veld en een eigen hele zin** (§26), zodat de twee bedragen
+   nooit in dezelfde regel of dezelfde vergelijking terechtkomen. € 1,20 en € 0,12 zijn
+   allebei waar en beantwoorden een andere vraag.
+
+De rekensom voor het tarief: `bruikbaar_vermogen_kW × marge`, met het bruikbare vermogen uit
+§56.3. **Wat er níét verandert:** de marge zelf
+(`self_consumption_margin_eur_kwh`) en alles wat §35.4d daarover zegt. Alleen de schaal en de
+plaats veranderen.
 
 ### 56.5 De laadduur: die blijft, en dat is het goede antwoord
 

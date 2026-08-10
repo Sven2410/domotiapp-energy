@@ -41,6 +41,7 @@ from custom_components.domotiapp_energy.const import (
     SEVERITY_WARNING,
     SOURCE_TYPE_FEED_IN_PRICE,
     URGENCY_LEAD_MINUTES,
+    WATTS_PER_KILOWATT,
 )
 from custom_components.domotiapp_energy.models import (
     AdviceItem,
@@ -357,6 +358,7 @@ def _advise_solar_surplus(context: _Context) -> list[AdviceItem]:
         ]
 
     savings = _solar_savings(context, device)
+    rate = _solar_savings_rate(context, device, surplus)
 
     return [
         AdviceItem(
@@ -367,6 +369,7 @@ def _advise_solar_surplus(context: _Context) -> list[AdviceItem]:
             reason_code=REASON_SOLAR_SURPLUS_AVAILABLE,
             confidence=_surplus_confidence(context, device),
             estimated_savings_eur=savings,
+            savings_rate_eur_per_hour=rate,
             related_device_ids=[device.id],
             measurements={MEASUREMENT_SOLAR_SURPLUS_W: round(surplus, 1)},
         )
@@ -460,9 +463,20 @@ def _surplus_message(
     Four situations, and the sentence has to follow the arithmetic rather than
     assume it. "Dit is een gunstig moment" under a loss, or under a blank
     amount, is the panel contradicting its own figure.
+
+    **A modulating appliance has no total on purpose**, and that is a fifth
+    situation rather than a missing term (SPEC.md §56.4). Left to the branch
+    below it, an empty total was read as "the sum could not be made" and the
+    sentence went looking for the term to blame — so a charger with a perfectly
+    good rate underneath it told the installer to go and fill in a feed-in cost
+    he had just entered. Found in the browser, which is the only place it could
+    have been: every layer below agreed with itself.
     """
     opening = "Er is momenteel zonneoverschot beschikbaar."
     favourable = f"Dit is een gunstig moment om {device.name} te gebruiken."
+
+    if device.modulates:
+        return f"{opening} {favourable}"
 
     if savings is None:
         # Name the term that is actually missing. Four different gaps can stop
@@ -622,6 +636,11 @@ def _advise_deadline(context: _Context) -> list[AdviceItem]:
     for device in context.config.devices:
         if not is_advisable(device) or not _allowed_today(device, context):
             continue
+        # A participating day is not automatically a day with a deadline
+        # (SPEC.md §56.1). Without this the charger of woning 3 would be told on
+        # a Saturday morning to start now for a 06:15 he does not have.
+        if not device.deadline_applies_on(context.weekday):
+            continue
         latest = latest_start_minutes(device, context.metrics)
         if latest is None:
             continue
@@ -769,7 +788,7 @@ def _best_device_for_now(
         for device in context.config.devices
         if is_advisable(device)
         and _allowed_today(device, context)
-        and _within_window(device, context.now_minutes)
+        and _within_window(device, context.now_minutes, context.weekday)
         and (include_blocked or device.may_run_at(context.now_minutes))
         and _fits_in_surplus(device, surplus)
         and (include_silenced or not _silenced_by_quiet_hours(device, context))
@@ -821,6 +840,13 @@ def _fits_in_surplus(device: DeviceProfile, surplus: float | None) -> bool:
     """
     if surplus is None or device.nominal_power_w is None:
         return True
+    if device.modulates and device.min_power_w is not None:
+        # **A washing machine cannot accept a partial surplus; a charger can**
+        # (SPEC.md §56.3). Judging a modulating appliance on its maximum is what
+        # kept the charger of woning 3 silent on the ordinary Dutch afternoon —
+        # car at home, panels producing less than the charging maximum, which is
+        # exactly the moment the customer bought this for.
+        return device.min_power_w <= surplus
     return device.nominal_power_w <= surplus
 
 
@@ -834,7 +860,7 @@ def _priority_rank(device: DeviceProfile) -> int:
     return PRIORITIES.index(device.priority)
 
 
-def _within_window(device: DeviceProfile, now_minutes: int) -> bool:
+def _within_window(device: DeviceProfile, now_minutes: int, weekday: int) -> bool:
     """Return whether starting now still fits the device's ready window.
 
     **This asks about the start, derived from the deadline.** The old model
@@ -864,6 +890,12 @@ def _within_window(device: DeviceProfile, now_minutes: int) -> bool:
         # *complete* predicate on purpose — this needs two edges to test
         # against, unlike the checklist, which only asks whether anything was
         # stated at all.
+        return True
+
+    if not device.deadline_applies_on(weekday):
+        # Today is a participating day without a deadline (SPEC.md §56.1). The
+        # appliance is unrestricted, exactly as one with no window is — which is
+        # what makes "op zaterdag alleen als het gunstig is" expressible.
         return True
 
     start = minutes_since_midnight(device.earliest_start)
@@ -966,6 +998,19 @@ def _solar_savings(context: _Context, device: DeviceProfile) -> float | None:
     `EnergyMetrics.self_consumption_margin_eur_kwh`, read by the score, the tile
     and this sum alike (SPEC.md §35.4d).
     """
+    if device.modulates:
+        # **No total for an appliance whose advice has no end** (SPEC.md §56.4).
+        # "Charge on what is spare" runs as long as the sun does, so there is no
+        # cycle to price; `energy_per_cycle_kwh` would put a confident EUR 1,20
+        # under advice about the next twenty minutes.
+        #
+        # Empty is the right answer and not a gap, and it has a second effect
+        # that is equally deliberate: `_filter_by_savings` never drops advice
+        # without a calculable saving, so a per-advice threshold cannot silently
+        # remove a charger whose worth is a rate. The rate itself travels in
+        # `savings_rate_eur_per_hour`; see :func:`_solar_savings_rate`.
+        return None
+
     energy = device.energy_per_cycle_kwh
     if energy is None:
         return None
@@ -975,6 +1020,32 @@ def _solar_savings(context: _Context, device: DeviceProfile) -> float | None:
         return None
 
     return round(energy * margin, 2)
+
+
+def _solar_savings_rate(
+    context: _Context, device: DeviceProfile, surplus: float | None
+) -> float | None:
+    """Return what this appliance earns per hour on the current surplus.
+
+    **Only for an appliance that modulates**, and it is the honest half of a
+    problem the per-cycle amount could not solve (SPEC.md §56.4). A charger's
+    advice is "take what is spare right now", which has no end, so there is no
+    cycle to price. Running the old formula anyway produced a confident
+    "EUR 1,20" for a piece of advice about the next twenty minutes of sun — a
+    number that looks plausible and promises something that does not happen.
+
+    The counterpart is in :func:`_solar_savings`, which returns ``None`` for
+    exactly these appliances so the two amounts can never be confused, and so
+    the per-advice threshold never measures a rate.
+    """
+    if not device.modulates:
+        return None
+
+    power_w = device.usable_power_w(surplus)
+    margin = context.metrics.self_consumption_margin_eur_kwh
+    if power_w is None or margin is None:
+        return None
+    return round(power_w / WATTS_PER_KILOWATT * margin, 2)
 
 
 def _filter_by_savings(

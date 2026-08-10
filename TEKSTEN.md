@@ -20,26 +20,26 @@ is dit de invoer en niet de uitvoer.
 - **Engelse regels staan apart**, onderaan. Een Engelse zin in dit product is
   een fout tenzij zij een identifier is: de UI is Nederlands (CLAUDE.md).
 
-**846 Nederlandse teksten**, waarvan 114 op meer dan één plek. En 9 Engelse regels om na te lopen.
+**862 Nederlandse teksten**, waarvan 117 op meer dan één plek. En 9 Engelse regels om na te lopen.
 
 
 ## `custom_components/domotiapp_energy/const.py`
 
 | Tekst | Waar | Regel |
 |---|---|---|
-| Attention | module | 1005 |
-| Current advice | module | 1002 |
-| Data quality | module | 999 |
+| Attention | module | 1027 |
+| Current advice | module | 1024 |
+| Data quality | module | 1021 |
 | DomotiApp | module | 21 |
 | DomotiApp Energy ↔ | module | 18 |
 | DomotiApp Energy ↔ | module | 39 |
 | Energy Coach | module | 22 |
-| Grid power | module | 1000 |
-| Home consumption | module | 1004 |
+| Grid power | module | 1022 |
+| Home consumption | module | 1026 |
 | Mijn woning | module | 29 |
-| Peak risk | module | 1003 |
-| Score | module | 998 |
-| Solar surplus | module | 1001 |
+| Peak risk | module | 1025 |
+| Score | module | 1020 |
+| Solar surplus | module | 1023 |
 
 ## `custom_components/domotiapp_energy/coordinator.py`
 
@@ -62,37 +62,37 @@ is dit de invoer en niet de uitvoer.
 
 | Tekst | Waar | Regel |
 |---|---|---|
-| Aanvullende gegevens nodig | _advise_missing_data | 210 |
-| Bijna te laat om op tijd klaar te zijn | _advise_deadline | 637 |
-| De actuele energieprijs is relatief hoog. Stel flexibel energiegebruik indien mogelijk uit. | _advise_price | 701 |
-| De actuele energieprijs is relatief laag. Flexibele apparaten kunnen nu voordeliger worden gebruikt. | _advise_price | 683 |
-| De actuele energiesituatie vraagt momenteel niet om een aanpassing. | _neutral_advice | 719 |
-| De teruglevering ligt dicht bij de ingestelde maximale woningbelasting. Schakel indien mogelijk juist extra verbruikers in om de belasting te verlagen. Let op: terugleveren levert je op dit moment meer op dan zelf verbruiken, dus dit kost je geld. | _advise_peak_risk | 256 |
-| De teruglevering ligt dicht bij de ingestelde maximale woningbelasting. Schakel indien mogelijk juist extra verbruikers in om het overschot zelf te benutten. | _advise_peak_risk | 250 |
-| Dit is een gunstig moment om {...} te gebruiken. | _surplus_message | 465 |
-| Er is momenteel zonneoverschot beschikbaar, maar {...} mag tussen {...} en {...} niet draaien. Dat is bij de installatie zo ingesteld en staat los van je stille uren. Na {...} kan het weer. | _no_run_message | 432 |
-| Er is momenteel zonneoverschot beschikbaar. | _surplus_message | 464 |
-| Er is momenteel zonneoverschot beschikbaar. {...} maakt geluid en het zijn stille uren tot {...}. Wacht daarmee tot na {...}, of pas de stille uren aan bij Mijn voorkeuren. | _quiet_hours_message | 408 |
-| Geen actie nodig | _neutral_advice | 718 |
-| Het actuele netvermogen ligt dicht bij de ingestelde maximale woningbelasting. Stel extra grootverbruikers indien mogelijk uit. | _advise_peak_risk | 279 |
-| Hoeveel dit oplevert is niet te berekenen zolang de terugleverkosten niet zijn ingevuld — vul ze in bij Woning, of zet ze op 0 als deze aansluiting ze niet betaalt. | _why_no_amount | 585 |
-| Hoeveel dit oplevert is niet te berekenen zolang de terugleverprijsbron geen bruikbare waarde geeft. Controleer die bij Energiebronnen. | _why_no_amount | 574 |
-| Hoeveel dit oplevert is niet te berekenen zolang er geen actuele prijs is. Controleer de prijsbron bij Energiebronnen. | _why_no_amount | 559 |
-| Hoeveel dit oplevert is niet te berekenen zonder de energie per cyclus van {...} — vul die in bij Apparaten. | _why_no_amount | 550 |
-| Hoeveel dit oplevert is niet te berekenen zonder de terugleververgoeding — vul die in bij Woning, of koppel een terugleverprijsbron. | _why_no_amount | 579 |
-| Hoeveel dit oplevert is niet te berekenen zonder het vaste leveringstarief — vul dat in bij Woning. | _why_no_amount | 563 |
-| Hoge energieprijs | _advise_price | 699 |
-| Lage energieprijs | _advise_price | 681 |
-| Netbelasting hoog | _advise_peak_risk | 277 |
-| Start {...} nu als hij om {...} klaar moet zijn. | _advise_deadline | 639 |
-| Teruglevering hoog | _advise_peak_risk | 265 |
-| Vul de ontbrekende energiegegevens aan om een betrouwbaar advies te ontvangen. | _advise_missing_data | 212 |
-| Zonneoverschot beschikbaar ↔ | _advise_solar_surplus | 364 |
-| Zonneoverschot, maar dit apparaat mag nu niet draaien | _advise_solar_surplus | 334 |
-| Zonneoverschot, maar het zijn stille uren | _advise_solar_surplus | 349 |
-| {...} Zelf verbruiken levert nu echter minder op dan terugleveren: {...} nu gebruiken kost naar schatting {...} ten opzichte van het overschot terugleveren. Wachten tot de terugleververgoeding lager ligt is voordeliger. | _surplus_message | 479 |
-| {...} {...} Het levert op dit moment niets extra op, maar het kost ook niets. | _surplus_message | 497 |
-| {...} {...} Zolang de salderingsregeling geldt levert dit geen extra besparing op, maar het overschot zelf gebruiken blijft de meest efficiënte keuze. | _surplus_message | 490 |
+| Aanvullende gegevens nodig | _advise_missing_data | 211 |
+| Bijna te laat om op tijd klaar te zijn | _advise_deadline | 656 |
+| De actuele energieprijs is relatief hoog. Stel flexibel energiegebruik indien mogelijk uit. | _advise_price | 720 |
+| De actuele energieprijs is relatief laag. Flexibele apparaten kunnen nu voordeliger worden gebruikt. | _advise_price | 702 |
+| De actuele energiesituatie vraagt momenteel niet om een aanpassing. | _neutral_advice | 738 |
+| De teruglevering ligt dicht bij de ingestelde maximale woningbelasting. Schakel indien mogelijk juist extra verbruikers in om de belasting te verlagen. Let op: terugleveren levert je op dit moment meer op dan zelf verbruiken, dus dit kost je geld. | _advise_peak_risk | 257 |
+| De teruglevering ligt dicht bij de ingestelde maximale woningbelasting. Schakel indien mogelijk juist extra verbruikers in om het overschot zelf te benutten. | _advise_peak_risk | 251 |
+| Dit is een gunstig moment om {...} te gebruiken. | _surplus_message | 476 |
+| Er is momenteel zonneoverschot beschikbaar, maar {...} mag tussen {...} en {...} niet draaien. Dat is bij de installatie zo ingesteld en staat los van je stille uren. Na {...} kan het weer. | _no_run_message | 435 |
+| Er is momenteel zonneoverschot beschikbaar. | _surplus_message | 475 |
+| Er is momenteel zonneoverschot beschikbaar. {...} maakt geluid en het zijn stille uren tot {...}. Wacht daarmee tot na {...}, of pas de stille uren aan bij Mijn voorkeuren. | _quiet_hours_message | 411 |
+| Geen actie nodig | _neutral_advice | 737 |
+| Het actuele netvermogen ligt dicht bij de ingestelde maximale woningbelasting. Stel extra grootverbruikers indien mogelijk uit. | _advise_peak_risk | 280 |
+| Hoeveel dit oplevert is niet te berekenen zolang de terugleverkosten niet zijn ingevuld — vul ze in bij Woning, of zet ze op 0 als deze aansluiting ze niet betaalt. | _why_no_amount | 599 |
+| Hoeveel dit oplevert is niet te berekenen zolang de terugleverprijsbron geen bruikbare waarde geeft. Controleer die bij Energiebronnen. | _why_no_amount | 588 |
+| Hoeveel dit oplevert is niet te berekenen zolang er geen actuele prijs is. Controleer de prijsbron bij Energiebronnen. | _why_no_amount | 573 |
+| Hoeveel dit oplevert is niet te berekenen zonder de energie per cyclus van {...} — vul die in bij Apparaten. | _why_no_amount | 564 |
+| Hoeveel dit oplevert is niet te berekenen zonder de terugleververgoeding — vul die in bij Woning, of koppel een terugleverprijsbron. | _why_no_amount | 593 |
+| Hoeveel dit oplevert is niet te berekenen zonder het vaste leveringstarief — vul dat in bij Woning. | _why_no_amount | 577 |
+| Hoge energieprijs | _advise_price | 718 |
+| Lage energieprijs | _advise_price | 700 |
+| Netbelasting hoog | _advise_peak_risk | 278 |
+| Start {...} nu als hij om {...} klaar moet zijn. | _advise_deadline | 658 |
+| Teruglevering hoog | _advise_peak_risk | 266 |
+| Vul de ontbrekende energiegegevens aan om een betrouwbaar advies te ontvangen. | _advise_missing_data | 213 |
+| Zonneoverschot beschikbaar ↔ | _advise_solar_surplus | 366 |
+| Zonneoverschot, maar dit apparaat mag nu niet draaien | _advise_solar_surplus | 335 |
+| Zonneoverschot, maar het zijn stille uren | _advise_solar_surplus | 350 |
+| {...} Zelf verbruiken levert nu echter minder op dan terugleveren: {...} nu gebruiken kost naar schatting {...} ten opzichte van het overschot terugleveren. Wachten tot de terugleververgoeding lager ligt is voordeliger. | _surplus_message | 493 |
+| {...} {...} Het levert op dit moment niets extra op, maar het kost ook niets. | _surplus_message | 511 |
+| {...} {...} Zolang de salderingsregeling geldt levert dit geen extra besparing op, maar het overschot zelf gebruiken blijft de meest efficiënte keuze. | _surplus_message | 504 |
 
 ## `custom_components/domotiapp_energy/engine/calculator.py`
 
@@ -211,7 +211,7 @@ is dit de invoer en niet de uitvoer.
 
 | Tekst | Waar | Regel |
 |---|---|---|
-| Deze gegevens worden beheerd door DomotiTech. | roles | 51 |
+| Deze gegevens worden beheerd door DomotiTech. | roles | 54 |
 
 ## `custom_components/domotiapp_energy/frontend/domotiapp-energy-panel.js`
 
@@ -227,13 +227,13 @@ is dit de invoer en niet de uitvoer.
 | Advies ↔ | coach | 34 |
 | Advies ↔ | coach | 35 |
 | Advies ↔ | coach | 139 |
-| Alle gegevens voor een betrouwbaar advies zijn ingevuld. ↔ | coach | 283 |
-| Bezig met berekenen… | coach | 197 |
-| Deze vraag is nog niet beantwoord. Bereken opnieuw zodra er gegevens | coach | 189 |
+| Alle gegevens voor een betrouwbaar advies zijn ingevuld. ↔ | coach | 298 |
+| Bezig met berekenen… | coach | 212 |
+| Deze vraag is nog niet beantwoord. Bereken opnieuw zodra er gegevens | coach | 204 |
 | Energiecoach | coach | 58 |
 | Er is op dit moment geen aanvullend advies. | coach | 88 |
 | Geschatte besparing | coach | 68 |
-| Het advies is opnieuw berekend. | coach | 202 |
+| Het advies is opnieuw berekend. | coach | 217 |
 | Hoe is mijn energiescore berekend? | coach | 30 |
 | Hoofdadvies | coach | 65 |
 | Is er risico op piekbelasting? | coach | 28 |
@@ -241,7 +241,7 @@ is dit de invoer en niet de uitvoer.
 | Kies een vraag; het antwoord verschijnt in beeld. | coach | 104 |
 | Laatste berekening ↔ | coach | 70 |
 | Niet te berekenen | coach | 68 |
-| Nog geen advies berekend ↔ | coach | 225 |
+| Nog geen advies berekend ↔ | coach | 240 |
 | Nog niet berekend ↔ | coach | 70 |
 | Onbekend | coach | 69 |
 | Ontbrekende gegevens | coach | 94 |
@@ -253,49 +253,49 @@ is dit de invoer en niet de uitvoer.
 | Waarom krijg ik dit advies? | coach | 26 |
 | Waarschuwing ↔ | coach | 36 |
 | Welke gegevens ontbreken nog? | coach | 29 |
-| Zodra er een energiebron gekoppeld is, verschijnt hier het hoofdadvies. ↔ | coach | 228 |
-| gekoppeld zijn. | coach | 190 |
+| Zodra er een energiebron gekoppeld is, verschijnt hier het hoofdadvies. ↔ | coach | 243 |
+| gekoppeld zijn. | coach | 205 |
 
 ## `custom_components/domotiapp_energy/frontend/tabs/devices.js`
 
 | Tekst | Waar | Regel |
 |---|---|---|
-| "Alleen monitoren" legt vast dat dat zo moet blijven, ook als dat | devices | 512 |
-| "alleen adviseren" om het weer mee te laten doen. | devices | 506 |
-| "alleen monitoren" wordt als adviseren behandeld. | devices | 518 |
+| "Alleen monitoren" legt vast dat dat zo moet blijven, ook als dat | devices | 548 |
+| "alleen adviseren" om het weer mee te laten doen. | devices | 542 |
+| "alleen monitoren" wordt als adviseren behandeld. | devices | 554 |
 | "mag hierna niet meer draaien". | devices | 381 |
-| ${device.name \|\| ↔ | devices | 1283 |
-| ${device.name \|\| ↔ | devices | 1307 |
+| ${device.name \|\| ↔ | devices | 1329 |
+| ${device.name \|\| ↔ | devices | 1353 |
 | Aan- en uitschakelen ↔ | devices | 84 |
-| Aansturing ↔ | devices | 746 |
-| Aansturing uitgesloten voor deze installatie ↔ | devices | 548 |
+| Aansturing ↔ | devices | 792 |
+| Aansturing uitgesloten voor deze installatie ↔ | devices | 584 |
 | Airconditioning | devices | 46 |
 | Alleen adviseren ↔ | devices | 77 |
 | Alleen monitoren | devices | 76 |
-| Alleen registreren: er wordt niets aangestuurd. Niets aanvinken | devices | 542 |
-| Annuleren ↔ | devices | 863 |
-| Apparaat ↔ | devices | 717 |
-| Apparaat ↔ | devices | 805 |
-| Apparaat bewerken | devices | 1043 |
-| Apparaat toevoegen ↔ | devices | 768 |
-| Apparaat toevoegen ↔ | devices | 1043 |
-| Apparaat verwijderen | devices | 1305 |
-| Apparaten ↔ | devices | 760 |
-| Apparaten ↔ | devices | 765 |
+| Alleen registreren: er wordt niets aangestuurd. Niets aanvinken | devices | 578 |
+| Annuleren ↔ | devices | 909 |
+| Apparaat ↔ | devices | 756 |
+| Apparaat ↔ | devices | 851 |
+| Apparaat bewerken | devices | 1089 |
+| Apparaat toevoegen ↔ | devices | 814 |
+| Apparaat toevoegen ↔ | devices | 1089 |
+| Apparaat verwijderen | devices | 1351 |
+| Apparaten ↔ | devices | 806 |
+| Apparaten ↔ | devices | 811 |
 | Automatisch aansturen ↔ | devices | 79 |
 | Batterijniveau | devices | 138 |
-| Bedieningsniveau ↔ | devices | 526 |
-| Bedieningsniveau ↔ | devices | 662 |
-| Bewerken ↔ | devices | 889 |
-| Bewerken ↔ | devices | 921 |
-| Bezig met opslaan… ↔ | devices | 1171 |
-| Bezig met verwijderen… ↔ | devices | 1275 |
+| Bedieningsniveau ↔ | devices | 562 |
+| Bedieningsniveau ↔ | devices | 699 |
+| Bewerken ↔ | devices | 935 |
+| Bewerken ↔ | devices | 967 |
+| Bezig met opslaan… ↔ | devices | 1217 |
+| Bezig met verwijderen… ↔ | devices | 1321 |
 | Bij meerdere kandidaten wint de hoogste prioriteit. | devices | 273 |
-| Compleet. ↔ | devices | 1026 |
-| Dagen ↔ | devices | 470 |
-| Dagen ↔ | devices | 648 |
+| Compleet. ↔ | devices | 1072 |
+| Dagen ↔ | devices | 484 |
+| Dagen ↔ | devices | 685 |
 | De aanvoertemperatuur van de warmtepomp. | devices | 131 |
-| De configuratie is intussen ergens anders gewijzigd. Er is niets ↔ | devices | 1290 |
+| De configuratie is intussen ergens anders gewijzigd. Er is niets ↔ | devices | 1336 |
 | De energie van een gemiddelde draaiperiode. | devices | 349 |
 | De energie van één cyclus. | devices | 352 |
 | De energie van één droogbeurt. | devices | 348 |
@@ -307,32 +307,33 @@ is dit de invoer en niet de uitvoer.
 | De meterstand of het verbruik van dit apparaat. | devices | 118 |
 | De ruimtetemperatuur die deze airco regelt. | devices | 133 |
 | De watertemperatuur in de boiler. | devices | 132 |
-| Deze ingevulde gegevens worden voor dit apparaat niet meer | devices | 1097 |
+| Deze ingevulde gegevens worden voor dit apparaat niet meer | devices | 1143 |
 | Dinsdag | devices | 92 |
-| Dit apparaat is compleet: alles wat de datakwaliteit vraagt is ingevuld. | devices | 1090 |
-| Dit apparaat is intussen ergens anders verwijderd. Je invoer staat | devices | 1232 |
-| Dit apparaat is intussen ook ergens anders gewijzigd. Je invoer | devices | 1239 |
-| Dit apparaat krijgt geen advies zolang het niet verplaatsbaar is. | devices | 511 |
-| DomotiApp Energy adviseert in deze versie alleen; alles behalve | devices | 517 |
+| Dit apparaat is compleet: alles wat de datakwaliteit vraagt is ingevuld. | devices | 1136 |
+| Dit apparaat is intussen ergens anders verwijderd. Je invoer staat | devices | 1278 |
+| Dit apparaat is intussen ook ergens anders gewijzigd. Je invoer | devices | 1285 |
+| Dit apparaat krijgt geen advies zolang het niet verplaatsbaar is. | devices | 547 |
+| DomotiApp Energy adviseert in deze versie alleen; alles behalve | devices | 553 |
 | DomotiApp Energy rekent zelf terug wanneer het apparaat uiterlijk | devices | 376 |
 | Donderdag | devices | 94 |
 | Droger | devices | 45 |
 | Duur van een cyclus ↔ | devices | 319 |
-| Duur van een cyclus ↔ | devices | 655 |
+| Duur van een cyclus ↔ | devices | 692 |
 | Duur van een laadsessie | devices | 319 |
-| Een afspraak met de klant, los van wat dit apparaat kan. | devices | 549 |
+| Een afspraak met de klant, los van wat dit apparaat kan. | devices | 585 |
 | Een schatting van een typische laadbeurt, bijvoorbeeld 10 kWh voor | devices | 342 |
 | Een uitgeschakeld apparaat krijgt geen advies. | devices | 261 |
 | Elektrische boiler | devices | 42 |
 | Energie per cyclus ↔ | devices | 311 |
-| Energie per cyclus ↔ | devices | 654 |
+| Energie per cyclus ↔ | devices | 691 |
 | Energie per laadsessie | devices | 311 |
 | Energieverbruikentiteit | devices | 116 |
-| Er is intussen ergens anders iets aan de configuratie gewijzigd, maar ↔ | devices | 1244 |
+| Er is intussen ergens anders iets aan de configuratie gewijzigd, maar ↔ | devices | 1290 |
 | Het actuele vermogen van dit apparaat. | devices | 112 |
 | Het elektrische opgenomen vermogen, niet het thermische. | devices | 333 |
 | Het hoogste vermogen waarmee deze paal kan laden — niet wat de auto | devices | 330 |
 | Het laad- of ontlaadvermogen van de batterij. | devices | 332 |
+| Het minste waarmee het apparaat nog iets doet. Een laadpaal laadt | devices | 518 |
 | Het vermogen tijdens gebruik. | devices | 336 |
 | Het vermogen van het verwarmingselement. | devices | 334 |
 | Hoe lang de lopende cyclus nog duurt. | devices | 124 |
@@ -340,125 +341,140 @@ is dit de invoer en niet de uitvoer.
 | In minuten, voor een typische laadbeurt. Wordt getoetst aan het | devices | 360 |
 | In minuten. Wordt getoetst aan het tijdvenster hieronder. | devices | 364 |
 | Ingeschakeld ↔ | devices | 260 |
-| Instellen | devices | 921 |
-| Je hebt wijzigingen die nog niet zijn opgeslagen. Verwerp je ze, ↔ | devices | 1332 |
+| Instellen | devices | 967 |
+| Je hebt wijzigingen die nog niet zijn opgeslagen. Verwerp je ze, ↔ | devices | 1378 |
+| Kan op deelvermogen draaien ↔ | devices | 504 |
+| Kan op deelvermogen draaien ↔ | devices | 701 |
 | Klaar uiterlijk om ↔ | devices | 419 |
-| Klaar uiterlijk om ↔ | devices | 643 |
-| Koppelingen | devices | 741 |
+| Klaar uiterlijk om ↔ | devices | 679 |
+| Koppelingen | devices | 787 |
 | Kritiek | devices | 72 |
 | Laadpaal | devices | 39 |
 | Laadstroom instellen ↔ | devices | 86 |
 | Laag | devices | 69 |
 | Laat beide tijden leeg als er geen venster is; het apparaat mag dan op | devices | 371 |
-| Ligt deze tijd vóór "niet draaien vanaf", dan loopt het verbod door | devices | 464 |
+| Laat leeg als de deadline elke dag geldt. Voor een laadpaal is dit | devices | 439 |
+| Ligt deze tijd vóór "niet draaien vanaf", dan loopt het verbod door | devices | 478 |
 | Locatie | devices | 266 |
-| Maakt geluid ↔ | devices | 482 |
-| Maakt geluid ↔ | devices | 657 |
+| Maakt geluid ↔ | devices | 496 |
+| Maakt geluid ↔ | devices | 694 |
 | Maakt niet uit wanneer hij klaar is ↔ | devices | 409 |
-| Maakt niet uit wanneer hij klaar is ↔ | devices | 645 |
+| Maakt niet uit wanneer hij klaar is ↔ | devices | 682 |
 | Maandag | devices | 91 |
 | Maximaal laadvermogen | devices | 305 |
+| Minimaal vermogen ↔ | devices | 516 |
+| Minimaal vermogen ↔ | devices | 702 |
 | Naam ↔ | devices | 252 |
-| Naamloos apparaat | devices | 906 |
-| Niet draaien vanaf ↔ | devices | 446 |
-| Niet draaien vanaf ↔ | devices | 646 |
-| Niet eerder klaar dan ↔ | devices | 433 |
-| Niet eerder klaar dan ↔ | devices | 644 |
-| Nog geen apparaten. Voeg de apparaten toe waarover DomotiApp Energy | devices | 787 |
-| Nog geen vermogenssensor gekoppeld — dit apparaat wordt alleen | devices | 1002 |
-| Nog nodig voor een compleet apparaat: | devices | 1086 |
+| Naamloos apparaat | devices | 952 |
+| Niet draaien vanaf ↔ | devices | 460 |
+| Niet draaien vanaf ↔ | devices | 683 |
+| Niet eerder klaar dan ↔ | devices | 447 |
+| Niet eerder klaar dan ↔ | devices | 680 |
+| Nog geen apparaten. Voeg de apparaten toe waarover DomotiApp Energy | devices | 833 |
+| Nog geen vermogenssensor gekoppeld — dit apparaat wordt alleen | devices | 1048 |
+| Nog nodig voor een compleet apparaat: | devices | 1132 |
 | Nominaal vermogen ↔ | devices | 305 |
-| Nominaal vermogen ↔ | devices | 653 |
+| Nominaal vermogen ↔ | devices | 690 |
 | Normaal | devices | 70 |
-| Noteer waarom, zodat dit later terug te vinden is. ↔ | devices | 558 |
+| Noteer waarom, zodat dit later terug te vinden is. ↔ | devices | 594 |
 | Notities ↔ | devices | 289 |
-| Notities ↔ | devices | 755 |
-| Op "alleen monitoren" krijgt dit apparaat geen advies. Zet het op | devices | 505 |
-| Op welke dagen dit apparaat mag draaien. | devices | 471 |
-| Opslaan ↔ | devices | 862 |
-| Opslaan mag ook zonder — het apparaat telt dan alleen nog niet | devices | 1088 |
-| Opslaan om hem te bewaren. | devices | 1246 |
-| Optioneel. Handig voor was die niet uren nat mag blijven liggen: | devices | 438 |
+| Notities ↔ | devices | 801 |
+| Op "alleen monitoren" krijgt dit apparaat geen advies. Zet het op | devices | 541 |
+| Op welke dagen dit apparaat mag draaien. | devices | 485 |
+| Op welke dagen geldt dit ↔ | devices | 433 |
+| Op welke dagen geldt dit ↔ | devices | 681 |
+| Opslaan ↔ | devices | 908 |
+| Opslaan mag ook zonder — het apparaat telt dan alleen nog niet | devices | 1134 |
+| Opslaan om hem te bewaren. | devices | 1292 |
+| Optioneel. Handig voor was die niet uren nat mag blijven liggen: | devices | 452 |
 | Overig, alleen meten | devices | 49 |
 | Overig, inplanbaar | devices | 48 |
 | Prioriteit ↔ | devices | 272 |
-| Prioriteit ↔ | devices | 656 |
-| Reden ↔ | devices | 557 |
-| Reden ↔ | devices | 649 |
+| Prioriteit ↔ | devices | 693 |
+| Reden ↔ | devices | 593 |
+| Reden ↔ | devices | 686 |
 | Resterende tijd | devices | 122 |
 | Soort apparaat | devices | 255 |
 | Statusentiteit | devices | 104 |
-| Telt niet mee voor de datakwaliteit. | devices | 1015 |
+| Telt niet mee voor de datakwaliteit. | devices | 1061 |
 | Temperatuursensor | devices | 128 |
-| Terug naar het formulier ↔ | devices | 1335 |
+| Terug naar het formulier ↔ | devices | 1381 |
 | Thuisbatterij ↔ | devices | 40 |
-| Uitgeschakeld — krijgt geen advies. | devices | 972 |
+| Uitgeschakeld — krijgt geen advies. | devices | 1018 |
 | Uitlezen ↔ | devices | 83 |
-| Uren waarin dit apparaat helemaal niet mag draaien, bijvoorbeeld | devices | 453 |
+| Uren waarin dit apparaat helemaal niet mag draaien, bijvoorbeeld | devices | 467 |
 | Vaatwasser | devices | 43 |
-| Verbruik | devices | 722 |
+| Verbruik | devices | 761 |
 | Vermogensentiteit | devices | 110 |
 | Vermogensgrens instellen ↔ | devices | 85 |
-| Verplaatsbaar in de tijd ↔ | devices | 490 |
-| Verplaatsbaar in de tijd ↔ | devices | 663 |
-| Verwerpen ↔ | devices | 1334 |
-| Verwijderen ↔ | devices | 890 |
+| Verplaatsbaar in de tijd ↔ | devices | 526 |
+| Verplaatsbaar in de tijd ↔ | devices | 700 |
+| Verwerpen ↔ | devices | 1380 |
+| Verwijderen ↔ | devices | 936 |
 | Vragen om goedkeuring ↔ | devices | 78 |
 | Vrijdag | devices | 95 |
 | Vul hierboven een duur in, dan rekent DomotiApp Energy terug wanneer | devices | 379 |
 | Waar staat het? Alleen om het terug te herkennen. | devices | 267 |
-| Wanneer het mag draaien | devices | 727 |
+| Wanneer het mag draaien | devices | 772 |
 | Warmtepomp | devices | 41 |
 | Wasmachine | devices | 44 |
-| Wat kan dit apparaat? | devices | 540 |
-| Weer toegestaan vanaf ↔ | devices | 462 |
-| Weer toegestaan vanaf ↔ | devices | 647 |
-| Wijzigingen verwerpen? ↔ | devices | 1330 |
+| Wat kan dit apparaat? | devices | 576 |
+| Weer toegestaan vanaf ↔ | devices | 476 |
+| Weer toegestaan vanaf ↔ | devices | 684 |
+| Wijzigingen verwerpen? ↔ | devices | 1376 |
 | Woensdag | devices | 93 |
 | Zaterdag | devices | 96 |
 | Zet dit aan als elk moment goed is. De coach adviseert dit apparaat | devices | 411 |
-| Zet het apparaattype, "verplaatsbaar in de tijd" of het | devices | 1099 |
+| Zet dit aan voor apparatuur die minder dan haar maximum kan | devices | 509 |
+| Zet het apparaattype, "verplaatsbaar in de tijd" of het | devices | 1145 |
 | Zondag | devices | 97 |
 | Zonder dit getal is er geen besparing te berekenen. | devices | 353 |
 | Zwembadpomp | devices | 47 |
-| alleen die hebben een tijdvenster nodig. | devices | 494 |
-| bedieningsniveau terug om ze te behouden. | devices | 1100 |
-| betekent "niet opgegeven", niet "kan niets". | devices | 543 |
+| alleen die hebben een tijdvenster nodig. | devices | 530 |
+| andere dagen mag hij gewoon wachten op zon of een lage prijs — hij | devices | 441 |
+| bedieningsniveau terug om ze te behouden. | devices | 1146 |
+| betekent "niet opgegeven", niet "kan niets". | devices | 579 |
 | betrouwbaarheid daarom op "gemiddeld". | devices | 345 |
 | dan gewoon op een gunstig moment, alleen zonder deadline om naartoe | devices | 412 |
-| dan zijn ze weg. ↔ | devices | 1333 |
+| dan zijn ze weg. ↔ | devices | 1379 |
+| drie. Zonder dit getal wordt het apparaat op zijn volle vermogen | devices | 520 |
 | een dagelijkse rit. Exact kan niet: DomotiApp Energy weet niet hoe | devices | 343 |
 | elk uur. Een venster telt wel mee voor de datakwaliteit, omdat het advies | devices | 372 |
 | energie per cyclus | devices | 237 |
 | er gerichter van wordt. | devices | 373 |
 | er vandaag van afneemt. | devices | 331 |
-| geadviseerd, dus een droger van ruim twee uur krijgt bij een verbod | devices | 456 |
-| geen reden genoteerd ↔ | devices | 989 |
-| gemeten, en er valt nu niets te meten. | devices | 1003 |
+| geadviseerd, dus een droger van ruim twee uur krijgt bij een verbod | devices | 470 |
+| gebruiken, zoals de meeste laadpalen. Zonder het minimum hieronder | devices | 510 |
+| geen reden genoteerd ↔ | devices | 1035 |
+| gemeten, en er valt nu niets te meten. | devices | 1049 |
 | het apparaat uiterlijk moet starten. Zonder duur geldt dit alleen als | devices | 380 |
-| het terug wilt. | devices | 1234 |
-| hier nog, maar opslaan lukt niet meer; maak het opnieuw aan als je | devices | 1233 |
-| later verandert. | devices | 513 |
+| het terug wilt. | devices | 1280 |
+| hier nog, maar opslaan lukt niet meer; maak het opnieuw aan als je | devices | 1279 |
+| krijgt dan nog steeds advies, alleen zonder deadline. | devices | 442 |
+| later verandert. | devices | 549 |
 | leeg de auto is, dus het advies rekent met dit getal en houdt zijn | devices | 344 |
-| mag adviseren, met hun vermogen, verbruik per cyclus en tijdvenster. | devices | 788 |
-| mee voor de datakwaliteit. | devices | 1089 |
+| mag adviseren, met hun vermogen, verbruik per cyclus en tijdvenster. | devices | 834 |
+| mee voor de datakwaliteit. | devices | 1135 |
+| meestal de werkweek: op die dagen moet de auto vol zijn, en op de | devices | 440 |
 | moet starten om dit te halen. | devices | 377 |
-| niet aan dit apparaat. Je invoer staat er nog; druk opnieuw op | devices | 1245 |
+| niet aan dit apparaat. Je invoer staat er nog; druk opnieuw op | devices | 1291 |
+| niet onder 6 ampère: dat is ongeveer 1380 W op één fase en 4140 W op | devices | 519 |
 | nominaal vermogen | devices | 236 |
-| omdat het onder een slaapkamer staat. Laat beide leeg als er geen | devices | 454 |
-| staat er nog; als je nu opslaat, vervangt hij die andere wijziging. ↔ | devices | 1240 |
+| omdat het onder een slaapkamer staat. Laat beide leeg als er geen | devices | 468 |
+| staat er nog; als je nu opslaat, vervangt hij die andere wijziging. ↔ | devices | 1286 |
 | te rekenen — en de datakwaliteit rekent het als beantwoord in plaats | devices | 413 |
-| tijd ná "klaar uiterlijk om", dan loopt het venster door tot de | devices | 440 |
+| tijd ná "klaar uiterlijk om", dan loopt het venster door tot de | devices | 454 |
 | tijdvenster hieronder. | devices | 361 |
-| tot de volgende dag — 23:00 tot 07:00 is het normale geval. | devices | 465 |
+| tot de volgende dag — 23:00 tot 07:00 is het normale geval. | devices | 479 |
 | van als ontbrekend. | devices | 414 |
-| vanaf 23:00 al vanaf 20:45 geen advies meer. | devices | 457 |
-| verbod is. Een cyclus die het venster in zou lopen wordt ook niet | devices | 455 |
-| verwijderd; de lijst is opnieuw geladen. ↔ | devices | 1291 |
-| verwijderen? Er wordt daarna niet meer over geadviseerd. | devices | 1308 |
-| volgende dag — 22:00 tot 06:00 is het normale geval. | devices | 441 |
-| zet hier bijvoorbeeld 06:00 als je hem om 07:00 uithaalt. Ligt deze | devices | 439 |
-| zonder naam ↔ | devices | 1195 |
+| vanaf 23:00 al vanaf 20:45 geen advies meer. | devices | 471 |
+| verandert er niets. | devices | 511 |
+| verbod is. Een cyclus die het venster in zou lopen wordt ook niet | devices | 469 |
+| verwijderd; de lijst is opnieuw geladen. ↔ | devices | 1337 |
+| verwijderen? Er wordt daarna niet meer over geadviseerd. | devices | 1354 |
+| volgende dag — 22:00 tot 06:00 is het normale geval. | devices | 455 |
+| zet hier bijvoorbeeld 06:00 als je hem om 07:00 uithaalt. Ligt deze | devices | 453 |
+| zonder naam ↔ | devices | 1241 |
 
 ## `custom_components/domotiapp_energy/frontend/tabs/home.js`
 
@@ -951,38 +967,38 @@ is dit de invoer en niet de uitvoer.
 
 | Tekst | Waar | Regel |
 |---|---|---|
-| Apparaat gewijzigd | handle_devices_update | 852 |
-| Apparaat toegevoegd ↔ | handle_devices_create | 814 |
-| Apparaat verwijderd ↔ | handle_devices_delete | 888 |
-| Bediening gewijzigd | handle_devices_set_operation | 961 |
-| De adviesvoorkeuren zijn bijgewerkt. | handle_preferences_update | 655 |
-| De configuratie is inmiddels gewijzigd. De actuele gegevens zijn opnieuw opgehaald. | _send_revision_conflict | 329 |
-| De configuratie kon niet worden opgeslagen. | _async_write | 309 |
-| De energiebron '{...}' is bijgewerkt. | handle_sources_update | 737 |
-| De energiebron '{...}' is toegevoegd. | handle_sources_create | 699 |
-| De energiebron '{...}' is verwijderd. | handle_sources_delete | 773 |
-| De instellingen van '{...}' zijn bijgewerkt. | handle_devices_set_operation | 962 |
-| De woninggegevens zijn bijgewerkt. | handle_home_update | 593 |
-| Deze energiebron ↔ | _apply | 728 |
-| Deze energiebron ↔ | _apply | 763 |
-| Dit apparaat ↔ | _apply | 844 |
-| Dit apparaat ↔ | _apply | 879 |
-| Dit apparaat ↔ | _apply | 925 |
-| Dit apparaat heeft een onbekend type en is buiten werking gesteld. | _apply | 935 |
-| DomotiApp Energy is niet geladen. | _async_get_data | 275 |
-| Energiebron gewijzigd | handle_sources_update | 736 |
-| Energiebron toegevoegd | handle_sources_create | 698 |
-| Energiebron verwijderd | handle_sources_delete | 772 |
-| Er bestaat al een apparaat met dit ID. | _apply | 804 |
-| Er bestaat al een energiebron met dit ID. | _apply | 688 |
+| Apparaat gewijzigd | handle_devices_update | 857 |
+| Apparaat toegevoegd ↔ | handle_devices_create | 819 |
+| Apparaat verwijderd ↔ | handle_devices_delete | 893 |
+| Bediening gewijzigd | handle_devices_set_operation | 966 |
+| De adviesvoorkeuren zijn bijgewerkt. | handle_preferences_update | 660 |
+| De configuratie is inmiddels gewijzigd. De actuele gegevens zijn opnieuw opgehaald. | _send_revision_conflict | 334 |
+| De configuratie kon niet worden opgeslagen. | _async_write | 314 |
+| De energiebron '{...}' is bijgewerkt. | handle_sources_update | 742 |
+| De energiebron '{...}' is toegevoegd. | handle_sources_create | 704 |
+| De energiebron '{...}' is verwijderd. | handle_sources_delete | 778 |
+| De instellingen van '{...}' zijn bijgewerkt. | handle_devices_set_operation | 967 |
+| De woninggegevens zijn bijgewerkt. | handle_home_update | 598 |
+| Deze energiebron ↔ | _apply | 733 |
+| Deze energiebron ↔ | _apply | 768 |
+| Dit apparaat ↔ | _apply | 849 |
+| Dit apparaat ↔ | _apply | 884 |
+| Dit apparaat ↔ | _apply | 930 |
+| Dit apparaat heeft een onbekend type en is buiten werking gesteld. | _apply | 940 |
+| DomotiApp Energy is niet geladen. | _async_get_data | 280 |
+| Energiebron gewijzigd | handle_sources_update | 741 |
+| Energiebron toegevoegd | handle_sources_create | 703 |
+| Energiebron verwijderd | handle_sources_delete | 777 |
+| Er bestaat al een apparaat met dit ID. | _apply | 809 |
+| Er bestaat al een energiebron met dit ID. | _apply | 693 |
 | Gebruik een datum in de vorm jjjj-mm-dd, of null als deze woning niet saldeert. | _iso_date | 184 |
 | Gebruik een datum in de vorm jjjj-mm-dd, of null. | _iso_date | 188 |
-| Het apparaat '{...}' is bijgewerkt. | handle_devices_update | 853 |
-| Het apparaat '{...}' is toegevoegd. | handle_devices_create | 815 |
-| Het apparaat '{...}' is verwijderd. | handle_devices_delete | 889 |
-| Voorkeuren gewijzigd | handle_preferences_update | 654 |
-| Woninggegevens gewijzigd | handle_home_update | 592 |
-| {...} bestaat niet. | _find | 422 |
+| Het apparaat '{...}' is bijgewerkt. | handle_devices_update | 858 |
+| Het apparaat '{...}' is toegevoegd. | handle_devices_create | 820 |
+| Het apparaat '{...}' is verwijderd. | handle_devices_delete | 894 |
+| Voorkeuren gewijzigd | handle_preferences_update | 659 |
+| Woninggegevens gewijzigd | handle_home_update | 597 |
+| {...} bestaat niet. | _find | 427 |
 
 
 ## Engelse regels
@@ -997,4 +1013,4 @@ is dit de invoer en niet de uitvoer.
 | Energy source %s has unrecognised type %r and is disabled | `custom_components/domotiapp_energy/storage.py:257` |
 | Device profile %s has unrecognised type %r and is disabled | `custom_components/domotiapp_energy/storage.py:276` |
 | Energy source %s could not be read from %s (%s) | `custom_components/domotiapp_energy/storage.py:327` |
-| Could not persist a configuration change | `custom_components/domotiapp_energy/websocket_api.py:305` |
+| Could not persist a configuration change | `custom_components/domotiapp_energy/websocket_api.py:310` |

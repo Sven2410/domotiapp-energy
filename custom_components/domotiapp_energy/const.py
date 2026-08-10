@@ -16,7 +16,7 @@ from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 
 DOMAIN: Final = "domotiapp_energy"
 INTEGRATION_NAME: Final = "DomotiApp Energy"
-VERSION: Final = "0.17.0"
+VERSION: Final = "0.18.0"
 
 MANUFACTURER: Final = "DomotiApp"
 DEVICE_MODEL: Final = "Energy Coach"
@@ -445,6 +445,11 @@ UNITS: Final[tuple[str, ...]] = (
 
 DEFAULT_SCALE_FACTOR: Final = 1.0
 
+# Watts in a kilowatt. Named because a price is per kWh while every power in
+# this engine is in W, so the two meet whenever an amount per hour is computed
+# (SPEC.md §56.4).
+WATTS_PER_KILOWATT: Final = 1000.0
+
 # Multiplier from the explicitly chosen unit to the unit the engine calculates
 # in: power in W, energy in Wh, price in EUR/kWh, current in A, ratio in %.
 # Applied only on the basis of this choice, never on the Home Assistant
@@ -542,6 +547,22 @@ INFLEXIBLE_BY_DEFAULT_DEVICE_TYPES: Final[frozenset[str]] = frozenset(
     }
 )
 
+# Device types that default to can_modulate = true (SPEC.md §56.2).
+#
+# A charger takes whatever it is given between its minimum and its maximum;
+# almost every other appliance runs at one power or not at all. That is what
+# makes the difference worth a field rather than a special case: a washing
+# machine cannot accept a partial surplus, a charger can.
+#
+# **The default is safe on its own**, because modulating behaviour also needs
+# `min_power_w`, and that has no default at all. An existing charger therefore
+# keeps behaving exactly as it did until somebody enters the minimum.
+MODULATING_BY_DEFAULT_DEVICE_TYPES: Final[frozenset[str]] = frozenset(
+    {
+        DEVICE_TYPE_EV_CHARGER,
+    }
+)
+
 # Device types the coach can never address, whatever the installer ticks
 # (SPEC.md §38.2).
 #
@@ -607,6 +628,7 @@ DEVICE_OPERATION_FIELDS: Final[tuple[str, ...]] = (
     "control_mode",
     "ready_from",
     "ready_before",
+    "ready_days",
     "runs_any_time",
     "days_of_week",
     "is_noisy",

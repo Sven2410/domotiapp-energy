@@ -622,6 +622,20 @@ function windowFields(draft) {
       selector: { time: { no_second: true } },
     }),
     deadline({
+      name: 'ready_days',
+      label: 'Op welke dagen geldt dit',
+      // The dimension the deadline was missing (SPEC.md §56.1). Leaving it
+      // empty means every day the appliance runs on, which is what the ready
+      // window did before this existed — so an installer who never touches it
+      // sees no change.
+      helper:
+        'Laat leeg als de deadline elke dag geldt. Voor een laadpaal is dit ' +
+        'meestal de werkweek: op die dagen moet de auto vol zijn, en op de ' +
+        'andere dagen mag hij gewoon wachten op zon of een lage prijs — hij ' +
+        'krijgt dan nog steeds advies, alleen zonder deadline.',
+      selector: { select: { multiple: true, options: DAY_OPTIONS } },
+    }),
+    deadline({
       name: 'ready_from',
       label: 'Niet eerder klaar dan',
       // The bound that has no equivalent in a start window: washing that is
@@ -677,6 +691,28 @@ function behaviourFields(draft) {
         noisyByDefault(draft.device_type) ? 'ja' : 'nee'
       }. Lawaaiige apparaten worden tijdens de stille uren niet geadviseerd.`,
       selector: { boolean: {} },
+    },
+    {
+      name: 'can_modulate',
+      label: 'Kan op deelvermogen draaien',
+      // A charger takes whatever it is given between its minimum and its
+      // maximum; almost everything else runs at one power or not at all
+      // (SPEC.md §56.2). Nothing changes until the minimum below is filled in.
+      helper:
+        'Zet dit aan voor apparatuur die minder dan haar maximum kan ' +
+        'gebruiken, zoals de meeste laadpalen. Zonder het minimum hieronder ' +
+        'verandert er niets.',
+      selector: { boolean: {} },
+    },
+    {
+      name: 'min_power_w',
+      label: 'Minimaal vermogen',
+      helper:
+        'Het minste waarmee het apparaat nog iets doet. Een laadpaal laadt ' +
+        'niet onder 6 ampère: dat is ongeveer 1380 W op één fase en 4140 W op ' +
+        'drie. Zonder dit getal wordt het apparaat op zijn volle vermogen ' +
+        'beoordeeld.',
+      selector: { number: { min: 0, step: 10, unit_of_measurement: 'W' } },
     },
     {
       name: 'is_flexible',
@@ -878,6 +914,7 @@ function labelOf(name) {
   const known = {
     ready_before: 'Klaar uiterlijk om',
     ready_from: 'Niet eerder klaar dan',
+    ready_days: 'Op welke dagen geldt dit',
     runs_any_time: 'Maakt niet uit wanneer hij klaar is',
     no_run_from: 'Niet draaien vanaf',
     no_run_until: 'Weer toegestaan vanaf',
@@ -897,6 +934,8 @@ function labelOf(name) {
     // announced like any other value.
     control_mode: 'Bedieningsniveau',
     is_flexible: 'Verplaatsbaar in de tijd',
+    can_modulate: 'Kan op deelvermogen draaien',
+    min_power_w: 'Minimaal vermogen',
   };
   return known[name] || name;
 }
@@ -989,7 +1028,13 @@ const SECTIONS = [
   {
     title: 'Verbruik',
     open: true,
-    fields: ['nominal_power_w', 'energy_per_cycle_kwh', 'duration_minutes'],
+    fields: [
+      'nominal_power_w',
+      'can_modulate',
+      'min_power_w',
+      'energy_per_cycle_kwh',
+      'duration_minutes',
+    ],
   },
   {
     title: 'Wanneer het mag draaien',
@@ -999,6 +1044,7 @@ const SECTIONS = [
       'is_noisy',
       'runs_any_time',
       'ready_before',
+      'ready_days',
       'ready_from',
       'no_run_from',
       'no_run_until',
