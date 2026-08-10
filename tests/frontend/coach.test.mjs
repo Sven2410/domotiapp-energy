@@ -105,7 +105,6 @@ describe('the primary advice', () => {
     assert.doesNotMatch(tab.textContent, /a_new_checklist_item/);
     assert.equal(rowFor(tab, 'Reden').visible, false);
   });
-
 });
 
 /** The surplus advice: the only kind that ever carries an amount. */
