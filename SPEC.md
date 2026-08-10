@@ -5862,3 +5862,160 @@ twee gebouwd, dan is zijn zin nog steeds niet waar te maken.
 voor. Voor `ready_days` zou diezelfde normalisatie het **omgekeerde** betekenen van wat de
 installateur aanklikte: hij vinkt alle dagen uit om te zeggen "nooit een deadline", en krijgt
 "elke dag een deadline" terug. Die helper mag hier niet hergebruikt worden.
+
+## 56. Ontwerp: de laadpaal die meebeweegt met de zon
+
+**Ontwerp, nog niet gebouwd.** Sven's voorwaarde: eerst op papier. Het lost §54.4 en §54.7
+samen op, want los van elkaar lossen ze niets op — met alleen `ready_days` kan de bewoner zijn
+zin invullen en krijgt hij nog steeds geen advies; met alleen modulatie krijgt hij op zaterdag
+advies over een deadline die er niet is.
+
+### 56.1 Deel één: `ready_days`
+
+Het voorstel van §55 ongewijzigd:
+
+```
+ready_days: list[int] | None = None      # None = elke dag dat het apparaat meedoet
+```
+
+| Veld | Vraag |
+|---|---|
+| `days_of_week` | Op welke dagen doet dit apparaat mee? |
+| `ready_days` | Op welke van die dagen geldt de deadline? |
+
+Twee runtime-lezers krijgen er een dagcontrole bij (`_within_window` en
+`latest_start_minutes`, allebei met de weekdag al bij de hand); `has_ready_window` en
+`_deadline_is_reachable` blijven ongewijzigd, want die vragen iets dagonafhankelijks. Geen
+migratie: `None` is het huidige gedrag.
+
+**De valstrik, en zij is de reden dat dit veld niet met `_as_days_of_week` gelezen mag
+worden.** Die helper maakt van een lege lijst "alle dagen". Voor `days_of_week` is dat juist —
+"geen enkele dag" zou een apparaat betekenen dat nooit mag draaien, en daar is uitschakelen
+voor. Voor `ready_days` betekent diezelfde normalisatie **het omgekeerde van wat de
+installateur aanklikte**: hij vinkt alles uit om te zeggen *"nooit een deadline"* en krijgt
+*"elke dag een deadline"* terug.
+
+Concreet: `ready_days` krijgt zijn eigen lezer die `None` teruggeeft bij afwezig, de gesorteerde
+lijst bij een geldige, en **een lege lijst weigert** — dat laatste is `runs_any_time`, en dat
+veld bestaat al.
+
+### 56.2 Deel twee: welk veld zegt dat een apparaat moduleert
+
+**Een eigenschap van het apparaat, met een standaard per type.** Dat is Sven's derde vraag, en
+het antwoord volgt uit zijn eigen voorbeeld: een Easee moduleert, een oudere paal misschien
+niet. Het type weet het meestal, het apparaat weet het zeker.
+
+Dat patroon bestaat al twee keer in dit model — `is_noisy` en `is_flexible` staan op
+`TYPE_DEFAULT` tot iemand kiest, en `__post_init__` lost ze op uit het type. Hetzelfde:
+
+```
+can_modulate: bool = TYPE_DEFAULT        # standaard True voor ev_charger
+min_power_w:  float | None = None        # geen standaard, nooit geraden
+```
+
+**Waarom `min_power_w` géén standaard krijgt.** Voor een laadpaal is 6 ampère de norm
+(IEC 61851 laat niet lager toe), maar dat is 1380 W op één fase en 4140 W op drie. Het hangt
+dus aan de aansluiting, niet aan het type. Raden zou hier precies de fout zijn die §15 verbiedt.
+De hulptekst noemt de 6 ampère en het rekensommetje; het getal komt van de installateur.
+
+**En dat maakt de overgang vanzelf veilig.** `can_modulate` mag gerust standaard aan voor een
+laadpaal, want zonder `min_power_w` verandert er niets: het apparaat wordt dan behandeld als
+niet-modulerend. Een bestaande installatie ziet dus geen gedragsverandering tot de installateur
+het minimum invult.
+
+`min_power_w` wordt alleen gevraagd wanneer `can_modulate` aanstaat — dezelfde regel als de
+prijssamenstelling die de marktprijs volgt (§49.10): vraag het waar het gebruikt wordt.
+
+### 56.3 De regel die `nominal_power_w <= surplus` vervangt
+
+```
+niet-modulerend:   nominal_power_w <= surplus          (ongewijzigd)
+modulerend:        min_power_w     <= surplus
+```
+
+en het vermogen waarmee stroomafwaarts gerekend wordt:
+
+```
+bruikbaar vermogen = min(nominal_power_w, surplus)     modulerend
+                   = nominal_power_w                   niet-modulerend
+```
+
+**Klopt de oude regel nog voor de apparaten waarvoor zij juist was?** Ja, en dat is met opzet
+de vorm van de wijziging: hij is *additief* en hangt aan een schakelaar die voor elk bestaand
+apparaattype uit staat. Een wasmachine van 2100 W op 600 W overschot valt af zoals hij altijd
+afviel — dat defect ("benut je zonneoverschot" op een netimport van 1500 W) blijft gerepareerd.
+
+De reden dat het bij een laadpaal anders ligt, in één zin: **een wasmachine kan het overschot
+niet aannemen, een laadpaal wel.**
+
+### 56.4 De geschatte besparing: dit is de moeilijkste
+
+`_solar_savings` rekent `energy_per_cycle_kwh × marge`. Er komt geen vermogen in voor — en
+dat is precies het probleem, want de formule **blijft rekenen** over een cyclus die voor een
+modulerende paal niet bestaat.
+
+Een laadsessie is geen cyclus. Zij duurt zolang er zon is, en levert wat er op dat moment over
+is. `energy_per_cycle_kwh = 25` zou dan "€ 1,20 besparing" opleveren voor een advies dat gaat
+over de eerstvolgende twintig minuten zon.
+
+**Voorstel: een tweede soort bedrag, met een eigen zin.**
+
+| | Grondslag | Zin |
+|---|---|---|
+| Niet-modulerend | de hele cyclus | *"levert ongeveer € 0,34 op"* |
+| Modulerend | per uur, op het bruikbare vermogen | *"levert ongeveer € 0,12 per uur op zolang dit overschot er is"* |
+
+De rekensom voor de tweede: `bruikbaar_vermogen_kW × 1 h × marge`.
+
+**De twee bedragen mogen nooit door elkaar lopen**, en dat is geen stijlkwestie: € 1,20 en
+€ 0,12 zijn allebei waar en beantwoorden een andere vraag. Ze krijgen daarom elk een eigen
+hele zin (§26) en niet één zin met een variabele staart. Het veld `estimated_savings_eur` moet
+dus vergezeld gaan van *waar het over gaat*, of er komen twee velden — dat is de enige
+implementatiekeuze die dit deel nog openlaat.
+
+**Wat er níét verandert:** de marge zelf (`self_consumption_margin_eur_kwh`), en dus alles wat
+§35.4d erover zegt. Alleen de schaal verandert.
+
+### 56.5 De laadduur: die blijft, en dat is het goede antwoord
+
+Sven's vierde vraag. De duur was al een schatting en hangt nu af van een vermogen dat varieert.
+
+**Toch verandert er niets, en de reden is dat de twee adviezen verschillende vragen stellen:**
+
+- Het **urgentie-advies** vraagt: *moet ik nu starten om om 06:15 vol te zijn?* Daar mag je niet
+  op zon rekenen — het is drie uur 's nachts. De juiste aanname is **vol vermogen**, en dat is
+  precies wat `duration_minutes` vandaag beschrijft. Modulatie hoort daar niet in.
+- Het **overschot-advies** vraagt: *is dit een gunstig moment?* Dat advies heeft geen deadline
+  en dus geen duur nodig.
+
+Modulatie raakt dus alleen het tweede, en de duur alleen het eerste. Ze komen niet bij elkaar.
+
+**Eén grens die hierdoor zichtbaar wordt en die ik niet dichtmaak.** Laadt de bewoner de hele
+middag langzaam op zon, dan is de auto 's avonds voller dan het urgentie-advies denkt — dat
+rekent met `duration_minutes` alsof er nog niets in zit. Dat is niet nieuw en niet van
+modulatie: het is dat het systeem geen voortgang bijhoudt. Dat is fase 3 (de gereed-vlag) en
+§34.8 (de duur als functie van de laadtoestand, met `battery_level_entity` als invoer).
+
+**Dit ontwerp heeft dat niet nodig en leunt er niet op.** `required_duration_minutes` neemt de
+metrics al aan, precies zodat die tak er later bij kan zonder dat het advies verbouwd wordt.
+
+### 56.6 Wat dit verder raakt
+
+- **`has_movable_load`** wordt vaker waar: een modulerende paal past op elk overschot boven
+  zijn minimum. Dat is juist — de zonne-as van de energiescore hoort te tellen bij een woning
+  die haar overschot werkelijk kan gebruiken.
+- **De datakwaliteit** verandert niet. `min_power_w` is geen compleetheidseis; zonder dat getal
+  werkt het apparaat zoals het altijd werkte.
+- **De rechten:** `can_modulate` en `min_power_w` zijn **installateursvelden**. Ze beschrijven
+  wat de hardware kan, niet wat de bewoner wil — dezelfde grens als bij `no_run_from` (§51), en
+  het spiegelbeeld van `ready_days`, dat naast `ready_before` van de bewoner is.
+
+### 56.7 Volgorde van bouwen, voorgesteld
+
+1. **`ready_days`** — klein, geïsoleerd, geen nieuwe begrippen.
+2. **`can_modulate` + `min_power_w` + de fit-regel** — de gedragswijziging, achter een
+   schakelaar die zonder het tweede veld niets doet.
+3. **Het bedrag per uur** — apart, want het voegt een tweede soort getal toe aan het scherm en
+   dat verdient zijn eigen verificatie in de browser.
+
+Drie stappen, elk apart te mergen en elk apart terug te draaien.
