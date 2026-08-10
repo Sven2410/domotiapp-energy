@@ -20,7 +20,7 @@ is dit de invoer en niet de uitvoer.
 - **Engelse regels staan apart**, onderaan. Een Engelse zin in dit product is
   een fout tenzij zij een identifier is: de UI is Nederlands (CLAUDE.md).
 
-**867 Nederlandse teksten**, waarvan 117 op meer dan één plek. En 9 Engelse regels om na te lopen.
+**869 Nederlandse teksten**, waarvan 117 op meer dan één plek. En 9 Engelse regels om na te lopen.
 
 
 ## `custom_components/domotiapp_energy/const.py`
@@ -226,35 +226,37 @@ is dit de invoer en niet de uitvoer.
 |---|---|---|
 | Advies ↔ | coach | 34 |
 | Advies ↔ | coach | 35 |
-| Advies ↔ | coach | 139 |
-| Alle gegevens voor een betrouwbaar advies zijn ingevuld. ↔ | coach | 298 |
-| Bezig met berekenen… | coach | 212 |
-| Deze vraag is nog niet beantwoord. Bereken opnieuw zodra er gegevens | coach | 204 |
+| Advies ↔ | coach | 161 |
+| Alle gegevens voor een betrouwbaar advies zijn ingevuld. ↔ | coach | 340 |
+| Bezig met berekenen… | coach | 234 |
+| Deze vraag is nog niet beantwoord. Bereken opnieuw zodra er gegevens | coach | 226 |
 | Energiecoach | coach | 58 |
-| Er is op dit moment geen aanvullend advies. | coach | 88 |
-| Geschatte besparing | coach | 68 |
-| Het advies is opnieuw berekend. | coach | 217 |
+| Er is op dit moment geen aanvullend advies. | coach | 98 |
+| Gegevens voor je advies | coach | 115 |
+| Geschatte besparing | coach | 72 |
+| Geschatte opbrengst per uur | coach | 77 |
+| Het advies is opnieuw berekend. | coach | 239 |
 | Hoe is mijn energiescore berekend? | coach | 30 |
 | Hoofdadvies | coach | 65 |
 | Is er risico op piekbelasting? | coach | 28 |
 | Kan ik nu het beste een apparaat gebruiken? | coach | 27 |
-| Kies een vraag; het antwoord verschijnt in beeld. | coach | 104 |
-| Laatste berekening ↔ | coach | 70 |
-| Niet te berekenen | coach | 68 |
-| Nog geen advies berekend ↔ | coach | 240 |
-| Nog niet berekend ↔ | coach | 70 |
-| Onbekend | coach | 69 |
-| Ontbrekende gegevens | coach | 94 |
-| Opnieuw berekenen | coach | 72 |
-| Overige adviezen | coach | 86 |
+| Kies een vraag; het antwoord verschijnt in beeld. | coach | 126 |
+| Laatste berekening ↔ | coach | 79 |
+| Nog geen advies berekend ↔ | coach | 262 |
+| Nog niet berekend ↔ | coach | 79 |
+| Nog ontbrekend: | coach | 116 |
+| Onbekend | coach | 78 |
+| Opnieuw berekenen | coach | 81 |
+| Overige adviezen | coach | 96 |
 | Probleem | coach | 37 |
-| Reden ↔ | coach | 69 |
-| Vraag het de coach | coach | 100 |
+| Reden ↔ | coach | 78 |
+| Vraag het de coach | coach | 122 |
 | Waarom krijg ik dit advies? | coach | 26 |
 | Waarschuwing ↔ | coach | 36 |
 | Welke gegevens ontbreken nog? | coach | 29 |
-| Zodra er een energiebron gekoppeld is, verschijnt hier het hoofdadvies. ↔ | coach | 243 |
-| gekoppeld zijn. | coach | 205 |
+| Zodra er een energiebron gekoppeld is, verschijnt hier het hoofdadvies. ↔ | coach | 265 |
+| Zolang dit zonneoverschot er is. | coach | 287 |
+| gekoppeld zijn. | coach | 227 |
 
 ## `custom_components/domotiapp_energy/frontend/tabs/devices.js`
 

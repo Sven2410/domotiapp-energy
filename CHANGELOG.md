@@ -1,6 +1,55 @@
 # Changelog
 
-## Onuitgebracht
+## 0.20.0
+
+Een lege plek zegt nu niets in plaats van "mislukt". SPEC §58.2, uitgewerkt in §58.4.
+
+### Gewijzigd
+
+- **De sectiekop op Energiecoach heet nu "Gegevens voor je advies".** Hij heette
+  *"Ontbrekende gegevens"* en stond bij een complete woning boven de zin *"Alle gegevens voor
+  een betrouwbaar advies zijn ingevuld"* — een kop die een tekort belooft en het er direct
+  onder ontkent. Voor de woning van §58, waar niets ontbreekt en niets zal gaan ontbreken, was
+  dat de laatste plek op het scherm die nog naar een gebrek wees.
+
+  Of er iets ontbreekt is een feit over dit moment, dus het staat nu waar de feiten staan:
+  **"Nog ontbrekend:"** verschijnt boven de lijst, en verdwijnt met de lijst mee. Dezelfde
+  woorden waarmee de coach zelf *"Welke gegevens ontbreken nog?"* beantwoordt.
+
+### Fixed
+
+- **"Geschatte besparing: Niet te berekenen" is weg waar er niets te berekenen viel.** Alleen
+  het zonneoverschot-advies draagt ooit een bedrag; bij elk ander advies kondigde die rij een
+  som aan die nooit geprobeerd was. Onder *"de situatie vraagt niet om een aanpassing"* las dat
+  als een mislukte berekening, terwijl er simpelweg niets te besparen is omdat er niets te
+  veranderen is.
+
+  De rij verschijnt nu wanneer er een bedrag is. Werd er wél gerekend en lukte het niet, dan
+  staat de reden al één regel hoger in het advies zelf, mét het veld dat de som stopte — meer
+  waard dan *"Niet te berekenen"* ooit was.
+
+- **Een modulerende laadpaal toont zijn opbrengst nu ook bij het hoofdadvies.** Voor een paal
+  die neemt wat er over is, is het totaal met opzet leeg en is het bedrag per uur het antwoord
+  (§56.4) — maar het hoofdadvies las alleen het totaal. De klant kreeg *"Niet te berekenen"*
+  terwijl het bedrag ongebruikt in de payload zat; de lijst met overige adviezen toonde het
+  sinds 0.18.0 wel.
+
+  Er is nu een tweede rij, **"Geschatte opbrengst per uur"**, met *"Zolang dit zonneoverschot
+  er is."* eronder. Een eigen rij en een eigen label, want de twee bedragen mogen nooit in
+  dezelfde regel of dezelfde vergelijking komen.
+
+### Openstaand
+
+- **Een modulerend apparaat waarvan ook het uurbedrag niet te berekenen is** — geen leesbare
+  prijs, dus geen marge — toont nu geen van beide rijen, en het advies legt niet uit waarom.
+  De datakwaliteit en het antwoord op *"welke gegevens ontbreken nog?"* melden de ontbrekende
+  prijsinformatie wel. **Genoteerd bij §56 als §56.8**, want het uitleggen hoort bij
+  `_surplus_message`: `_why_no_amount` begint bij de energie per cyclus, en dat veld gebruikt
+  een modulerende paal niet. Die functie wees in 0.18.0 al een keer de verkeerde schuldige
+  aan, en dat is genoeg reden om hem hier niet op los te laten.
+
+- **§54.7 op echte hardware.** Ongewijzigd sinds 0.19.0: SPEC §57.3 beschrijft wat er voor
+  Svens eigen Easee ingevuld moet worden.
 
 ### Documentatie
 
@@ -9,9 +58,11 @@
   contract: de woning waar het vaakst "niet van toepassing" op het scherm staat.
 
   **Het antwoord op de vraag waarvoor zij bedoeld was:** een lege plek leest daar als
-  informatie en niet als gebrek. Twee kleine dingen wringen nog — een sectiekop die een
-  tekort belooft en het dan ontkent, en *"Niet te berekenen"* waar *"er valt niets te
-  besparen"* de waarheid is.
+  informatie en niet als gebrek. De twee dingen die nog wrongen zijn hierboven opgelost, en
+  §58.4 legt vast dat het één regel bleek te zijn: een rij of een kop bestaat omdat er iets te
+  zeggen is.
+
+
 ## 0.19.0
 
 Twee regels over eenheden, en waarom ze verschillen. SPEC §57, uit §54.6.

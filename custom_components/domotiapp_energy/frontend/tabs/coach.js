@@ -88,7 +88,16 @@ export const coachTab = {
     const mainCard = card('Hoofdadvies');
     const adviceTitle = el('p', { class: 'advice-title' });
     const adviceMessage = el('p', { class: 'advice-message' });
-    const savingRow = statRow('Geschatte besparing', { empty: 'Niet te berekenen' });
+    // **No empty text on either amount, because neither row is ever empty**
+    // (SPEC.md §58.2). A row here appears because there is a figure to put in
+    // it; see `update()` for why an absent amount hides the row instead of
+    // reporting a sum that failed.
+    const savingRow = statRow('Geschatte besparing');
+    // **A second amount, never on the same line and never under the same
+    // label** (SPEC.md §56.4). An appliance that takes whatever is spare has no
+    // cycle to price, so what it earns is a rate; "€ 1,20" and "€ 0,12" are
+    // both true and answer different questions.
+    const savingRateRow = statRow('Geschatte opbrengst per uur');
     const reasonRow = statRow('Reden', { empty: 'Onbekend' });
     const calculatedRow = statRow('Laatste berekening', { empty: 'Nog niet berekend' });
 
@@ -99,6 +108,7 @@ export const coachTab = {
       adviceTitle,
       adviceMessage,
       savingRow.element,
+      savingRateRow.element,
       reasonRow.element,
       calculatedRow.element,
       el('div', { class: 'actions' }, [recalculateButton]),
@@ -113,11 +123,23 @@ export const coachTab = {
     });
     listCard.body.appendChild(adviceList.element);
 
-    // --- What is still missing ----------------------------------------------
-    const missingCard = card('Ontbrekende gegevens');
+    // --- The data the advice rests on ---------------------------------------
+    // **The heading names the subject, not a shortfall** (SPEC.md §58.2). It
+    // read "Ontbrekende gegevens" above the sentence "Alle gegevens voor een
+    // betrouwbaar advies zijn ingevuld" — chrome promising a deficiency and
+    // then denying it, and for a home where nothing is missing and nothing
+    // ever will be it was the last place on the screen still pointing at a
+    // gap.
+    //
+    // Whether anything is missing is a fact about this moment, so it is stated
+    // where the facts are: the lead line appears only when there is a list
+    // under it, in the same words the coach answers the question with
+    // ("Nog ontbrekend: …", engine/providers.py).
+    const missingCard = card('Gegevens voor je advies');
+    const missingLead = el('p', { class: 'advice-message', text: 'Nog ontbrekend:' });
     const missingList = el('ul', { class: 'plain-list' });
     const missingNotice = notice('mdi:check-circle-outline');
-    missingCard.body.append(missingList, missingNotice.element);
+    missingCard.body.append(missingLead, missingList, missingNotice.element);
 
     // --- The question selector ----------------------------------------------
     const questionCard = card('Vraag het de coach');
@@ -287,13 +309,41 @@ export const coachTab = {
         primary?.message ||
         'Zodra er een energiebron gekoppeld is, verschijnt hier het hoofdadvies.';
 
-      setVisible(savingRow.element, prefs.show_estimated_savings !== false);
-      savingRow.set(
-        primary?.estimated_savings_eur === null ||
-          primary?.estimated_savings_eur === undefined
-          ? null
-          : `€ ${formatNumber(primary.estimated_savings_eur, { decimals: 2 })}`,
-      );
+      /*
+       * **An amount that does not exist is not an amount that failed**
+       * (SPEC.md §58.2). This row said "Niet te berekenen" for every advice
+       * without a figure, and only the surplus advice ever carries one — so
+       * under "de situatie vraagt niet om een aanpassing" the card reported a
+       * sum that was never attempted. There is nothing to save because there
+       * is nothing to change, and that is a different kind of nothing.
+       *
+       * So the row exists because there is a figure to put in it. Where a sum
+       * *was* attempted and could not be made, the advice message above
+       * already names the field that stopped it (engine/advisor.py
+       * `_why_no_amount`), which is more use than "Niet te berekenen" was.
+       */
+      const showAmounts = prefs.show_estimated_savings !== false;
+
+      const saving = primary?.estimated_savings_eur;
+      const hasSaving = typeof saving === 'number' && !Number.isNaN(saving);
+      setVisible(savingRow.element, showAmounts && hasSaving);
+      if (hasSaving) {
+        savingRow.set(`€ ${formatNumber(saving, { decimals: 2 })}`);
+      }
+
+      // The modulating half of the same figure, which this card had nowhere to
+      // put: for a charger that takes whatever is spare the total is empty on
+      // purpose (SPEC.md §56.4) and the rate is the answer, so the primary
+      // advice showed "Niet te berekenen" while the amount sat unused in the
+      // payload. The further advice below has shown it since 0.18.0.
+      const rate = primary?.savings_rate_eur_per_hour;
+      const hasRate = typeof rate === 'number' && !Number.isNaN(rate);
+      setVisible(savingRateRow.element, showAmounts && hasRate);
+      if (hasRate) {
+        savingRateRow.set(`€ ${formatNumber(rate, { decimals: 2 })}`, {
+          hint: 'Zolang dit zonneoverschot er is.',
+        });
+      }
 
       // The reason is a machine identifier. Showing it was the defect: the
       // customer read "missing_required_data" where a sentence belonged. A code
@@ -326,6 +376,10 @@ export const coachTab = {
         ...named.map((label) => el('li', { class: 'plain-item', text: label })),
       );
       setVisible(missingList, named.length > 0);
+      // The lead line goes with the list it introduces: a heading that no
+      // longer promises a shortfall may not leave a bare list of nouns behind
+      // when there is one.
+      setVisible(missingLead, named.length > 0);
 
       // What this home is not judged on is named too. A checklist that silently
       // shrank from six items to four would look like it had skipped something,
