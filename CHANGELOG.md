@@ -11,6 +11,11 @@
 - **SPEC §55: voorstel voor een deadline die niet elke dag geldt.** Op papier, vóór er code
   komt, want het raakt het datamodel. Voorlopig akkoord van Sven; nog niet gebouwd.
 
+- **SPEC §56: het ontwerp voor de laadpaal die meebeweegt met de zon.** §54.4 en §54.7 samen,
+  want los van elkaar lossen ze niets op. Bevat `ready_days`, een modulatieschakelaar met een
+  minimum-laadvermogen, de vervanging van `nominal_power_w <= surplus`, en een tweede soort
+  besparingsbedrag — per uur in plaats van per cyclus. **Ontwerp, nog geen code.**
+
 ## 0.17.0
 
 De opruimronde van §49.2: dezelfde regel, drie keer, en drie keer een andere reparatie.
