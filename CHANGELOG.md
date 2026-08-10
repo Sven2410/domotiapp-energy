@@ -1,5 +1,15 @@
 # Changelog
 
+## Onuitgebracht
+
+### Documentatie
+
+- **SPEC §49: woning 2, tweede helft.** Bevindingenronde zonder code — apparaten, het
+  gereed-venster en de bewonersweergave, ingericht met SPEC.md dicht. Zes bevindingen,
+  waarvan twee stil gegevensverlies en één een onterechte foutmelding op precies de
+  configuratie waarvoor het gereed-venster gebouwd is. Plus wat goed ging, en de
+  voorgestelde volgorde van afhandelen.
+
 ## 0.13.1
 
 De voorrangsregel van 0.13.0 omgedraaid waar zij verkeerd was.

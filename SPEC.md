@@ -4856,3 +4856,217 @@ is de enige manier om te weten wat een teruggeleverde kWh nu oplevert.
 
 De regel van §48.1 gaat dus alleen over de *leveringsprijs*. `feed_in_price` houdt zijn
 eigen weg: bron als die er is, anders het ingevulde bedrag, ongeacht de contractsoort.
+
+## 49. Woning 2, tweede helft: apparaten, gereed-venster, bewonersweergave
+
+**Bevindingenronde, 2026-08-10. Geen code in deze ronde** — dat is de afspraak van de
+vreemde-woning-opzet, en zij bestaat omdat je anders gaandeweg repareert en het overzicht
+verliest.
+
+De opzet: de woning eerst in gewone taal beschrijven, met SPEC.md dicht, en pas daarna
+inrichten. **Alles wat ik dan moet verzinnen is een bevinding.** De eerste helft (woning en
+bronnen) leverde §47 op; dit is de tweede.
+
+**Beukenlaan 14**, twee-onder-een-kap, driefase 25 A, veertien panelen, thuisaccu van
+10 kWh, dynamisch contract. Vier apparaten: een vaatwasser die *"uiterlijk half acht"* klaar
+moet zijn, een wasmachine tegen de slaapkamermuur van de kinderen die *"niet voor elf uur
+'s avonds en niet voor zeven uur 's ochtends"* mag draaien en klaar moet zijn *"voordat ze
+om acht uur de deur uitgaan"*, een droger waar *"geen haast op zit"*, en een
+warmtepompboiler waarvan de bewoner *"alleen wil kunnen zien hoeveel hij gebruikt"*.
+
+De bevindingen staan hieronder in de volgorde waarin ik ze tegenkwam.
+
+### 49.1 Het venster-predicaat draagt nog de betekenis van vóór de hernoeming
+
+**De zwaarste bevinding van deze ronde, en zij raakt precies het apparaat waarvoor het
+gereed-venster gebouwd is.**
+
+De wasmachine kreeg `ready_from = 07:00`, `ready_before = 08:00`, `duration_minutes = 90`.
+Dat is de woning letterlijk overgeschreven: de was mag niet vóór zevenen klaar zijn (dan
+ligt hij te lang nat) en moet vóór achten klaar zijn (dan gaan ze weg). Het paneel meldt:
+
+> *Het apparaat past niet binnen het opgegeven gereed-venster.* — severity `error`, op het
+> veld `duration_minutes`.
+
+**Die melding is onjuist, en het veld waar zij op landt is het enige getal waar de bewoner
+zeker van is.** Het model rekent namelijk zelf anders:
+
+| | Wat het model zegt (`models.py`) | Wat de validator toetst (`validators.py`) |
+|---|---|---|
+| `ready_before` | eindtijd; `latest_start` = `ready_before` − duur | bovengrens van een *draaivenster* |
+| `ready_from` | eindtijd; `earliest_start` = `ready_from` − duur | ondergrens van datzelfde venster |
+| Toets | — | `duration > ready_before − ready_from` → fout |
+
+Onder de betekenis van het model loopt de wasmachine tussen 05:30 en 06:30 aan en is hij
+tussen 07:00 en 08:00 klaar. **Dat klopt precies.** De draai-interval is
+`[ready_from − duur, ready_before]`; er is niets dat ergens "in moet passen". De toets kan
+onder de nieuwe betekenis nooit terecht aanslaan.
+
+**Dit is de vierde variant uit CLAUDE.md — de hernoeming die een assertie stil omdraait —
+maar nu in productiecode in plaats van in een test.** Dezelfde hernoeming
+(`earliest_start`/`latest_finish` → `ready_from`/`ready_before`) waarvan CLAUDE.md al
+vastlegt dat zij één assertie kantelde, heeft deze lezer óók gekanteld. Er is naar de
+schrijvers gekeken en niet naar alle lezers.
+
+**De testsuite bevestigt de oude betekenis in plaats van haar tegen te spreken**, met
+docstrings die nog letterlijk in draaivenster-taal staan:
+
+- `test_a_run_too_long_for_a_midnight_window_is_rejected`
+- `test_a_run_that_does_not_fit_its_window_is_rejected` — *"A four hour cycle cannot run
+  inside a two hour window"*
+- `test_a_run_that_exactly_fills_its_window_is_accepted`
+
+Alle drie groen, alle drie over een venster dat niet meer bestaat.
+
+**De enige uitweg die de installateur heeft, is het venster oprekken** — bijvoorbeeld
+`ready_from` naar 06:30 — en daarmee de eis van de bewoner veranderen om een onjuiste
+controle tevreden te stellen.
+
+### 49.2 Een tijd die niet te lezen is, wordt stil weggegooid
+
+HA's `ha-base-time-input` zet een `<input type="number" max="23" maxlength="2">` neer voor
+het uur. **`maxlength` doet niets op `type="number"`** — dat is HTML, geen fout van ons — dus
+het uurvak accepteert `0730` zonder blikken of blozen. Dat is precies wat je typt wanneer je
+"half acht" snel invult.
+
+Wat er daarna gebeurt, is wél van ons. `models._as_time()` geeft bij een onmogelijk uur de
+`default` terug, en dat is `None`:
+
+```
+devices/update  ready_before = "0730:00"   →   success: true, revision +1
+config/get      ready_before = null
+```
+
+**Geaccepteerd, niet bewaard, niet gemeld.** De installateur vult een deadline in, het
+paneel bevestigt de opslag, en het veld is leeg als hij terugkomt.
+
+`_as_time` is een goede *round-trip*-verdediging: bij het laden van corrupte opslag is
+terugvallen op niets juist. Maar hij staat óók op de **schrijfweg** vanuit de GUI, en daar
+maakt hij van invoer stilte. Dat is dezelfde vraag als bij een onbekend brontype, met het
+tegenovergestelde antwoord: dáár wordt in quarantaine gezet en gerapporteerd, hier
+stilzwijgend gedegradeerd naar de default.
+
+Merk op dat `_validate_time_window` een keurige melding *heeft* — *"Gebruik een geldige tijd
+in de vorm uu:mm."* — maar die kan nooit afgaan, want tegen de tijd dat de validator kijkt is
+de waarde al `None` en dus "niet ingevuld".
+
+### 49.3 `home/update` met één veld wist het hele woningprofiel
+
+Ik wilde één ontbrekend bedrag aanvullen, met de gedocumenteerde `--field`-interface:
+
+```
+domotiapp_energy/home/update  expected_revision=N  home.feed_in_markup_eur_kwh=0.02
+```
+
+`success: true`, revision +1, en **twaalf opgeslagen waarden weg**: naam, fasen,
+hoofdzekering, maximaal netvermogen, contractsoort, energiebelasting, opslag, drempels. Alles
+terug op default. Geen waarschuwing, geen melding, niets op het scherm behalve dat het
+Overzicht ineens *"Percentage van maximum: Nog niet ingesteld"* toonde.
+
+Het commando neemt een volledig `HomeProfile` en doet een vervanging; ontbrekende sleutels
+krijgen hun default. Voor het paneel gaat dat goed omdat het paneel altijd alles meestuurt.
+**Maar er is geen enkel onderscheid tussen "dit veld moet leeg worden" en "over dit veld zeg
+ik niets"**, en dat is dezelfde regel als "een ontbrekende waarde is nooit een default", nu
+op de schrijfweg toegepast en daar omgedraaid.
+
+Dat ik hier inliep is geen toeval: `--field` is de gedocumenteerde interface uit CLAUDE.md
+en nodigt uit om één ding te zetten. Wat voor mij geldt, geldt voor elke toekomstige client.
+
+### 49.4 Een revisieconflict gooit een volledig ingevuld formulier weg
+
+Ik had de vaatwasser helemaal ingevuld — naam, locatie, vermogen, energie per cyclus, duur,
+gereed-venster — en drukte op Opslaan. Antwoord:
+
+> *De configuratie is intussen ergens anders gewijzigd. Je wijzigingen zijn niet opgeslagen;
+> de lijst is opnieuw geladen.*
+
+Het dialoogvenster sloot en alles was weg. De oorzaak was terecht: ik had er zelf twee
+bronnen bij gezet via de WebSocket, dus de revision was werkelijk verlopen.
+
+**De bewaking deed haar werk; de afhandeling niet.** Een verlopen revision betekent *"jouw
+basis is oud"*, niet *"jouw invoer deugt niet"*. De juiste afhandeling is: configuratie
+herladen, dialoog open laten mét de ingevulde waarden, en opnieuw laten opslaan tegen de
+nieuwe revision. Hoe langer het formulier, hoe duurder de huidige afhandeling — en het
+apparaatformulier is het langste dat we hebben.
+
+Dit treft elke installateur die het paneel op twee schermen open heeft, en dat is bij
+DomotiTech eerder regel dan uitzondering.
+
+### 49.5 De droger heeft geen deadline, en dat kost punten
+
+De bewoner over de droger: *"hier zit geen haast op; als hij op woensdagmiddag draait
+wanneer de zon schijnt, is dat prima."* Dus geen `ready_from`, geen `ready_before`.
+
+`_flexible_devices_have_windows` eist minstens één grens van elk *advisable* apparaat, dus
+het item `flexible_devices_have_time_window` zakt, en de datakwaliteit met tien punten —
+voor een apparaat dat volledig beschreven is.
+
+**Het formulier kan "ik heb geen eis" niet onderscheiden van "nog niet ingevuld".** Dat is de
+vorm van §16: de bewoner kan dit item alleen afvinken door een deadline te verzinnen die hij
+niet heeft.
+
+**Dit ligt voor, het is niet beslist**, want er staat een goed tegenargument in de docstring
+van dat predicaat zelf: het is bewust een *kwaliteits*-item, geen compleetheidseis — een
+droger mét deadline krijgt beter advies. Dat is waar. De vraag is of "geen eis" een geldig
+antwoord moet worden.
+
+### 49.6 Het gereed-venster kent geen ondergrens aan de starttijd
+
+De wasmachine mag niet draaien tussen 23:00 en 07:00 — kinderslaapkamer. Het gereed-venster
+kan dat niet uitdrukken: beide velden begrenzen de **eindtijd**, geen van beide de starttijd.
+Zet je `ready_from = 07:00` en `ready_before = 08:00`, dan is de vroegst toegestane start
+05:30 — midden in de nacht die verboden is.
+
+Dit is bekend terrein: de analyse bij de opzet van het gereed-venster zei al dat de vier
+beperkingen **niet één mechanisme** zijn — *"mag nu niet draaien"* (geluid, aanwezigheid) is
+een verbiedend venster, *"moet klaar zijn om"* is een deadline. Het gereed-venster
+implementeert alleen de tweede.
+
+**In de praktijk vangen de stille uren dit op**, en voor deze woning toevallig goed: alles
+wat lawaai maakt mag 's nachts niet. Maar de stille uren staan op de **woning**, niet op het
+apparaat, en de vaatwasser in deze woning mag 's nachts juist wél draaien. Dat is geen defect
+maar een grens van het model; hij hoort opgeschreven te staan zodat een installateur hem niet
+zelf hoeft te ontdekken.
+
+### 49.7 Wat goed ging, en waarom dat hier staat
+
+Een bevindingenlijst zonder dit deel geeft een vertekend beeld.
+
+- **Het urgentie-advies wordt niet onderdrukt door de stille uren.** Getoetst vanuit de
+  situatie: deadline om 15:00, duur twee uur, stille uren 12:00–14:00, het is 12:47. Het
+  advies verscheen: *"Start Vaatwasser nu als hij om 15:00 klaar moet zijn."* De deadline
+  wint van de voorkeur, en dat is juist.
+- **Maar hij staat op `info` en onder een datakwaliteitsmelding.** Het enige tijdkritische
+  ding in huis staat lager dan een aansporing om gegevens aan te vullen, en de zin geeft de
+  eis terug aan de bewoner (*"als hij om 15:00 klaar moet zijn"* — dat had hij ons net
+  verteld). **Fase 3 moet §43.2 terugdraaien**, en deze ronde bevestigt dat vanuit de stoel
+  van de bewoner.
+- **`_why_no_amount` doet precies waarvoor het gebouwd is.** Bij een vast contract zonder
+  tarief zei de zin *"zonder het vaste leveringstarief — vul dat in bij Woning"*; na de
+  overstap naar dynamisch met een ontbrekende terugleveropslag *"zolang de terugleverkosten
+  niet zijn ingevuld — vul ze in bij Woning, of zet ze op 0 als deze aansluiting ze niet
+  betaalt."* Twee redenen, twee zinnen, geen aanname.
+- **De hulptekst bij *energie per cyclus* geeft een orde van grootte** (*"bijvoorbeeld 1,0
+  tot 1,5 kWh"*). Dat is het verschil tussen een beantwoordbare en een onbeantwoordbare
+  vraag: de bewoner kent watt en minuten, geen kWh, en vermogen × duur geeft hier ruim het
+  dubbele van het juiste antwoord.
+- **Het theoretisch maximum volgde de fasekeuze onmiddellijk** (17250 W bij 3 × 230 V × 25 A),
+  terwijl het ingevulde maximum bleef staan. Dat is de goede kant op: het ene is een
+  berekening, het andere een keuze.
+
+### 49.8 Nog steeds open uit eerdere rondes, hier opnieuw tegengekomen
+
+- **Het dialoogvenster scrollt niet met het wiel.** `.dialog-body` heeft `overflow-y: auto`
+  en is aantoonbaar scrollbaar (`scrollHeight` 1114 tegen `clientHeight` 673), en
+  programmatisch scrollen werkt; het wiel doet niets. Op het apparaatformulier is dat
+  hinderlijk, want het gereed-venster staat onder de vouw.
+- **De tabbalk scrollt mee weg.** Op het lange Installatie-formulier moet je eerst helemaal
+  terug omhoog om van tabblad te wisselen.
+
+### 49.9 Volgorde van afhandelen, voorgesteld
+
+1. **§49.1** — een onjuiste `error` op de configuratie waarvoor de functie bestaat.
+2. **§49.2** — stil gegevensverlies bij een normale typfout.
+3. **§49.3** — stil gegevensverlies bij een normale API-aanroep.
+4. **§49.4** — werk kwijt bij een conflict dat te herstellen is.
+5. **§49.5 en §49.6** — beslissingen voor Sven, geen defecten.
