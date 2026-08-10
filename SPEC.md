@@ -5438,3 +5438,87 @@ klopt, want er ís geen urgentie.
 
 Het staat ook los van het niet-draaien-venster van §51: een droger kan geen deadline hebben
 én 's nachts verboden zijn. Twee vragen, twee antwoorden.
+
+## 53. Dezelfde regel, drie keer, en drie keer een andere reparatie
+
+**Gebouwd in 0.17.0.** De opruimronde van §49.2: *een waarde die de gebruiker invulde en die
+wij niet kunnen lezen, mag niet stil verdwijnen.*
+
+De regel is één regel. **De reparatie is per veld anders, en dat is geen slordigheid maar het
+gevolg van hoe het veld is opgeslagen.**
+
+| Veld | Opgeslagen als | Wat er misging | Reparatie |
+|---|---|---|---|
+| `ready_from`, `ready_before` | `str` | stil `None` — leek "niet ingevuld" | **bewaren** en melden (§49.2) |
+| `quiet_hours_start`, `quiet_hours_end` | `str`, verplicht | stil terug naar 22:00 — leek **beantwoord** | **bewaren** en melden |
+| `net_metering_until` | `date` | stil `None` — betekent "saldeert niet" | **weigeren aan de grens** |
+
+### 53.1 De stille uren waren erger dan het gereed-venster
+
+Bij het gereed-venster werd een onleesbare tijd `None`, en dat oogt als een leeg veld — fout,
+maar herkenbaar fout.
+
+De stille uren vielen terug op **de default**. De bewoner typte iets, de opslag meldde succes,
+en op het scherm stond `22:00` — een tijd die hij nooit heeft ingevoerd, die er volkomen
+normaal uitziet, en die hij dus nooit als fout zou herkennen. Een verkeerde waarde die zich
+voordoet als een antwoord is slechter dan een lege.
+
+`_kept_time` staat daar nu, met één verschil ten opzichte van het gereed-venster: **afwezig
+blijft de default.** Een bestand van vóór dit veld heeft niets gezegd, en dan is de default
+juist. Alleen een waarde die er staat en niet te lezen is, blijft staan.
+
+**Wat dat kost, en het is echt.** `_in_quiet_hours` leest een onleesbare tijd als "geen stille
+uren", dus tot de typefout verholpen is kan er advies verschijnen in de uren die de bewoner
+bedoelde stil te houden. Dat is bewust geaccepteerd: de fout staat op het scherm bij het veld
+dat hem veroorzaakt, en deze integratie stuurt geen meldingen — het advies staat in een paneel
+en een sensor, het maakt niemand wakker. De stille vervanging deed het omgekeerde: zij hield
+het venster werkend en vertelde niemand dat het het verkeerde venster was.
+
+### 53.2 Een datum kan niet in quarantaine
+
+`net_metering_until` is opgeslagen als een `date`, geen string. Er is dus **geen plek om
+"1-1-2027" te bewaren** zonder over het type te liegen, en dat is precies waarom de reparatie
+hier een andere vorm heeft.
+
+En het gat was ernstiger dan bij een tijd, want `None` betekent op dit veld niet "onbekend"
+maar **"deze woning saldeert niet"**:
+
+```python
+if self.net_metering_until is None:
+    return False        # geen saldering
+```
+
+Een onleesbare datum verlegde dus stilzwijgend de hele besparingsformule, met `success` en een
+nieuwe revision.
+
+**Daarom aan de grens geweigerd**, in het WebSocket-schema, met `invalid_format`. Dat kan hier
+en het is eerlijk, omdat het paneel deze fout niet kán maken: zijn `selector: { date: {} }`
+levert altijd ISO. Alleen een API-client kan het, en voor die client is een weigering met een
+reden precies het goede antwoord.
+
+**Op de laadweg blijft `_as_date` teruggeven wat hij kan** en `None` voor de rest. Daar is dat
+juist: een corrupt bestand moet íets opleveren, en de grens die de schrijfweg bewaakt bestaat
+op de laadweg niet.
+
+> **De regel om te onthouden:** waar een veld als tekst wordt bewaard, kun je de rommel
+> bewaren en melden. Waar het als een echt type wordt bewaard, moet je hem weigeren voordat
+> hij binnenkomt. Dezelfde belofte aan de gebruiker, twee mechanismen.
+
+### 53.3 `ha_check.py --merge`
+
+Twee keer op één dag wiste dit script de helft van een rij, allebei op dezelfde manier:
+`--field` nodigt uit om één ding te noemen, en `devices/update` en `sources/update`
+**vervangen** de hele rij.
+
+Dat vervangen is geen defect en blijft (§49.3): het apparaatformulier wist een veld juist
+dóór het weg te laten, omdat een veld waar het gekozen type geen antwoord op heeft geen
+opgeslagen antwoord mag houden. Het script hoort zich aan te passen, niet de API.
+
+- **`--merge`** haalt de opgeslagen rij op, legt de genoemde velden erover en stuurt het
+  geheel. Hij meldt hoeveel velden hij las en welke er veranderden, zodat je ziet dat er niets
+  is weggevallen. Vindt hij de rij niet, dan weigert hij — per ongeluk een rij aanmaken uit een
+  commando dat er één wilde wijzigen is erger dan een foutmelding.
+- **Zonder `--merge`** waarschuwt hij, ook bij `--dry-run` — juist daar, want dat is wat je
+  draait om een aanroep te controleren vóórdat je hem afvuurt.
+
+`home/update` en `preferences/update` staan er niet bij: die voegen sinds §49.3 samen.

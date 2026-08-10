@@ -656,6 +656,14 @@ class HomeProfile:
             # the default. An explicit null is a deliberate "no net metering"
             # and must survive: collapsing the two would silently give every
             # home net metering back on the next load.
+            #
+            # **An unreadable date still becomes None here, and on this path
+            # that is right** (SPEC.md §53). This is the *load* path, where a
+            # corrupt file has to yield something; the write path is guarded at
+            # the WebSocket boundary instead, because a date is stored as a
+            # `date` object and there is nowhere to keep a bad one without
+            # lying about the type. That is the one place the rule of §49.2
+            # takes a different shape than it does for times.
             net_metering_until=(
                 _as_date(data.get("net_metering_until"))
                 if "net_metering_until" in data
@@ -1233,16 +1241,25 @@ class UserPreferences:
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> Self:
-        """Build preferences from stored data, filling in defaults."""
+        """Build preferences from stored data, filling in defaults.
+
+        **The quiet hours keep an unreadable value rather than replacing it**
+        (SPEC.md §53), the same rule the ready window follows since §49.2. They
+        used to fall back to 22:00 and 07:00, which is worse than the ready
+        window's silent ``None`` was: there the field looked empty afterwards,
+        here it looks *answered* — with hours nobody typed.
+
+        Absent is still the default, and that distinction is the whole reason
+        this is not simply :func:`_kept_time`: a file written before these
+        existed has not stated anything, and taking the default there is right.
+        Only a value that is present and unreadable is kept, so the message in
+        :func:`validators.validate_preferences` can finally reach the installer.
+        """
         data = _as_mapping(data)
         return cls(
-            quiet_hours_start=_as_time(
-                data.get("quiet_hours_start"), DEFAULT_QUIET_HOURS_START
-            )
+            quiet_hours_start=_kept_time(data.get("quiet_hours_start"))
             or DEFAULT_QUIET_HOURS_START,
-            quiet_hours_end=_as_time(
-                data.get("quiet_hours_end"), DEFAULT_QUIET_HOURS_END
-            )
+            quiet_hours_end=_kept_time(data.get("quiet_hours_end"))
             or DEFAULT_QUIET_HOURS_END,
             prefer_solar=_as_bool(data.get("prefer_solar"), True),
             prefer_low_price=_as_bool(data.get("prefer_low_price"), True),

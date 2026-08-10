@@ -1949,3 +1949,39 @@ def test_a_no_run_window_and_no_deadline_live_side_by_side() -> None:
     assert device.may_run_at(minutes_since_midnight("23:30")) is False
     assert device.may_run_at(minutes_since_midnight("14:00")) is True
     assert validate_device_profile(device) == []
+
+
+# --- The quiet hours keep an unreadable value too (SPEC.md §53) -------------
+
+
+def test_a_broken_quiet_hour_is_kept_and_reported() -> None:
+    """The message existed and could never fire — the §49.2 shape, one field on.
+
+    Falling back to 22:00 was worse than the ready window's silent `None`: an
+    empty field at least looks empty, while this looked *answered*, with hours
+    nobody typed.
+    """
+    preferences = UserPreferences.from_dict(
+        {"quiet_hours_start": "0730:00", "quiet_hours_end": "07:00"}
+    )
+
+    assert preferences.quiet_hours_start == "0730:00"
+
+    issues = validate_preferences(preferences)
+
+    assert _fields(issues) == {"quiet_hours_start"}
+    assert VALIDATION_INVALID_TIME_WINDOW in _codes(issues)
+
+
+def test_absent_quiet_hours_still_take_the_default() -> None:
+    """Absent is not the same as unreadable, and only the second is kept.
+
+    A file written before these existed has stated nothing, and the default is
+    the right answer there. That distinction is why this is not plain
+    `_kept_time`.
+    """
+    preferences = UserPreferences.from_dict({})
+
+    assert preferences.quiet_hours_start == "22:00"
+    assert preferences.quiet_hours_end == "07:00"
+    assert validate_preferences(preferences) == []

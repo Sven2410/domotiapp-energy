@@ -42,6 +42,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+from datetime import date
 from typing import Any
 
 import voluptuous as vol
@@ -153,6 +154,44 @@ _CREATE_DEVICE = vol.Schema(
 )
 _UPDATE_DEVICE = vol.Schema(
     {vol.Required("id"): str, **_DEVICE_TYPE}, extra=vol.ALLOW_EXTRA
+)
+
+
+def _iso_date(value: Any) -> Any:
+    """Refuse a date this project cannot read, instead of dropping it.
+
+    **The one field where the rule of SPEC.md §49.2 has to be enforced at the
+    boundary rather than by keeping the value** (SPEC.md §53). A time is stored
+    as a string, so an unreadable one can sit in the model and be reported
+    against its field. ``net_metering_until`` is stored as a ``date``, and there
+    is nowhere to keep "1-1-2027" without lying about the type.
+
+    Dropping it was not a harmless gap either: ``None`` on this field means
+    *"this home does not net-meter"*, so an unreadable date silently switched
+    the savings regime — with ``success`` and a fresh revision. The panel could
+    never produce it (its selector emits ISO), which is exactly why it went
+    unnoticed; every other client can.
+
+    ``None`` stays allowed, because it is the deliberate answer.
+    """
+    if value is None:
+        return value
+    if isinstance(value, str):
+        try:
+            date.fromisoformat(value.strip())
+        except ValueError:
+            raise vol.Invalid(
+                "Gebruik een datum in de vorm jjjj-mm-dd, of null als deze "
+                "woning niet saldeert."
+            ) from None
+        return value
+    raise vol.Invalid("Gebruik een datum in de vorm jjjj-mm-dd, of null.")
+
+
+# Only the one key that cannot defend itself in the model; everything else is
+# coerced by from_dict as before.
+_HOME_PAYLOAD = vol.Schema(
+    {vol.Optional("net_metering_until"): _iso_date}, extra=vol.ALLOW_EXTRA
 )
 
 # The one schema in this module that does **not** allow extra keys, and that is
@@ -503,7 +542,7 @@ async def handle_coach_recalculate(
     {
         vol.Required("type"): WS_HOME_UPDATE,
         vol.Required(ATTR_EXPECTED_REVISION): int,
-        vol.Required("home"): dict,
+        vol.Required("home"): _HOME_PAYLOAD,
     }
 )
 @websocket_api.async_response
