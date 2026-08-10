@@ -411,11 +411,24 @@ export const overviewTab = {
      * counts, the row says that too. A source that is configured, complete and
      * quietly ignored is the same trap as a field nobody reads: it looks like
      * it is doing something (SPEC.md §48.4).
+     *
+     * **"Bepaalt dit bedrag niet" on its own was too absolute** — the first
+     * wording of 0.13.1, and Sven was right to stop it. The source is still
+     * read, still validated, and it takes over the moment the tariff field is
+     * emptied or the contract goes dynamic. Told only the first half, an
+     * installer concludes the row is dead weight and deletes it, and the next
+     * contract change then arrives with no price at all. What is true of *this
+     * amount* is not true of *this source*, and the sentence has to carry both.
+     *
+     * What it deliberately does **not** claim is that the source is what makes
+     * the data quality checklist complete. With the tariff filled in that is
+     * the tariff's doing: `_price_information_available` asks
+     * `import_price_now`, which returns the tariff here.
      */
     function priceHint(config, metrics, market) {
       if (metrics.price_origin === 'fixed_tariff') {
         return hasPriceSource(config)
-          ? 'Vast leveringstarief, zoals ingevuld bij Woning. De gekoppelde prijsbron bepaalt dit bedrag niet.'
+          ? 'Vast leveringstarief, zoals ingevuld bij Woning. De gekoppelde prijsbron bepaalt dit bedrag niet, maar neemt het over zodra dit veld leeg is of het contract dynamisch wordt.'
           : 'Vast leveringstarief, zoals ingevuld bij Woning.';
       }
       if (market === null || market === undefined) {

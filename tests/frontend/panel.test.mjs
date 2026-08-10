@@ -898,6 +898,44 @@ describe('the actual energy price on the Overzicht', () => {
     assert.match(priceRow(panel).hint, /Vast leveringstarief/);
   });
 
+  it('says a linked source is outranked here, not that it is useless', async () => {
+    const panel = await mountPanel(
+      fakeHass({
+        config: sampleConfig({
+          sources: [
+            ...sampleConfig().sources,
+            { id: 'prijs', name: 'Marktprijs', type: 'current_price', enabled: true },
+          ],
+        }),
+        coach: sampleCoach({
+          metrics: { current_price_eur_kwh: 0.24171, price_origin: 'fixed_tariff' },
+        }),
+      }),
+    );
+
+    // Both halves, and the second is why this test exists: 0.13.1 first said
+    // only "bepaalt dit bedrag niet", which reads as "this row does nothing".
+    // The source takes over as soon as the tariff field is emptied or the
+    // contract goes dynamic, so deleting it on that reading loses the price.
+    assert.match(priceRow(panel).hint, /bepaalt dit bedrag niet/);
+    assert.match(priceRow(panel).hint, /neemt het over zodra/);
+  });
+
+  it('claims nothing about the source when there is none to claim it about', async () => {
+    const panel = await mountPanel(
+      fakeHass({
+        coach: sampleCoach({
+          metrics: { current_price_eur_kwh: 0.24171, price_origin: 'fixed_tariff' },
+        }),
+      }),
+    );
+
+    // The sample home has only a grid meter. A sentence about a price source
+    // that is not there would send the installer looking for one (§26: whole
+    // sentences per situation, so this is a different sentence and not a tail).
+    assert.doesNotMatch(priceRow(panel).hint, /prijsbron/);
+  });
+
   it('tells a missing price source apart from a home that has no price yet', async () => {
     const panel = await mountPanel(
       withPrice({ current_price_eur_kwh: null, market_price_eur_kwh: null }),

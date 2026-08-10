@@ -873,13 +873,22 @@ def _validate_price_components(
     reports. Without them the calculator refuses the price silently as far as
     the installer can see, and this is what makes it visible (SPEC.md §16).
 
-    **Only on a dynamic contract.** A fixed contract never consults
-    ``current_price_eur_kwh`` — not in the savings formula, not in
-    ``_advise_price``, not in the price component, not in the checklist — so
-    asking for the two fields that complete it was asking for input that goes
-    nowhere. Worse, the panel hides both fields on a fixed contract, so the
-    issue was reported against a field that is not on screen and the installer
-    saw nothing at all (production finding, 2026-08-07).
+    **Only on a dynamic contract**, because the panel only shows the two fields
+    there. Reporting the issue on a fixed contract would put a message against a
+    field that is not on screen, and the installer would see nothing at all
+    (production finding, 2026-08-07).
+
+    **The reason underneath that has expired, and this is not the fix.** The
+    scoping was justified by "a fixed contract never consults
+    ``current_price_eur_kwh``". Since 0.13.0 it does: with the tariff field left
+    empty, :func:`import_price_now` falls back to the source. So a fixed
+    contract with a market-basis source and no tariff typed in gets no price and
+    no explanation, and cannot reach the fields that would fix it — the exact
+    silent refusal this function exists to prevent, reintroduced from the other
+    side. Making the panel show the composition fields whenever there is a
+    market price to convert (rather than whenever the contract is dynamic) is
+    what closes it; that is a decision about what the installer sees, so it is
+    Sven's to make and it is reported, not smuggled in here (2026-08-10).
     """
     if home.contract_type != CONTRACT_TYPE_DYNAMIC or home.has_price_components:
         return []

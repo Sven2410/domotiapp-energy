@@ -4819,9 +4819,30 @@ Een prijsbron bij een vast contract is compleet, wordt gelezen, en bepaalt de ge
 niet. Dat is precies het patroon van §38: iets dat om aandacht vraagt en niets doet — en
 zonder tekst is het erger dan nutteloos, want het wekt de indruk dat het meetelt.
 
-De prijsrij zegt het daarom zelf: *"Vast leveringstarief, zoals ingevuld bij Woning. De
-gekoppelde prijsbron bepaalt dit bedrag niet."* Twee hele zinnen per situatie, niet één zin
-met een aangeplakte staart (§26).
+De prijsrij zegt het daarom zelf. **En de eerste formulering was te absoluut**, wat Sven
+tegenhield vóór de merge: *"De gekoppelde prijsbron bepaalt dit bedrag niet"* laat een
+installateur concluderen dat de rij dood gewicht is, en dan verwijdert hij haar — waarna de
+volgende contractwijziging zonder prijs aankomt.
+
+De zin draagt daarom beide helften:
+
+> *"Vast leveringstarief, zoals ingevuld bij Woning. De gekoppelde prijsbron bepaalt dit
+> bedrag niet, maar neemt het over zodra dit veld leeg is of het contract dynamisch wordt."*
+
+Twee hele zinnen per situatie, niet één zin met een aangeplakte staart (§26); zonder
+gekoppelde bron is de tweede zin er niet, in plaats van dat hij over een bron praat die er
+niet is.
+
+**Wat de zin bewust níet beweert.** Sven omschreef de bron als degene die "de prijs levert
+waarmee de datakwaliteit klopt". Dat is alleen waar wanneer het tariefveld leeg is: met een
+ingevuld tarief vraagt `_price_information_available` aan `import_price_now`, en die geeft
+daar het tarief terug. Het checklistitem staat dan aan door het tarief, niet door de bron.
+De zin claimt dus alleen wat waar is in élke situatie waarin hij verschijnt: de bron wordt
+gelezen en staat klaar, meer niet.
+
+**Het onderscheid dat hij draagt:** wat waar is over *dit bedrag* is niet waar over *deze
+bron*. Een regel die één van de twee zegt terwijl de lezer de andere hoort, is precies de
+faalvorm van §38.
 
 **Nog open:** dezelfde mededeling hoort ook op de bronrij zelf te staan, waar de installateur
 hem beheert. Dat wacht op de implementatie van §46.

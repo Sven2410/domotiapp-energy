@@ -601,7 +601,7 @@ is dit de invoer en niet de uitvoer.
 | Status | overview | 175 |
 | Thuisverbruik | overview | 136 |
 | Vast leveringstarief, zoals ingevuld bij Woning. | overview | 332 |
-| Vast leveringstarief, zoals ingevuld bij Woning. De gekoppelde prijsbron bepaalt dit bedrag niet. | overview | 331 |
+| Vast leveringstarief, zoals ingevuld bij Woning. De gekoppelde prijsbron bepaalt dit bedrag niet, maar neemt het over zodra dit veld leeg is of het contract dynamisch wordt. | overview | 331 |
 | Waarschuwing ↔ | overview | 287 |
 | Waarschuwingen | overview | 250 |
 | Zelfbenutting | overview | 204 |
@@ -870,9 +870,9 @@ is dit de invoer en niet de uitvoer.
 | De hoge prijsgrens moet boven de lage prijsgrens liggen. | _validate_price_thresholds | 426 |
 | De hoofdzekering moet tussen {...} en {...} ampère liggen. | validate_home_profile | 313 |
 | De minimale besparing kan niet negatief zijn. | validate_preferences | 837 |
-| De prijsbron levert de kale marktprijs. Vul de energiebelasting en de opslag van de leverancier per kWh in; zonder die twee is de all-in prijs niet te berekenen en wordt de prijs niet gebruikt. | _validate_price_components | 905 |
+| De prijsbron levert de kale marktprijs. Vul de energiebelasting en de opslag van de leverancier per kWh in; zonder die twee is de all-in prijs niet te berekenen en wordt de prijs niet gebruikt. | _validate_price_components | 914 |
 | De schaalfactor moet groter zijn dan 0. | validate_energy_source | 504 |
-| De terugleverprijsbron levert de kale marktprijs. Vul in wat de leverancier per teruggeleverde kWh inhoudt; zonder dat bedrag is de vergoeding niet te berekenen en wordt de bron niet gebruikt. Vul 0 in als de leverancier niets inhoudt. | _validate_feed_in_components | 941 |
+| De terugleverprijsbron levert de kale marktprijs. Vul in wat de leverancier per teruggeleverde kWh inhoudt; zonder dat bedrag is de vergoeding niet te berekenen en wordt de bron niet gebruikt. Vul 0 in als de leverancier niets inhoudt. | _validate_feed_in_components | 950 |
 | De waarschuwingsgrens moet tussen {...} en {...} procent liggen. | validate_home_profile | 329 |
 | Deze bron levert een prijs, maar de eenheid staat op '{...}'. Kies EUR/kWh of ct/kWh. | _validate_unit_matches_type | 464 |
 | Deze bron meet vermogen, maar de eenheid staat op '{...}'. Kies W of kW. Let op: veel slimme-meterintegraties tonen vooral de meterstand in kWh; die is een totaal en geen vermogen, en levert een netbelasting die honderden keren te hoog is. | _validate_unit_matches_type | 450 |

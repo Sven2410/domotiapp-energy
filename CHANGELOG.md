@@ -14,8 +14,13 @@ De voorrangsregel van 0.13.0 omgedraaid waar zij verkeerd was.
   Bij een dynamisch contract blijft de bron leidend — daar verandert de prijs werkelijk per
   uur. Staat het tariefveld bij een vast contract leeg, dan vult de bron alsnog aan.
 
-- **De rij zegt nu dat een gekoppelde bron het bedrag niet bepaalt.** Een bron die compleet
+- **De rij zegt nu wat een gekoppelde bron hier wel en niet doet.** Een bron die compleet
   is, gelezen wordt en niets bepaalt, wekt anders de indruk dat hij meetelt (SPEC §48.4).
+
+  De zin draagt beide helften: *"De gekoppelde prijsbron bepaalt dit bedrag niet, maar neemt
+  het over zodra dit veld leeg is of het contract dynamisch wordt."* Alleen de eerste helft
+  was te absoluut — dan leest een installateur dat de rij dood gewicht is en verwijdert hij
+  haar, waarna de volgende contractwijziging zonder prijs aankomt.
 
 ### Documentatie
 
