@@ -441,6 +441,38 @@ describe('the save cycle', () => {
     assert.ok(editableForms(tab).every((form) => !form.disabled));
   });
 
+  it('keeps the form when the change was somewhere else entirely', async () => {
+    // SPEC.md §49.4. The home profile is untouched here — only a source moved —
+    // so reloading would throw away a filled-in form to protect a change that
+    // is not in these fields at all.
+    const base = sampleConfig();
+    const theirs = {
+      ...base,
+      revision: 9,
+      sources: [...base.sources, { id: 'pv', name: 'Zonnepanelen', type: 'solar' }],
+    };
+    const hass = fakeHass();
+    const original = hass.callWS;
+    hass.callWS = async (message) => {
+      if (message.type === 'domotiapp_energy/home/update') {
+        throw { code: 'revision_conflict', message: 'stale', revision: 9, config: theirs };
+      }
+      return original(message);
+    };
+
+    const { tab } = await openHomeTab(hass);
+    change(tab, { home_name: 'Beukenlaan 14' });
+    findButton(tab, 'Opslaan').click();
+    await settle();
+
+    assert.equal(forms(tab)[0].data.home_name, 'Beukenlaan 14');
+    assert.ok(
+      noticeTexts(tab).some((text) => text.includes('niet aan de woninggegevens')),
+    );
+    // Still savable, which is the whole point of keeping it.
+    assert.equal(findButton(tab, 'Opslaan').disabled, false);
+  });
+
   it('reloads from the backend on a revision conflict', async () => {
     const theirs = sampleConfig({
       revision: 9,
@@ -708,6 +740,47 @@ describe('the price composition against a linked price source', () => {
     'supplier_markup_eur_kwh',
     'vat_percent',
   ];
+
+  it('shows the composition fields on a fixed contract with a market source', async () => {
+    // The dead end of SPEC.md §49.10: these three were gated on the contract
+    // type, so a fixed contract with a market-basis source could never be
+    // converted and there was no field to fix it in. They follow the market
+    // price now, because that is what they exist to convert.
+    const config = sampleConfig({
+      home: { ...sampleConfig().home, contract_type: 'fixed' },
+      sources: [
+        ...sampleConfig().sources,
+        {
+          id: 'prijs',
+          name: 'Marktprijs',
+          type: 'current_price',
+          enabled: true,
+          price_basis: 'market',
+        },
+      ],
+    });
+    const { tab } = await openHomeTab(fakeHass({ config }));
+    const fields = contractFields(tab);
+
+    for (const name of COMPOSITION) {
+      assert.ok(fields[name], name);
+      assert.notEqual(fields[name].disabled, true, name);
+    }
+  });
+
+  it('leaves them off a fixed contract with nothing to convert', async () => {
+    // The other half: the rule is the market price, not the contract, so a
+    // fixed contract without such a source is asked nothing (SPEC.md §16).
+    const config = sampleConfig({
+      home: { ...sampleConfig().home, contract_type: 'fixed' },
+    });
+    const { tab } = await openHomeTab(fakeHass({ config }));
+    const fields = contractFields(tab);
+
+    for (const name of COMPOSITION) {
+      assert.equal(fields[name], undefined, name);
+    }
+  });
 
   it('disables the composition fields when the source is already all-in', async () => {
     // The source reports the finished price and it is used unchanged, so an

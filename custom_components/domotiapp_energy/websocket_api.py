@@ -507,11 +507,26 @@ async def handle_coach_recalculate(
 async def handle_home_update(
     hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
 ) -> None:
-    """Replace the home profile.
+    """Update the home profile, keeping fields the caller did not mention.
 
-    The whole profile is replaced rather than patched: the panel submits the
-    complete form, and a partial update would silently keep a value the
-    installer just cleared.
+    **An absent key means "leave this alone"; an explicit ``null`` clears the
+    field.** That is the correction of SPEC.md §49.3. This used to replace the
+    whole profile, so a payload naming one field reset the other twelve to their
+    defaults — name, phases, fuse, maximum power, contract type, tax, markup,
+    thresholds — with ``success`` and a fresh revision and nothing on screen.
+
+    The old reasoning was that a patch "would silently keep a value the
+    installer just cleared". **The panel does not clear by omission**: its
+    ``payload()`` sends every editable field and writes an explicitly cleared
+    one as ``null``, precisely so the backend can tell the two apart. So the
+    hazard that argued for replacing never existed for the only client we ship,
+    while the opposite hazard was real and destroyed a configuration.
+
+    ``devices/update`` and ``sources/update`` stay replacements on purpose, and
+    the difference is not an oversight: the device form *does* clear by
+    omission — it drops a field the chosen type has no answer for, rather than
+    storing an answer to a question that was never asked. A test in
+    ``tests/frontend/devices.test.mjs`` pins that behaviour.
 
     The home name lives in the config entry as well (SPEC.md §6). It is written
     to both here, so the two can never disagree and the copy that
@@ -520,7 +535,7 @@ async def handle_home_update(
     if (data := _async_get_data(hass, connection, msg)) is None:
         return
 
-    home = HomeProfile.from_dict(msg["home"])
+    home = HomeProfile.from_dict({**data.store.config.home.to_dict(), **msg["home"]})
 
     def _apply(config: StoredConfiguration) -> None:
         config.home = home
@@ -570,11 +585,20 @@ def _async_sync_entry_name(hass: HomeAssistant, home_name: str) -> None:
 async def handle_preferences_update(
     hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
 ) -> None:
-    """Replace the advice preferences."""
+    """Update the advice preferences, keeping what the caller did not mention.
+
+    The same rule as :func:`handle_home_update`, for the same reason and with
+    the same evidence: ``preferences.js`` builds its payload from every editable
+    field and writes a cleared one as ``null``, so an absent key never meant
+    "clear" here either. Without this, setting the quiet hours alone reset the
+    other seven preferences to their defaults (SPEC.md §49.3).
+    """
     if (data := _async_get_data(hass, connection, msg)) is None:
         return
 
-    preferences = UserPreferences.from_dict(msg["preferences"])
+    preferences = UserPreferences.from_dict(
+        {**data.store.config.preferences.to_dict(), **msg["preferences"]}
+    )
 
     def _apply(config: StoredConfiguration) -> None:
         config.preferences = preferences

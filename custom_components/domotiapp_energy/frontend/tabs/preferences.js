@@ -332,14 +332,30 @@ export const preferencesTab = {
         saveNotice.set('De voorkeuren zijn opgeslagen.', { tone: 'success' });
       } catch (error) {
         if (isRevisionConflict(error)) {
+          // The same split as the other three forms (SPEC.md §49.4): reload
+          // only when the change was in *these* fields, because that is the
+          // only case where keeping the draft would hide someone else's work.
+          const alsoHere =
+            JSON.stringify(formDataFrom(error.config?.preferences)) !==
+            JSON.stringify(saved);
           state.setConfig(error.config);
-          loadFrom(error.config);
-          saveNotice.set(
-            'De configuratie is intussen ergens anders gewijzigd. Je wijzigingen ' +
-              'zijn niet opgeslagen; het formulier is opnieuw geladen met de ' +
-              'actuele gegevens.',
-            { tone: 'warning' },
-          );
+          revision = error.config?.revision ?? revision;
+          if (alsoHere) {
+            loadFrom(error.config);
+            saveNotice.set(
+              'De voorkeuren zijn intussen ergens anders gewijzigd. Het ' +
+                'formulier is opnieuw geladen met de actuele gegevens, zodat je ' +
+                'niet overschrijft wat je niet gezien hebt.',
+              { tone: 'warning' },
+            );
+          } else {
+            saveNotice.set(
+              'Er is intussen ergens anders iets aan de configuratie gewijzigd, ' +
+                'maar niet aan je voorkeuren. Je invoer staat er nog; druk ' +
+                'opnieuw op Opslaan om hem te bewaren.',
+              { tone: 'warning' },
+            );
+          }
         } else {
           saveNotice.set(describeError(error), { tone: 'warning' });
         }

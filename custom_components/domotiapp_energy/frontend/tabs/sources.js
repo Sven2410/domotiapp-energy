@@ -23,6 +23,7 @@
  */
 
 import {
+  conflictKind,
   createApi,
   describeError,
   fieldErrors,
@@ -862,6 +863,34 @@ export const sourcesTab = {
       cancelButton.disabled = busy;
     }
 
+    /**
+     * What to tell the installer when the configuration moved under him.
+     *
+     * One whole sentence per situation (SPEC.md §26 and §49.4). The wording is
+     * this tab's own rather than shared with Apparaten: these sentences name
+     * the thing they are about, and "deze bron" is not "dit apparaat".
+     */
+    function conflictSentence(kind) {
+      if (kind === 'removed') {
+        return (
+          'Deze energiebron is intussen ergens anders verwijderd. Je invoer ' +
+          'staat hier nog, maar opslaan lukt niet meer; maak hem opnieuw aan ' +
+          'als je hem terug wilt.'
+        );
+      }
+      if (kind === 'same-row') {
+        return (
+          'Deze energiebron is intussen ook ergens anders gewijzigd. Je invoer ' +
+          'staat er nog; als je nu opslaat, vervangt hij die andere wijziging.'
+        );
+      }
+      return (
+        'Er is intussen ergens anders iets aan de configuratie gewijzigd, maar ' +
+        'niet aan deze bron. Je invoer staat er nog; druk opnieuw op Opslaan ' +
+        'om hem te bewaren.'
+      );
+    }
+
     async function save() {
       // Nothing may claim success before the backend confirms it (SPEC.md §22).
       state.setSaving(true);
@@ -887,14 +916,16 @@ export const sourcesTab = {
         );
       } catch (error) {
         if (isRevisionConflict(error)) {
-          // Someone else changed the configuration while this dialog was open.
-          // Reloading is the safe answer: keeping the draft would invite
-          // overwriting a change nobody here has seen.
+          // The dialog stays open and keeps every field (SPEC.md §49.4). The
+          // revision counts the whole configuration, so a conflict usually
+          // means something else moved — and throwing this form away for that
+          // is a loss with nothing gained.
           state.setConfig(error.config);
-          dialog.close();
-          listNotice.set(
-            'De configuratie is intussen ergens anders gewijzigd. Je wijzigingen ' +
-              'zijn niet opgeslagen; de lijst is opnieuw geladen.',
+          revision = error.config?.revision ?? revision;
+          dialogNotice.set(
+            conflictSentence(
+              conflictKind(error.config?.sources, editing?.id ?? null, editing),
+            ),
             { tone: 'warning' },
           );
         } else {

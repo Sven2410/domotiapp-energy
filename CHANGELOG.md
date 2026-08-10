@@ -1,5 +1,54 @@
 # Changelog
 
+## 0.14.0
+
+De reparatieronde van SPEC §49, in de volgorde die Sven vaststelde. SPEC §50.
+
+### Fixed
+
+- **De wasmachine van een normale woning kreeg een onterechte fout.** Een gereed-venster van
+  07:00 tot 08:00 met een cyclus van 90 minuten meldde *"Het apparaat past niet binnen het
+  opgegeven gereed-venster"*, met severity `error` op de duur — het enige getal waar de
+  bewoner zeker van is.
+
+  Beide grenzen van het gereed-venster zijn **eindtijden**; het apparaat draait over
+  `[ready_from − duur, ready_before]` en er hoeft niets ergens in te passen. Die toets kwam
+  ongewijzigd mee uit `earliest_start`/`latest_finish`, waar het paar wél een draaivenster
+  begrensde, en kon onder de huidige betekenis nooit terecht aanslaan. Drie tests hielden de
+  oude betekenis vast en zijn vervangen.
+
+  Ervoor in de plaats komt de enige duur-versus-klok-regel die wel geldt: een cyclus van 24
+  uur of langer heeft geen starttijd op een 24-uursklok.
+
+- **Een tijd die niet te lezen is, wordt niet meer stil weggegooid.** `0730` in het uurvak —
+  wat je typt als je "half acht" snel invult, en wat de HTML-control toelaat — werd `None`,
+  ononderscheidbaar van "niet ingevuld". De opslag meldde succes en het veld was leeg bij
+  terugkomst.
+
+  De waarde blijft nu staan en de melding *"Gebruik een geldige tijd in de vorm uu:mm."* —
+  die al bestond en nooit kon afgaan — landt op het veld waar hij over gaat.
+
+- **Eén veld bijwerken wist niet meer de rest van het woningprofiel.** `home/update` en
+  `preferences/update` voegen samen: een afwezige sleutel laat het veld met rust, een
+  expliciete `null` wist het. Eén bedrag invullen zette hiervoor twaalf andere waarden terug
+  op hun default, met `success` en een nieuwe revision.
+
+- **Een revisieconflict gooit geen ingevuld formulier meer weg.** De revision telt de hele
+  configuratie, dus een conflict betekent meestal dat er ergens ánders iets veranderde. Alle
+  vier de formulieren behandelden het als "jouw rij is verouderd" en begonnen opnieuw; een
+  compleet ingevuld apparaat ging zo verloren omdat er op een tweede scherm een bron
+  bijkwam.
+
+  De invoer blijft nu staan, de nieuwe revision wordt overgenomen, en er is een eigen zin
+  voor elk van de drie situaties: er veranderde iets anders, deze rij veranderde ook, of deze
+  rij is verwijderd.
+
+- **Vast contract met een prijsbron op marktbasis was een doodlopende weg.** Zonder ingevuld
+  tarief kwam er geen prijs, geen melding, en geen veld om het op te lossen: de
+  energiebelasting, de opslag en de btw werden op contractsoort gefilterd. Ze volgen nu de
+  marktprijs — ze staan er zodra er een marktprijs is om om te rekenen, en de validatie
+  meldt op dezelfde voorwaarde.
+
 ## 0.13.1
 
 De voorrangsregel van 0.13.0 omgedraaid waar zij verkeerd was.

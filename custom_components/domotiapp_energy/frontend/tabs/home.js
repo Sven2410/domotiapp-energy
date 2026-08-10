@@ -125,8 +125,17 @@ function contractSchema(draft, config) {
   };
   const allIn = allInPriceSource(config);
   const feedInSource = feedInPriceSource(config);
+  // **The composition fields follow the market price, not the contract.** They
+  // exist to convert a bare market reading, so they belong on screen wherever
+  // there is one to convert — including a fixed contract, which was a dead end
+  // until SPEC.md §49.10: with a market-basis source and an empty tariff field
+  // there was no price, no way to reach these three, and no message saying why.
+  const convertible = marketPriceSource(config);
   return CONTRACT_SCHEMA.filter((field) => {
     const needs = onlyFor[field.name];
+    if (convertible && COMPOSITION_FIELDS.includes(field.name)) {
+      return true;
+    }
     return !needs || needs === (dynamic ? 'dynamic' : 'fixed');
   }).map((field) => {
     if (allIn && COMPOSITION_FIELDS.includes(field.name)) {
@@ -185,6 +194,28 @@ function allInPriceSource(config) {
       source.type === 'current_price' &&
       source.enabled !== false &&
       source.price_basis === 'all_in',
+  );
+}
+
+/**
+ * The linked price source that reports a bare market price, if any.
+ *
+ * The counterpart of :func:`allInPriceSource`, and the reason the composition
+ * fields appear at all: a market reading is unusable until the energy tax, the
+ * supplier markup and the VAT turn it into what the customer pays (SPEC.md §16).
+ *
+ * **Deliberately not filtered by contract type.** Leaving the tariff field
+ * empty on a fixed contract makes this source the price (SPEC.md §48.1), and
+ * even with a tariff filled in the source is still read and still has to be
+ * convertible or it is reported as unreadable. Both are true regardless of what
+ * the contract is called.
+ */
+function marketPriceSource(config) {
+  return (config?.sources || []).find(
+    (source) =>
+      source.type === 'current_price' &&
+      source.enabled !== false &&
+      source.price_basis === 'market',
   );
 }
 
@@ -883,17 +914,34 @@ export const homeTab = {
         saveNotice.set('De woninggegevens zijn opgeslagen.', { tone: 'success' });
       } catch (error) {
         if (isRevisionConflict(error)) {
-          // Someone else changed the configuration while this form was open.
-          // Reloading is the safe answer: keeping the draft would invite
-          // overwriting a change nobody here has seen.
+          // The form keeps what was typed (SPEC.md §49.4). Reloading was
+          // justified with "keeping the draft would invite overwriting a
+          // change nobody here has seen" — true only when the change touched
+          // the home profile, and the revision counts the whole configuration.
+          const alsoHere =
+            JSON.stringify(formDataFrom(error.config?.home)) !==
+            JSON.stringify(saved);
           state.setConfig(error.config);
-          loadFrom(error.config);
-          saveNotice.set(
-            'De configuratie is intussen ergens anders gewijzigd. Je wijzigingen ' +
-              'zijn niet opgeslagen; het formulier is opnieuw geladen met de ' +
-              'actuele gegevens.',
-            { tone: 'warning' },
-          );
+          revision = error.config?.revision ?? revision;
+          if (alsoHere) {
+            // The stored profile really did move. Reload, because here the
+            // other change is *in these fields*: leaving the draft on top of
+            // it would hide what somebody else just set.
+            loadFrom(error.config);
+            saveNotice.set(
+              'De woninggegevens zijn intussen ergens anders gewijzigd. Het ' +
+                'formulier is opnieuw geladen met de actuele gegevens, zodat je ' +
+                'niet overschrijft wat je niet gezien hebt.',
+              { tone: 'warning' },
+            );
+          } else {
+            saveNotice.set(
+              'Er is intussen ergens anders iets aan de configuratie gewijzigd, ' +
+                'maar niet aan de woninggegevens. Je invoer staat er nog; druk ' +
+                'opnieuw op Opslaan om hem te bewaren.',
+              { tone: 'warning' },
+            );
+          }
         } else {
           saveNotice.set(describeError(error), { tone: 'warning' });
         }
