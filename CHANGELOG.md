@@ -1,5 +1,17 @@
 # Changelog
 
+## Onuitgebracht
+
+### Documentatie
+
+- **SPEC §58: woning 1, het rijtjeshuis zonder zon.** De laatste van de drie, en de eerste
+  woningronde zonder blokkade of stille fout. Geen zon, geen batterij, geen auto, vast
+  contract: de woning waar het vaakst "niet van toepassing" op het scherm staat.
+
+  **Het antwoord op de vraag waarvoor zij bedoeld was:** een lege plek leest daar als
+  informatie en niet als gebrek. Twee kleine dingen wringen nog — een sectiekop die een
+  tekort belooft en het dan ontkent, en *"Niet te berekenen"* waar *"er valt niets te
+  besparen"* de waarheid is.
 ## 0.19.0
 
 Twee regels over eenheden, en waarom ze verschillen. SPEC §57, uit §54.6.

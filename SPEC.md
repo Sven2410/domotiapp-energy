@@ -6155,3 +6155,82 @@ In deze volgorde, want zo loopt de motor:
 het serienummer van de paal), en mogelijk de eenheid — de simulatie ging uit van kW, wat de
 integratie ook levert, maar dat is precies het soort aanname dat een echte installatie hoort
 te weerleggen of te bevestigen.
+
+## 58. Woning 1: het rijtjeshuis zonder zon
+
+**Bevindingenronde, 2026-08-10. Geen code in deze ronde.** De laatste van de drie, en
+bewust als laatste: dit is de woning waar de energiescore het minst te zeggen heeft en waar
+het vaakst "niet van toepassing" op het scherm staat.
+
+**De vraag die Sven vooraf stelde**, en die deze ronde moest beantwoorden:
+
+> *"Als een lege tegel ergens als gebrek gaat voelen in plaats van als informatie, is het
+> daar. En dat is precies wat ik bij een klant niet wil."*
+**Meidoornlaan 42**, rijtjeshuis 1972, eenfase 25 A. Geen zon, geen batterij,
+geen auto, vast contract van € 0,289. Eén wasmachine, een diepvrieskast in de
+schuur, en een slimme meter. Bewoner van 71 die vooral niet wil dat een scherm
+haar elke dag vertelt wat er ontbreekt.
+
+**De vraag van deze ronde:** leest een lege plek als informatie of als een
+gebrek?
+
+### 58.1 Het antwoord: als informatie, en dat is bewijs en geen geluk
+
+Op het Overzicht, in plaats van een leeg cijfer:
+
+> *"Het tarief is altijd gelijk en er zijn geen zonnepanelen, dus er is geen
+> moment dat beter is dan een ander. Er valt daarom niets te optimaliseren. Het
+> advies blijft gewoon werken."*
+
+Informatieve toon, geen waarschuwingskleur, en de laatste zin doet het werk:
+zij hoeft niet te concluderen dat het systeem stuk is.
+
+Verder in dezelfde woning:
+
+- **Datakwaliteit 100%**, met *"Niet van toepassing op deze woning, en dus niet
+  meegeteld: een geldige zonnebron."* Zij kan een volle score halen zonder iets
+  te bezitten wat zij niet wil.
+- **De zonnerijen staan er niet**, in plaats van leeg. Een rij bestaat omdat de
+  woning het ding heeft.
+- **De prijsrij toont haar eigen tarief** met *"Vast leveringstarief, zoals
+  ingevuld bij Woning"* — geen "niet van toepassing", wat het tot 0.13.0 zei.
+- **De coach beantwoordt *"Hoe is mijn energiescore berekend?"*** met de reden
+  dát er geen cijfer is, niet met een uitleg van een berekening die niet
+  plaatsvond.
+
+**Dit is de opbrengst van vijf eerdere rondes**, zichtbaar op één scherm: §16
+(een eis die niet van toepassing is), §35.9 (waarom er geen cijfer is), §48
+(een vast contract heeft ook een prijs) en §52 (*"maakt niet uit"* als
+antwoord). Elk daarvan is ooit als klacht binnengekomen.
+
+### 58.2 Twee dingen die nog wringen, allebei klein
+
+#### 1. Een kop die een gebrek belooft en het dan ontkent
+
+Op Energiecoach heet de sectie **"Ontbrekende gegevens"**, en de inhoud is:
+
+> *"Alle gegevens voor een betrouwbaar advies zijn ingevuld."*
+
+De kop stelt de vraag in de vorm van een tekort. Voor een woning waar niets
+ontbreekt en niets zal gaan ontbreken, is dat de enige plek op het scherm die
+nog naar een gebrek verwijst.
+
+#### 2. "Geschatte besparing: Niet te berekenen"
+
+Onder het hoofdadvies staat *Niet te berekenen*, met daaronder de reden *"De
+situatie vraagt niet om een aanpassing"*.
+
+De reden klopt, maar de eerste regel leest als een fout — alsof de som mislukte.
+Er valt niets te besparen omdat er niets te veranderen is, en dat is een ander
+soort niets dan een som die niet lukt. Dezelfde vorm als §56.4, waar het lege
+totaal bij een modulerende laadpaal ook geen gebrek was maar het juiste antwoord.
+
+### 58.3 Wat deze ronde niet opleverde
+
+Geen blokkade, geen stille fout, geen zin die de toestand tegenspreekt. Dat is
+opmerkelijk voor een woningronde en het is de eerste keer.
+
+**De verklaring is niet dat deze woning eenvoudig is**, maar dat zij bestaat uit
+precies de gevallen die de vijf eerdere rondes hebben opgeruimd. De "niet van
+toepassing"-vorm is vijf keer als klacht binnengekomen en is nu het enige gedrag
+dat deze woning te zien krijgt.
