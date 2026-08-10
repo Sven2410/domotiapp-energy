@@ -24,6 +24,7 @@ from custom_components.domotiapp_energy.const import (
     CONTROL_ADVICE_ONLY,
     CONTROL_AUTOMATIC,
     DEVICE_TYPE_DISHWASHER,
+    DEVICE_TYPE_DRYER,
     DEVICE_TYPE_EV_CHARGER,
     DEVICE_TYPE_GENERIC_MONITOR,
     DEVICE_TYPE_GENERIC_SCHEDULABLE,
@@ -1729,3 +1730,162 @@ async def test_a_price_that_really_stopped_is_still_refused(
 
     assert result.ok is False
     assert result.unavailable is True
+
+
+# --- The no-run window (SPEC.md §51) ----------------------------------------
+
+
+def _dryer(**overrides: object) -> DeviceProfile:
+    """Return the dryer of woning 2: under the children's bedroom, no deadline.
+
+    Two hours and a quarter, which is what makes it interesting — a ban that
+    starts at 23:00 has to reach back into the evening far enough that the
+    machine is not still turning at half past midnight.
+    """
+    fields: dict[str, object] = {
+        "id": "droger",
+        "name": "Droger",
+        "device_type": DEVICE_TYPE_DRYER,
+        "nominal_power_w": 800.0,
+        "energy_per_cycle_kwh": 1.6,
+        "duration_minutes": 135,
+        "no_run_from": "23:00",
+        "no_run_until": "07:00",
+    }
+    fields.update(overrides)
+    return DeviceProfile(**fields)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    ("moment", "allowed", "why"),
+    [
+        ("14:00", True, "the middle of the afternoon, nowhere near the ban"),
+        ("07:00", True, "the minute the ban lifts; the finish is inclusive"),
+        ("06:59", False, "one minute earlier is still the banned night"),
+        ("23:30", False, "started inside the ban"),
+        ("22:00", False, "starts before it but would still run at 00:15"),
+        ("20:45", True, "stops exactly at 23:00, so 22:59 is its last minute"),
+        ("20:46", False, "one minute later it is still turning at 23:00"),
+        ("12:00", True, "plenty of room before the evening"),
+    ],
+)
+def test_when_the_dryer_may_run(moment: str, allowed: bool, why: str) -> None:
+    """Answer, per moment of the day, whether this appliance may start.
+
+    **A table of situations with the expected answer beside each**, rather than
+    one test per branch. That is the shape CLAUDE.md asks for after the tile
+    sentence went wrong: asking "which state produces this outcome" confirms a
+    branch, asking "given this situation, what should happen" judges the choice
+    and forces the edges out into the open.
+
+    The two rows that matter most are 20:45 and 20:46. Testing the starting
+    moment alone would pass both and ship exactly the advice the installer drew
+    the window to prevent.
+    """
+    assert _dryer().may_run_at(minutes_since_midnight(moment)) is allowed, why
+
+
+def test_without_a_duration_only_the_starting_moment_is_judged() -> None:
+    """No run to place, so no run to keep out — and never a guessed length."""
+    device = _dryer(duration_minutes=None)
+
+    assert device.may_run_at(minutes_since_midnight("22:00")) is True
+    assert device.may_run_at(minutes_since_midnight("23:30")) is False
+
+
+def test_half_a_no_run_window_restricts_nothing() -> None:
+    """One edge cannot say when the ban lifts, and midnight is not assumed.
+
+    Guessing would be an unwritten rule, which is the invisible assumption this
+    project keeps paying for (SPEC.md §47).
+    """
+    device = _dryer(no_run_until=None)
+
+    assert device.has_no_run_window is False
+    assert device.may_run_at(minutes_since_midnight("23:30")) is True
+
+
+def test_a_home_without_a_ban_is_never_restricted() -> None:
+    """The ordinary appliance, which is most of them."""
+    device = _dryer(no_run_from=None, no_run_until=None)
+
+    assert all(device.may_run_at(minute) for minute in range(0, 1440, 30))
+
+
+def test_a_deadline_inside_the_ban_is_reported() -> None:
+    """The category that came into being with the ban (SPEC.md §51).
+
+    The washing machine of woning 2, made impossible: it must be finished
+    between 07:00 and 08:00 and takes ninety minutes, so it has to start between
+    05:30 and 06:30 — and every one of those minutes is inside a ban that runs
+    to 07:00. Without this the appliance is never advised and nothing says why.
+
+    **Both ends of the ready window are set on purpose.** With only a deadline
+    there is no start window to test against, and claiming impossibility would
+    be inventing an answer; see `_deadline_is_reachable`.
+    """
+    device = DeviceProfile(
+        id="wasmachine",
+        device_type=DEVICE_TYPE_WASHING_MACHINE,
+        duration_minutes=90,
+        ready_from="07:00",
+        ready_before="08:00",
+        no_run_from="23:00",
+        no_run_until="07:00",
+    )
+
+    issues = validate_device_profile(device)
+
+    assert _fields(issues) == {"no_run_from"}
+    assert VALIDATION_INVALID_TIME_WINDOW in _codes(issues)
+
+
+def test_a_deadline_the_ban_still_leaves_room_for_is_accepted() -> None:
+    """The pair of the test above, and the reason it is not simply "both set".
+
+    Same ban, same duration, the whole window four hours later: finished between
+    11:00 and 12:00 means starting between 09:30 and 10:30, which the ban does
+    not touch at all.
+    """
+    device = DeviceProfile(
+        id="wasmachine",
+        device_type=DEVICE_TYPE_WASHING_MACHINE,
+        duration_minutes=90,
+        ready_from="11:00",
+        ready_before="12:00",
+        no_run_from="23:00",
+        no_run_until="07:00",
+    )
+
+    assert validate_device_profile(device) == []
+
+
+def test_an_equal_ban_start_and_end_is_refused() -> None:
+    """Zero length or a whole day: there is no way to tell which was meant."""
+    device = _dryer(no_run_from="23:00", no_run_until="23:00")
+
+    issues = validate_device_profile(device)
+
+    assert _fields(issues) == {"no_run_until"}
+
+
+def test_a_broken_ban_time_is_kept_and_reported() -> None:
+    """The rule of SPEC.md §49.2, applied to the field it arrived with."""
+    device = DeviceProfile.from_dict(
+        {
+            "id": "d1",
+            "device_type": DEVICE_TYPE_DRYER,
+            "no_run_from": "0730:00",
+            "no_run_until": "07:00",
+        }
+    )
+
+    assert device.no_run_from == "0730:00"
+    assert _fields(validate_device_profile(device)) == {"no_run_from"}
+
+
+def test_a_broken_ban_time_restricts_nothing_meanwhile() -> None:
+    """A typo may not quietly stop every advice while it is being fixed."""
+    device = _dryer(no_run_from="ochtend")
+
+    assert device.may_run_at(minutes_since_midnight("23:30")) is True

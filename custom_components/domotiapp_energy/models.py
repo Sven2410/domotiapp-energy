@@ -310,6 +310,39 @@ def minutes_since_midnight(value: str | None) -> int | None:
     return int(hour) * MINUTES_PER_HOUR + int(minute)
 
 
+def is_within_window(now_minutes: int, start_minutes: int, finish_minutes: int) -> bool:
+    """Return whether a moment falls inside a window that may cross midnight.
+
+    Shared by the device time windows, the no-run window and the quiet hours so
+    all three interpret "22:00 to 06:00" the same way (SPEC.md §16). The start is
+    inclusive and the finish exclusive, so two adjacent windows never both
+    contain a moment.
+
+    It lives here rather than in :mod:`.validators` because
+    :meth:`DeviceProfile.may_run_at` needs it and validators already imports
+    models; :mod:`.validators` re-exports the name so existing callers are
+    unaffected.
+    """
+    if start_minutes < finish_minutes:
+        return start_minutes <= now_minutes < finish_minutes
+    # The window wraps: it runs from the start to midnight and on to the finish.
+    return now_minutes >= start_minutes or now_minutes < finish_minutes
+
+
+def _covers(start_minutes: int, duration: int, moment: int) -> bool:
+    """Return whether a run of this length steps over a given minute of the day.
+
+    The third case :meth:`DeviceProfile.may_run_at` has to rule out: a run whose
+    two ends both sit outside the ban because it is long enough to jump the
+    whole thing.
+    """
+    if duration <= 0:
+        return False
+    if duration >= MINUTES_PER_DAY:
+        return True
+    return (moment - start_minutes) % MINUTES_PER_DAY < duration
+
+
 def time_at_minutes(minutes: int) -> str:
     """Return minutes past midnight as "HH:MM", wrapping past a full day.
 
@@ -881,6 +914,14 @@ class DeviceProfile:
     # which is what finally gives that field a job.
     ready_from: str | None = None
     ready_before: str | None = None
+    # When this appliance may **not run at all** (SPEC.md §51). A different
+    # question from the ready window and from the quiet hours, and it needed to
+    # be: the ready window bounds when it must be *finished*, the quiet hours
+    # are the resident's preference about being disturbed, and this is a
+    # property of the installation — the dryer under the children's bedroom.
+    # A resident who shortens his quiet hours must not lose it.
+    no_run_from: str | None = None
+    no_run_until: str | None = None
     days_of_week: list[int] = field(default_factory=lambda: list(ALL_DAYS_OF_WEEK))
     notes: str | None = None
     # Left as TYPE_DEFAULT unless the installer chose a value; __post_init__
@@ -924,6 +965,8 @@ class DeviceProfile:
             "duration_minutes": self.duration_minutes,
             "ready_from": self.ready_from,
             "ready_before": self.ready_before,
+            "no_run_from": self.no_run_from,
+            "no_run_until": self.no_run_until,
             "days_of_week": list(self.days_of_week),
             "notes": self.notes,
             "is_noisy": self.is_noisy,
@@ -966,6 +1009,10 @@ class DeviceProfile:
             # migrate_time_window for why the arithmetic is what it is.
             ready_from=ready_from,
             ready_before=ready_before,
+            # Kept rather than dropped, on the same terms as the ready window:
+            # these are what the installer typed (SPEC.md §49.2).
+            no_run_from=_kept_time(data.get("no_run_from")),
+            no_run_until=_kept_time(data.get("no_run_until")),
             days_of_week=_as_days_of_week(data.get("days_of_week")),
             notes=_as_optional_str(data.get("notes")),
             # Absent or unusable leaves the sentinel in place, so __post_init__
@@ -1037,6 +1084,65 @@ class DeviceProfile:
         when you ask (SPEC.md §32).
         """
         return self.ready_from is not None and self.ready_before is not None
+
+    @property
+    def has_no_run_window(self) -> bool:
+        """Return whether this appliance has hours it may not run in.
+
+        **Both edges, like every other window on a 24-hour clock.** "Not from
+        23:00" alone cannot say when the ban lifts, and guessing midnight would
+        be an unwritten rule — exactly the invisible assumption this project
+        keeps being bitten by. A half-filled window therefore restricts nothing
+        and the validator says so (SPEC.md §51).
+        """
+        return self.no_run_from is not None and self.no_run_until is not None
+
+    def may_run_at(self, start_minutes: int) -> bool:
+        """Return whether a run beginning at this moment stays out of the ban.
+
+        **The whole run, not the starting moment**, and that is the point of
+        this method existing at all. A dryer banned from 23:00 that takes 135
+        minutes may not be started at 22:00 either: it would still be turning at
+        half past midnight, in the bedroom the ban was drawn for. Testing only
+        the start would have produced exactly the advice the installer wrote the
+        window to prevent.
+
+        Without a duration there is no run to place, so only the starting moment
+        can be judged. That is the safe half-answer and never a guessed length
+        (SPEC.md §12).
+
+        A window whose end precedes its start crosses midnight — 23:00 to 07:00
+        is the case this was built for — and is read the way every window in
+        this engine is read.
+        """
+        if not self.has_no_run_window:
+            return True
+
+        ban_from = minutes_since_midnight(self.no_run_from)
+        ban_until = minutes_since_midnight(self.no_run_until)
+        if ban_from is None or ban_until is None or ban_from == ban_until:
+            # Unreadable or a zero-length window: restrict nothing rather than
+            # everything. The validator reports it; the engine does not punish
+            # the resident for a typo by refusing to advise at all.
+            return True
+
+        # **The run occupies [start, start + duur), end exclusive.** The same
+        # convention `is_within_window` uses, and for the same reason: a cycle
+        # that finishes at 23:00 is not running at 23:00, so it must not collide
+        # with a ban that begins there. Treating the endpoint as occupied would
+        # be one minute stricter than the truth and nothing on screen would
+        # explain the difference.
+        duration = self.duration_minutes or 0
+        last_active = max(duration - 1, 0)
+        for offset in (0, last_active):
+            if is_within_window(
+                (start_minutes + offset) % MINUTES_PER_DAY, ban_from, ban_until
+            ):
+                return False
+        # Both ends outside the ban still leaves the case where the run steps
+        # straight over it — start 22:00, ban 23:00-07:00, ten hours long. That
+        # happens exactly when the ban's start falls inside the run.
+        return not _covers(start_minutes, last_active, ban_from)
 
     @property
     def latest_start(self) -> str | None:

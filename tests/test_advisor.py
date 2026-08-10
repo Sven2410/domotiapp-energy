@@ -46,6 +46,7 @@ from custom_components.domotiapp_energy.engine.reason_codes import (
     REASON_LOW_ENERGY_PRICE,
     REASON_MISSING_REQUIRED_DATA,
     REASON_NEUTRAL_ENERGY_SITUATION,
+    REASON_OUTSIDE_ALLOWED_WINDOW,
     REASON_QUIET_HOURS_ACTIVE,
     REASON_SOLAR_SURPLUS_AVAILABLE,
 )
@@ -2156,3 +2157,91 @@ async def test_advice_about_the_house_is_never_deduplicated(
 
     assert REASON_DEADLINE_APPROACHING in codes
     assert REASON_LOW_ENERGY_PRICE in codes
+
+
+# --- The no-run window (SPEC.md §51) ----------------------------------------
+
+
+async def test_an_appliance_inside_its_ban_is_not_advised(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """The window is respected, not mentioned — the advice simply is not there.
+
+    Sven's dryer, at half past eleven at night with surplus on the roof. Before
+    the ban existed this produced "benut je zonneoverschot" for a machine under
+    a sleeping child.
+    """
+    freezer.move_to(local(23, 30))
+    config = _config(min_solar_surplus_w=500.0)
+    config.devices.append(
+        _device(is_noisy=False, no_run_from="23:00", no_run_until="07:00")
+    )
+    metrics = _metrics(solar_surplus_w=1500.0)
+
+    assert REASON_SOLAR_SURPLUS_AVAILABLE not in _codes(
+        Advisor().generate(config, metrics)
+    )
+
+
+async def test_the_ban_says_why_there_is_no_advice(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """Silence with no reason is what sends an installer hunting (SPEC.md §51).
+
+    This is what Sven asked for in so many words: *"de reden zichtbaar wanneer
+    hij een advies onderdrukt, zodat ik niet zoek naar waarom er niets komt."*
+    """
+    freezer.move_to(local(23, 30))
+    config = _config(min_solar_surplus_w=500.0)
+    config.devices.append(
+        _device(is_noisy=False, no_run_from="23:00", no_run_until="07:00")
+    )
+    metrics = _metrics(solar_surplus_w=1500.0)
+
+    advice = Advisor().generate(config, metrics)
+    item = next(i for i in advice if i.reason_code == REASON_OUTSIDE_ALLOWED_WINDOW)
+
+    # It names the window and where the rule was set, and points away from the
+    # quiet hours — which is where a resident would otherwise go looking.
+    assert "23:00" in item.message
+    assert "07:00" in item.message
+    assert "stille uren" in item.message
+    # No euro amount beside "not now": that reads as an argument against the
+    # "not", the same reason the quiet-hours deferral carries none.
+    assert item.estimated_savings_eur is None
+
+
+async def test_an_appliance_outside_its_ban_is_advised_normally(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """The other half: the ban restricts the night, not the afternoon."""
+    freezer.move_to(local(14, 0))
+    config = _config(min_solar_surplus_w=500.0)
+    config.devices.append(
+        _device(is_noisy=False, no_run_from="23:00", no_run_until="07:00")
+    )
+    metrics = _metrics(solar_surplus_w=1500.0)
+
+    assert REASON_SOLAR_SURPLUS_AVAILABLE in _codes(Advisor().generate(config, metrics))
+
+
+async def test_a_usable_appliance_beats_a_banned_one(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """The explanation must never displace advice the resident can act on.
+
+    The same rule the quiet-hours deferral follows: ask without the restriction
+    first, and only explain when there is nothing left to suggest.
+    """
+    freezer.move_to(local(23, 30))
+    config = _config(min_solar_surplus_w=500.0)
+    config.devices.append(
+        _device(id="droger", is_noisy=False, no_run_from="23:00", no_run_until="07:00")
+    )
+    config.devices.append(_device(id="boiler", name="Boiler", is_noisy=False))
+    metrics = _metrics(solar_surplus_w=1500.0)
+
+    codes = _codes(Advisor().generate(config, metrics))
+
+    assert REASON_SOLAR_SURPLUS_AVAILABLE in codes
+    assert REASON_OUTSIDE_ALLOWED_WINDOW not in codes

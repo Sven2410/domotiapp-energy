@@ -613,6 +613,30 @@ function windowFields(draft) {
       selector: { time: { no_second: true } },
     },
     {
+      name: 'no_run_from',
+      label: 'Niet draaien vanaf',
+      // A different question from both fields above it, and from the quiet
+      // hours. Those two say when it must be *finished*; the quiet hours are
+      // the resident's preference about being disturbed. This is a property of
+      // the installation — the dryer against the children's bedroom wall — and
+      // it must survive a resident who shortens his quiet hours (SPEC.md §51).
+      helper:
+        'Uren waarin dit apparaat helemaal niet mag draaien, bijvoorbeeld ' +
+        'omdat het onder een slaapkamer staat. Laat beide leeg als er geen ' +
+        'verbod is. Een cyclus die het venster in zou lopen wordt ook niet ' +
+        'geadviseerd, dus een droger van ruim twee uur krijgt bij een verbod ' +
+        'vanaf 23:00 al vanaf 20:45 geen advies meer.',
+      selector: { time: { no_second: true } },
+    },
+    {
+      name: 'no_run_until',
+      label: 'Weer toegestaan vanaf',
+      helper:
+        'Ligt deze tijd vóór "niet draaien vanaf", dan loopt het verbod door ' +
+        'tot de volgende dag — 23:00 tot 07:00 is het normale geval.',
+      selector: { time: { no_second: true } },
+    },
+    {
       name: 'days_of_week',
       label: 'Dagen',
       helper: 'Op welke dagen dit apparaat mag draaien.',
@@ -832,6 +856,8 @@ function labelOf(name) {
   const known = {
     ready_before: 'Klaar uiterlijk om',
     ready_from: 'Niet eerder klaar dan',
+    no_run_from: 'Niet draaien vanaf',
+    no_run_until: 'Weer toegestaan vanaf',
     days_of_week: 'Dagen',
     control_forbidden_reason: 'Reden',
     // The five that stop being asked once an appliance is only measured. They
@@ -950,6 +976,8 @@ const SECTIONS = [
       'is_noisy',
       'ready_before',
       'ready_from',
+      'no_run_from',
+      'no_run_until',
       'days_of_week',
     ],
   },

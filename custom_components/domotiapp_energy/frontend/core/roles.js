@@ -50,6 +50,13 @@ const RESIDENT_FIELDS = {
    * `is_flexible` is absent for a related reason — it is a statement about the
    * machine, where `is_noisy` is one about the household.
    *
+   * **`no_run_from` and `no_run_until` are absent on purpose** (SPEC.md §51).
+   * They look like the ready window and they are the opposite kind of thing: a
+   * property of the installation, set once because the dryer stands under a
+   * bedroom. Letting the resident edit them would put his convenience in charge
+   * of the neighbour's night, and the whole reason the field exists is that the
+   * quiet hours — which he *does* own — must not be the only protection.
+   *
    * Keep this in step with `DEVICE_OPERATION_FIELDS` in `const.py`: that tuple
    * is the backend allow-list for `devices/set_operation`, and a field greyed
    * in here but missing there is a control that refuses its own save.
