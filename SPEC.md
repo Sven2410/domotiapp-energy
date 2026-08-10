@@ -6234,3 +6234,72 @@ opmerkelijk voor een woningronde en het is de eerste keer.
 precies de gevallen die de vijf eerdere rondes hebben opgeruimd. De "niet van
 toepassing"-vorm is vijf keer als klacht binnengekomen en is nu het enige gedrag
 dat deze woning te zien krijgt.
+
+### 58.4 Wat er gebouwd is, en waarom het één regel werd
+
+**0.20.0.** De twee punten van §58.2 bleken dezelfde vraag te stellen, en het
+antwoord erop dekte een derde plek af die niemand gemeld had.
+
+**De regel, in één zin:** *een rij of een kop bestaat omdat er iets te zeggen
+is; ontbreekt dat, dan zwijgt zij in plaats van het gebrek te benoemen.*
+
+#### 1. De kop heet nu "Gegevens voor je advies"
+
+Hij noemt het onderwerp en niet het tekort, en is daarmee waar in beide
+toestanden. Of er iets ontbreekt is een feit over dit moment, dus het staat
+waar de feiten staan: **boven de lijst verschijnt "Nog ontbrekend:"**, en die
+regel verdwijnt met de lijst mee. Dezelfde woorden waarmee de coach zelf de
+vraag *"Welke gegevens ontbreken nog?"* beantwoordt (`engine/providers.py`), zodat
+kaart en antwoord niet uiteenlopen.
+
+**Overwogen en niet gedaan: de kop "Datakwaliteit" noemen**, zoals de tegel op
+Overzicht en de checklist in de backend. Het verbindt de twee schermen
+letterlijk — Overzicht stuurt de bewoner hierheen — maar het zet een meetterm
+boven een lijst zonder cijfer, en dit is het tabblad dat de bewoner leest in
+plaats van invult.
+
+#### 2. Een bedrag dat niet bestaat is geen bedrag dat mislukte
+
+*"Geschatte besparing: Niet te berekenen"* verdween niet door een betere zin
+maar door de vraag *wie vult dit veld ooit?* **Alleen het zonneoverschot-advies
+draagt ooit een bedrag.** Bij elk ander advies kondigde de rij dus een som aan
+die nooit geprobeerd is — en bij *"de situatie vraagt niet om een aanpassing"*
+is dat precies het geval dat Sven meldde.
+
+De rij verschijnt nu wanneer er een bedrag is. Is er geen:
+
+- **Werd er wél gerekend en lukte het niet**, dan staat de reden al in het
+  advies zelf, mét het veld dat de som stopte (`_why_no_amount`). Dat is meer
+  waard dan *"Niet te berekenen"* ooit was, en het staat één regel hoger.
+- **Werd er niet gerekend**, dan valt er niets te melden.
+
+#### 3. De derde plek: de laadpaal die zijn eigen bedrag niet te zien kreeg
+
+Uit dezelfde vraag rolde een fout die in §58 niet gemeld was. Voor een
+modulerende paal is het totaal met opzet leeg en is `savings_rate_eur_per_hour`
+het antwoord (§56.4) — maar het hoofdadvies las alleen `estimated_savings_eur`.
+De klant kreeg dus *"Niet te berekenen"* terwijl het bedrag ongebruikt in de
+payload zat. De lijst met overige adviezen toont het sinds 0.18.0 wel; het
+hoofdadvies had er geen plek voor.
+
+Er is nu een tweede rij, **"Geschatte opbrengst per uur"**, met de kwalificatie
+*"Zolang dit zonneoverschot er is."* eronder. Een eigen label en een eigen rij,
+want § 56.4 eist dat de twee bedragen nooit in dezelfde regel of dezelfde
+vergelijking komen: € 1,20 en € 0,12 zijn allebei waar en beantwoorden een
+andere vraag.
+
+#### Wat hiermee stil werd, en waarom dat mag
+
+Een modulerend apparaat waarvan óók het uurbedrag niet te berekenen is — geen
+leesbare prijs, dus geen marge — toont nu geen van beide rijen en het advies
+zegt er niets over. Dat is bewust: de datakwaliteit meldt de ontbrekende
+prijsinformatie al, en de coach noemt hem in zijn antwoord op *"welke gegevens
+ontbreken nog?"*. Dezelfde afweging als bij de netmeting op Overzicht — een
+gat dat de kaart elders al meldt, wordt niet twee keer gemeld.
+
+**Wat dit niet oplost:** het advies zelf legt in dat geval niet uit waarom er
+geen bedrag staat, terwijl de niet-modulerende tak dat wel doet. Dat is een
+uitbreiding van `_surplus_message` en hoort bij §56, niet bij een tekstronde;
+`_why_no_amount` mag er niet zomaar op losgelaten worden, want die begint met
+de energie per cyclus en dat is precies het veld dat een modulerende paal niet
+gebruikt.

@@ -106,38 +106,175 @@ describe('the primary advice', () => {
     assert.equal(rowFor(tab, 'Reden').visible, false);
   });
 
-  it('says a saving could not be calculated instead of showing zero', async () => {
-    const { tab } = await openCoachTab();
+});
 
-    // "No saving" and "a saving of nothing" are different statements, and only
-    // one of them is true here (SPEC.md §16).
-    assert.equal(rowFor(tab, 'Geschatte besparing').value, 'Niet te berekenen');
-  });
+/** The surplus advice: the only kind that ever carries an amount. */
+function surplusAdvice(overrides = {}) {
+  return {
+    id: 'solar_surplus_available',
+    title: 'Zonneoverschot beschikbaar',
+    message: 'Dit is een gunstig moment om Vaatwasser te gebruiken.',
+    severity: 'info',
+    reason_code: 'solar_surplus_available',
+    confidence: 'high',
+    ...overrides,
+  };
+}
 
-  it('shows a calculated saving of zero as zero', async () => {
-    const coach = answeredCoach();
-    coach.primary_advice = { ...coach.primary_advice, estimated_savings_eur: 0 };
-    const { tab } = await openCoachTab(fakeHass({ coach }));
+/**
+ * Which amount belongs under the primary advice, per situation.
+ *
+ * **Written from the situation and not from the branch** (CLAUDE.md, the sixth
+ * variant). Asking "which state gets me this row on screen" would have
+ * confirmed the defect these tests exist for: the row read "Niet te berekenen"
+ * under advice that has no amount to begin with, and every earlier test agreed
+ * with it because the sample advice happened to be exactly that case.
+ *
+ * One row per situation, with the verdict beside it. `null` means the row may
+ * not be on the screen at all — there is nothing to say, and "Niet te
+ * berekenen" says something: that a sum was attempted and failed.
+ */
+describe('the amount under the primary advice', () => {
+  const situations = [
+    {
+      name: 'a surplus whose saving was calculated: the amount',
+      advice: surplusAdvice({ estimated_savings_eur: 0.34 }),
+      saving: /0,34/,
+      rate: null,
+    },
+    {
+      name: 'a surplus that earns nothing extra: zero is an answer',
+      // Under net metering this is the normal case (SPEC.md §16).
+      advice: surplusAdvice({ estimated_savings_eur: 0 }),
+      saving: /0,00/,
+      rate: null,
+    },
+    {
+      name: 'a surplus that currently costs money: the negative amount',
+      advice: surplusAdvice({ estimated_savings_eur: -0.05 }),
+      saving: /0,05/,
+      rate: null,
+    },
+    {
+      name: 'a modulating appliance: a rate per hour, and no total',
+      // The total is empty on purpose — there is no cycle to price — and the
+      // rate is the answer (SPEC.md §56.4). This card used to show neither.
+      advice: surplusAdvice({
+        estimated_savings_eur: null,
+        savings_rate_eur_per_hour: 0.12,
+      }),
+      saving: null,
+      rate: /0,12/,
+    },
+    {
+      name: 'a surplus whose sum could not be made: nothing, the message says why',
+      advice: surplusAdvice({
+        message:
+          'Hoeveel dit oplevert is niet te berekenen zonder de energie per ' +
+          'cyclus van Vaatwasser — vul die in bij Apparaten.',
+      }),
+      saving: null,
+      rate: null,
+    },
+    {
+      name: 'nothing to change, so nothing to save: no amount at all',
+      advice: {
+        id: 'neutral_energy_situation',
+        title: 'Geen actie nodig',
+        message: 'De actuele energiesituatie vraagt niet om een aanpassing.',
+        severity: 'info',
+        reason_code: 'neutral_energy_situation',
+        confidence: 'medium',
+      },
+      saving: null,
+      rate: null,
+    },
+    {
+      name: 'a warning about peak load: no amount either',
+      advice: {
+        id: 'high_grid_load',
+        title: 'Hoge netbelasting',
+        message: 'Stel zwaar verbruik uit tot de belasting daalt.',
+        severity: 'warning',
+        reason_code: 'high_grid_load',
+        confidence: 'high',
+      },
+      saving: null,
+      rate: null,
+    },
+  ];
 
-    // Under net metering this is the normal case, and it is an answer.
-    assert.match(rowFor(tab, 'Geschatte besparing').value, /0,00/);
-  });
+  for (const situation of situations) {
+    it(situation.name, async () => {
+      const coach = answeredCoach({ primary_advice: situation.advice });
+      coach.advice = [situation.advice];
+      const { tab } = await openCoachTab(fakeHass({ coach }));
+
+      for (const [label, expected] of [
+        ['Geschatte besparing', situation.saving],
+        ['Geschatte opbrengst per uur', situation.rate],
+      ]) {
+        const row = rowFor(tab, label);
+        if (expected === null) {
+          assert.equal(row.visible, false, `${label} may not be on screen here`);
+        } else {
+          assert.equal(row.visible, true, `${label} belongs on screen here`);
+          assert.match(row.value, expected);
+        }
+      }
+      // Whatever the situation, no reading the customer can see reports a sum
+      // that failed. The phrase is guarded literally so it cannot come back as
+      // an empty text on either row.
+      const visibleValues = [...tab.querySelectorAll('.stat-row')]
+        .filter(isVisible)
+        .map((node) => node.querySelector('.stat-value').textContent);
+      assert.ok(!visibleValues.some((text) => text.includes('Niet te berekenen')));
+    });
+  }
 });
 
 describe('the display preferences', () => {
-  it('hides the saving when the customer does not want it', async () => {
-    const hass = fakeHass({
-      config: sampleConfig({
-        preferences: { max_advice_count: 3, show_estimated_savings: false },
+  /**
+   * The preference, over both shapes an amount can take.
+   *
+   * **Each case uses advice that actually carries the figure it is hiding.**
+   * The earlier version of this test used the sample advice, which has no
+   * amount at all — so it passed whatever the preference did, and would have
+   * gone on passing if the preference had stopped working entirely (CLAUDE.md,
+   * a fixture that codifies the behaviour that happens to be there).
+   *
+   * The two never occur together: a total is empty exactly when the appliance
+   * modulates, and the rate exists only then (SPEC.md §56.4).
+   */
+  for (const [label, advice] of [
+    ['Geschatte besparing', surplusAdvice({ estimated_savings_eur: 0.34 })],
+    [
+      'Geschatte opbrengst per uur',
+      surplusAdvice({
+        estimated_savings_eur: null,
+        savings_rate_eur_per_hour: 0.12,
       }),
-      coach: answeredCoach(),
-    });
-    const { tab } = await openCoachTab(hass);
+    ],
+  ]) {
+    it(`shows "${label}" only when the customer wants amounts`, async () => {
+      const coach = answeredCoach({ primary_advice: advice });
 
-    assert.equal(rowFor(tab, 'Geschatte besparing').visible, false);
-    // The neighbouring rows are unaffected by this one preference.
-    assert.equal(rowFor(tab, 'Reden').visible, true);
-  });
+      const shown = await openCoachTab(fakeHass({ coach }));
+      assert.equal(rowFor(shown.tab, label).visible, true);
+
+      const hidden = await openCoachTab(
+        fakeHass({
+          config: sampleConfig({
+            preferences: { max_advice_count: 3, show_estimated_savings: false },
+          }),
+          coach: answeredCoach({ primary_advice: advice }),
+        }),
+      );
+      assert.equal(rowFor(hidden.tab, label).visible, false);
+      // The neighbouring rows are unaffected by this one preference.
+      assert.equal(rowFor(hidden.tab, 'Reden').visible, true);
+    });
+  }
 
   it('hides the technical reason when the customer does not want it', async () => {
     const hass = fakeHass({
@@ -292,6 +429,41 @@ describe('missing data and recalculating', () => {
     );
 
     assert.ok(noticeTexts(tab).some((t) => t.includes('zijn ingevuld')));
+  });
+
+  it('does not promise a shortfall in the heading and then deny it', async () => {
+    // For a home where nothing is missing, "Ontbrekende gegevens" was the last
+    // heading on the screen still pointing at a gap — above the sentence that
+    // says there is none (SPEC.md §58.2).
+    const { tab } = await openCoachTab(
+      fakeHass({ coach: answeredCoach({ missing_data: [] }) }),
+    );
+
+    const headings = [...tab.querySelectorAll('.card-title')].map((n) => n.textContent);
+    assert.ok(headings.includes('Gegevens voor je advies'));
+    assert.ok(!headings.some((text) => text.toLowerCase().includes('ontbrekende')));
+  });
+
+  it('introduces the list, so a neutral heading leaves no bare nouns', async () => {
+    // The framing moved from the chrome into the state: it is said only when
+    // there is a list under it, in the words the coach itself uses.
+    const { tab } = await openCoachTab();
+
+    const lead = [...tab.querySelectorAll('.advice-message')]
+      .filter(isVisible)
+      .map((node) => node.textContent);
+    assert.ok(lead.includes('Nog ontbrekend:'));
+  });
+
+  it('drops the lead line together with the list', async () => {
+    const { tab } = await openCoachTab(
+      fakeHass({ coach: answeredCoach({ missing_data: [] }) }),
+    );
+
+    const lead = [...tab.querySelectorAll('.advice-message')]
+      .filter(isVisible)
+      .map((node) => node.textContent);
+    assert.ok(!lead.includes('Nog ontbrekend:'));
   });
 
   it('recalculates on request and shows the fresh result', async () => {
