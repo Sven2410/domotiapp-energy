@@ -1,5 +1,49 @@
 # Changelog
 
+## 0.18.0
+
+De twee structurele gaten van woning 3, samen. SPEC §56.
+
+### Toegevoegd
+
+- **Een deadline die niet elke dag hoeft te gelden** (`ready_days`). De bewoner van woning 3:
+  *"laad hem vol als ik morgen weg moet, en anders alleen wanneer het gunstig is."* Dat was
+  niet in te vullen — de deadline had geen eigen dagdimensie en erfde die van `days_of_week`,
+  dus meedoen impliceerde een deadline.
+
+  Op een dag zonder deadline doet het apparaat gewoon mee aan het zonne- en prijsadvies, en
+  krijgt het geen urgentie-advies over een tijd die er niet is. Leeg laten betekent elke dag,
+  wat het altijd deed — er migreert niets.
+
+- **Apparatuur die op deelvermogen kan draaien** (`can_modulate`, `min_power_w`). Een laadpaal
+  werd beoordeeld op zijn maximum, dus bij 2100 W overschot en een paal van 3680 W zweeg hij
+  en werd de wasmachine geadviseerd. Op de gewone Nederlandse middag — auto thuis, panelen
+  leveren minder dan het laadmaximum — kreeg de klant dus geen advies over precies het
+  apparaat waarvoor hij dit systeem kocht.
+
+  **Een wasmachine kan het overschot niet aannemen, een laadpaal wel.** De regel is daarom
+  additief: niet-modulerende apparatuur wordt onveranderd op haar volle vermogen beoordeeld.
+
+  `min_power_w` heeft geen standaard en kan die niet hebben: zes ampère is 1380 W op één fase
+  en 4140 W op drie. Daardoor is de overstap vanzelf veilig — `can_modulate` staat standaard
+  aan voor een laadpaal, en zonder dat minimum verandert er niets.
+
+- **Een besparing per uur** voor apparatuur zonder cyclus. Het advies "laad op wat er over is"
+  heeft geen einde, dus er is geen totaal; `energie_per_cyclus × marge` zette een
+  overtuigende € 1,20 onder advies over de eerstvolgende twintig minuten zon.
+
+  Het totaal blijft daarom **leeg**, en dat is het juiste antwoord en geen gebrek. Het heeft
+  bovendien een tweede werking: `estimated_savings_eur` is waar de drempel `min_savings_eur`
+  tegenaan gelegd wordt, en een tarief in dat veld zou tegen een totaal vergeleken worden —
+  een paal die € 0,12 per uur oplevert zou achter een drempel van € 0,25 verdwijnen.
+
+### Fixed
+
+- **De zin sprak het bedrag tegen.** Met een leeg totaal las `_surplus_message` "de som kon
+  niet gemaakt worden" en ging op zoek naar de ontbrekende term — dus een laadpaal met een
+  prima tarief eronder vertelde de installateur de terugleverkosten in te vullen die hij net
+  had ingevoerd. Gevonden in de browser, want elke laag eronder klopte met zichzelf.
+
 ## Onuitgebracht
 
 ### Documentatie

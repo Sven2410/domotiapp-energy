@@ -69,6 +69,9 @@ const RESIDENT_FIELDS = {
     // only the half that adds a requirement would make "geen eis" something
     // only the installer can express (SPEC.md §52).
     'runs_any_time',
+    // The days his deadline applies on (SPEC.md §56.1) — the same reasoning
+    // as `runs_any_time`: he sets the deadline, so he says when it counts.
+    'ready_days',
     'days_of_week',
     'is_noisy',
     'priority',

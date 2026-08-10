@@ -30,7 +30,7 @@ import { logbookTab } from './tabs/logbook.js';
 import { overviewTab } from './tabs/overview.js';
 import { preferencesTab } from './tabs/preferences.js';
 
-const VERSION = '0.17.0';
+const VERSION = '0.18.0';
 
 /**
  * Tab order as SPEC.md §33.6 lists it.
