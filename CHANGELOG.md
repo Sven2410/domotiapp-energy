@@ -1,7 +1,5 @@
 # Changelog
 
-## Onuitgebracht
-
 ## 0.20.0
 
 Een lege plek zegt nu niets in plaats van "mislukt". SPEC §58.2, uitgewerkt in §58.4.
