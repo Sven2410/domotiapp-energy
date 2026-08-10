@@ -1,5 +1,47 @@
 # Changelog
 
+## 0.13.1
+
+De voorrangsregel van 0.13.0 omgedraaid waar zij verkeerd was.
+
+### Fixed
+
+- **Bij een vast contract wint het ingevulde tarief van een gekoppelde prijsbron.** 0.13.0
+  liet een meting overal winnen, en toonde € 0,306 uit een testbron aan een woning die
+  € 0,24171 betaalt. Een vast tarief is een *afspraak*, geen meting; een bron kan om
+  allerlei redenen gekoppeld zijn en geen daarvan is wat de klant betaalt.
+
+  Bij een dynamisch contract blijft de bron leidend — daar verandert de prijs werkelijk per
+  uur. Staat het tariefveld bij een vast contract leeg, dan vult de bron alsnog aan.
+
+- **De rij zegt nu wat een gekoppelde bron hier wel en niet doet.** Een bron die compleet
+  is, gelezen wordt en niets bepaalt, wekt anders de indruk dat hij meetelt (SPEC §48.4).
+
+  De zin draagt beide helften: *"De gekoppelde prijsbron bepaalt dit bedrag niet, maar neemt
+  het over zodra dit veld leeg is of het contract dynamisch wordt."* Alleen de eerste helft
+  was te absoluut — dan leest een installateur dat de rij dood gewicht is en verwijdert hij
+  haar, waarna de volgende contractwijziging zonder prijs aankomt.
+
+### Documentatie
+
+- **SPEC §48.5:** de terugleverbron staat hier los van. Leveren en terugleveren zijn losse
+  contractdimensies — een vast leveringstarief sluit een variàbele terugleververgoeding niet
+  uit, dus die bron blijft leidend ongeacht de contractsoort.
+
+- **CLAUDE.md:** Sven tagt pas nadat de merge gemeld is. De release-workflow vergelijkt de
+  tag met de versienummers, niet of die commit op `main` staat.
+
+- **SPEC §49: woning 2, tweede helft.** Bevindingenronde zonder code — apparaten, het
+  gereed-venster en de bewonersweergave, ingericht met SPEC.md dicht. Zes bevindingen,
+  waarvan twee stil gegevensverlies en één een onterechte foutmelding op precies de
+  configuratie waarvoor het gereed-venster gebouwd is. Plus wat goed ging, en de
+  voorgestelde volgorde van afhandelen.
+
+- **`_validate_price_components`:** de docstring beweerde dat een vast contract
+  `current_price_eur_kwh` nooit raadpleegt. Dat is sinds 0.13.0 onwaar; het gat eronder
+  (vast contract, marktbasis-bron, leeg tariefveld) is erin opgeschreven in plaats van
+  stil gedicht.
+
 ## 0.13.0
 
 Een vast contract heeft ook een prijs. SPEC §48.

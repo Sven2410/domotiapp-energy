@@ -1422,14 +1422,22 @@ def import_price_now(
     bij een vast contract"* while he had both a filled-in tariff and a working
     price source.
 
-    The order is the point:
+    **The order depends on the contract, and that is the correction of 0.13.1.**
+    0.13.0 let a reading beat a typed number everywhere, and on a fixed contract
+    that is wrong: the overview then showed € 0,306 from a linked market sensor
+    to a customer who pays € 0,24171. Harmless for the developer who knew it was
+    a test source; a price that is simply untrue for anybody else.
 
-    1. **A reading beats a typed number.** The source measures what the customer
-       pays now; the tariff field is a statement from whenever it was typed,
-       and it survives a contract change without complaining.
-    2. **The entered tariff, and only on a fixed contract.** On a dynamic one
-       the field is not even shown in the form, so a value left behind from an
-       earlier contract type would be a silent wrong number.
+    1. **Dynamic contract: the source, or nothing.** The price genuinely changes
+       every hour and only a reading can know it. There is no fallback, because
+       the tariff field is not even shown in that form.
+    2. **Fixed contract: the entered tariff.** A fixed tariff is an agreement,
+       not a measurement. A source may be linked for all sorts of reasons —
+       watching the market, comparing, testing — and none of them are what this
+       house is billed.
+    3. **Fixed contract with the field left empty: the source after all.** A
+       reading beats an empty row, and the panel says where the figure came
+       from.
 
     The contract type therefore says nothing about *whether there is a price* —
     only about whether there is a price to fall back on. What it does decide is
@@ -1437,13 +1445,22 @@ def import_price_now(
     contract has a price **level** and no **variation**, so the price is shown
     and never advised about.
     """
+    if home.contract_type == CONTRACT_TYPE_DYNAMIC:
+        if snapshot.current_price_eur_kwh is None:
+            return None, None
+        return snapshot.current_price_eur_kwh, PRICE_ORIGIN_SOURCE
+
+    # A fixed contract: what the customer states he pays beats what a sensor
+    # happens to report, because a fixed tariff is an agreement and not a
+    # measurement. A source may be linked for all sorts of reasons — watching
+    # the market, comparing, testing — and none of them are what this house is
+    # billed.
+    if home.fixed_import_price_eur_kwh is not None:
+        return home.fixed_import_price_eur_kwh, PRICE_ORIGIN_FIXED_TARIFF
+    # Nothing typed in: a reading is better than an empty row, and the panel
+    # says where it came from.
     if snapshot.current_price_eur_kwh is not None:
         return snapshot.current_price_eur_kwh, PRICE_ORIGIN_SOURCE
-    if (
-        home.contract_type != CONTRACT_TYPE_DYNAMIC
-        and home.fixed_import_price_eur_kwh is not None
-    ):
-        return home.fixed_import_price_eur_kwh, PRICE_ORIGIN_FIXED_TARIFF
     return None, None
 
 

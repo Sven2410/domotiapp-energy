@@ -20,7 +20,7 @@ is dit de invoer en niet de uitvoer.
 - **Engelse regels staan apart**, onderaan. Een Engelse zin in dit product is
   een fout tenzij zij een identifier is: de UI is Nederlands (CLAUDE.md).
 
-**803 Nederlandse teksten**, waarvan 109 op meer dan één plek. En 9 Engelse regels om na te lopen.
+**804 Nederlandse teksten**, waarvan 109 op meer dan één plek. En 9 Engelse regels om na te lopen.
 
 
 ## `custom_components/domotiapp_energy/const.py`
@@ -558,21 +558,21 @@ is dit de invoer en niet de uitvoer.
 
 | Tekst | Waar | Regel |
 |---|---|---|
-| Actief | overview | 342 |
+| Actief | overview | 351 |
 | Actuele energieprijs ↔ | overview | 215 |
 | Actuele situatie | overview | 182 |
 | Advies ↔ | overview | 245 |
-| Alle gegevens voor een betrouwbaar advies zijn ingevuld. ↔ | overview | 415 |
+| Alle gegevens voor een betrouwbaar advies zijn ingevuld. ↔ | overview | 424 |
 | Apparaten die nu draaien | overview | 221 |
 | Datakwaliteit | overview | 152 |
 | De stroomprijs is op dit moment laag, dus er is geen duur verbruik om | overview | 78 |
-| Energiebronnen om je slimme meter of omvormer te koppelen. | overview | 359 |
+| Energiebronnen om je slimme meter of omvormer te koppelen. | overview | 368 |
 | Energiescore | overview | 148 |
 | Er is nog geen cijfer, omdat de installatie nog niet compleet is. | overview | 23 |
 | Er is nu opwek, maar geen apparaat of batterij die verbruik kan | overview | 56 |
-| Er zijn nog geen energiebronnen gekoppeld. Ga naar het tabblad | overview | 358 |
+| Er zijn nog geen energiebronnen gekoppeld. Ga naar het tabblad | overview | 367 |
 | Er zijn op dit moment geen waarschuwingen. | overview | 303 |
-| Fout ↔ | overview | 342 |
+| Fout ↔ | overview | 351 |
 | Geen bruikbare prijsbron | overview | 315 |
 | Geen cijfer | overview | 150 |
 | Het prijsmoment telt niet mee zolang de lage en de hoge prijsdrempel | overview | 104 |
@@ -581,17 +581,17 @@ is dit de invoer en niet de uitvoer.
 | Het prijsmoment telt niet mee, want de stroom is nu goedkoop en er is | overview | 110 |
 | Het tabblad Energiecoach laat zien wat er ontbreekt. | overview | 24 |
 | Het tarief is altijd gelijk en er zijn geen zonnepanelen, dus er is | overview | 37 |
-| Het vermogen van je thuisbatterij kan niet uitgelezen worden. Een | overview | 454 |
-| Je omvormer levert op dit moment geen waarde, dus het | overview | 468 |
+| Het vermogen van je thuisbatterij kan niet uitgelezen worden. Een | overview | 463 |
+| Je omvormer levert op dit moment geen waarde, dus het | overview | 477 |
 | Je panelen leveren op dit moment niets en de stroomprijs is laag. Er | overview | 63 |
 | Je panelen leveren op dit moment niets, en bij een vast tarief is het | overview | 71 |
 | Je panelen leveren op dit moment, maar terugleveren levert je meer op | overview | 45 |
 | Laatste berekening ↔ | overview | 176 |
-| Laden… | overview | 342 |
-| Negatief betekent teruglevering aan het net. | overview | 422 |
+| Laden… | overview | 351 |
+| Negatief betekent teruglevering aan het net. | overview | 431 |
 | Netvermogen | overview | 183 |
 | Niet beschikbaar ↔ | overview | 17 |
-| Nog geen advies berekend ↔ | overview | 485 |
+| Nog geen advies berekend ↔ | overview | 494 |
 | Nog geen prijs bekend — koppel een prijsbron of vul het vaste leveringstarief in | overview | 316 |
 | Nog niet berekend ↔ | overview | 177 |
 | Nog niet ingesteld | overview | 16 |
@@ -600,11 +600,12 @@ is dit de invoer en niet de uitvoer.
 | Percentage van maximum | overview | 208 |
 | Status | overview | 175 |
 | Thuisverbruik | overview | 136 |
-| Vast leveringstarief, zoals ingevuld bij Woning. | overview | 330 |
+| Vast leveringstarief, zoals ingevuld bij Woning. | overview | 332 |
+| Vast leveringstarief, zoals ingevuld bij Woning. De gekoppelde prijsbron bepaalt dit bedrag niet, maar neemt het over zodra dit veld leeg is of het contract dynamisch wordt. | overview | 331 |
 | Waarschuwing ↔ | overview | 287 |
 | Waarschuwingen | overview | 250 |
 | Zelfbenutting | overview | 204 |
-| Zodra er een energiebron gekoppeld is, verschijnt hier het hoofdadvies. ↔ | overview | 488 |
+| Zodra er een energiebron gekoppeld is, verschijnt hier het hoofdadvies. ↔ | overview | 497 |
 | Zolang de lage en de hoge prijsdrempel niet zijn ingevuld, is niet te | overview | 30 |
 | Zonnebenutting telt niet mee, want deze woning heeft geen zonnepanelen. ↔ | overview | 88 |
 | Zonnebenutting telt niet mee, want er is geen apparaat of batterij die | overview | 95 |
@@ -613,20 +614,20 @@ is dit de invoer en niet de uitvoer.
 | Zonnebenutting telt niet mee: terugleveren levert je op dit moment meer | overview | 98 |
 | Zonneoverschot | overview | 191 |
 | Zonneproductie | overview | 187 |
-| batterij die laadt of ontlaadt verschuift wat er van het net | overview | 455 |
+| batterij die laadt of ontlaadt verschuift wat er van het net | overview | 464 |
 | bepalen of dit een duur moment is. Vul ze in bij Installatie. | overview | 31 |
-| bij Energiebronnen. | overview | 470 |
+| bij Energiebronnen. | overview | 479 |
 | dan de stroom je kost. Zelf verbruiken zou je nu geld kosten, dus er | overview | 46 |
-| datakwaliteit is nog niet compleet. Het tabblad Energiecoach | overview | 413 |
-| de batterij om dit op te lossen. | overview | 458 |
+| datakwaliteit is nog niet compleet. Het tabblad Energiecoach | overview | 422 |
+| de batterij om dit op te lossen. | overview | 467 |
 | dus geen duur verbruik om te vermijden. | overview | 111 |
 | ene moment niet beter dan het andere. Er is nu dus niets te verbeteren. | overview | 72 |
 | geen moment dat beter is dan een ander. Er valt daarom niets te | overview | 38 |
 | hoeveel van je opwek je zelf gebruikt. | overview | 93 |
 | is nu dus geen overschot om te benutten en geen duur verbruik om te | overview | 64 |
 | is voordeliger. | overview | 48 |
-| komt, dus het thuisverbruik is niet te berekenen en het | overview | 456 |
-| laat zien welke. | overview | 414 |
+| komt, dus het thuisverbruik is niet te berekenen en het | overview | 465 |
+| laat zien welke. | overview | 423 |
 | moment niet duurder dan het andere. | overview | 102 |
 | niet uit te lezen. | overview | 108 |
 | niet zijn ingevuld. Vul ze in bij Installatie. | overview | 105 |
@@ -634,11 +635,11 @@ is dit de invoer en niet de uitvoer.
 | op dit moment | overview | 149 |
 | optimaliseren. Het advies blijft gewoon werken. | overview | 39 |
 | te vermijden. | overview | 79 |
-| thuisverbruik is niet te berekenen. Controleer de zonnebron | overview | 469 |
+| thuisverbruik is niet te berekenen. Controleer de zonnebron | overview | 478 |
 | valt aan je opwek niets te benutten. De coach zegt hetzelfde: wachten | overview | 47 |
 | verbruik naar dit moment kan verplaatsen. | overview | 96 |
 | verplaatsen. Er valt daarom niets te benutten dat nu niet al gebeurt. | overview | 57 |
-| zonneoverschot kan te hoog zijn. Koppel de vermogenssensor van | overview | 457 |
+| zonneoverschot kan te hoog zijn. Koppel de vermogenssensor van | overview | 466 |
 
 ## `custom_components/domotiapp_energy/frontend/tabs/preferences.js`
 
@@ -869,9 +870,9 @@ is dit de invoer en niet de uitvoer.
 | De hoge prijsgrens moet boven de lage prijsgrens liggen. | _validate_price_thresholds | 426 |
 | De hoofdzekering moet tussen {...} en {...} ampère liggen. | validate_home_profile | 313 |
 | De minimale besparing kan niet negatief zijn. | validate_preferences | 837 |
-| De prijsbron levert de kale marktprijs. Vul de energiebelasting en de opslag van de leverancier per kWh in; zonder die twee is de all-in prijs niet te berekenen en wordt de prijs niet gebruikt. | _validate_price_components | 905 |
+| De prijsbron levert de kale marktprijs. Vul de energiebelasting en de opslag van de leverancier per kWh in; zonder die twee is de all-in prijs niet te berekenen en wordt de prijs niet gebruikt. | _validate_price_components | 914 |
 | De schaalfactor moet groter zijn dan 0. | validate_energy_source | 504 |
-| De terugleverprijsbron levert de kale marktprijs. Vul in wat de leverancier per teruggeleverde kWh inhoudt; zonder dat bedrag is de vergoeding niet te berekenen en wordt de bron niet gebruikt. Vul 0 in als de leverancier niets inhoudt. | _validate_feed_in_components | 941 |
+| De terugleverprijsbron levert de kale marktprijs. Vul in wat de leverancier per teruggeleverde kWh inhoudt; zonder dat bedrag is de vergoeding niet te berekenen en wordt de bron niet gebruikt. Vul 0 in als de leverancier niets inhoudt. | _validate_feed_in_components | 950 |
 | De waarschuwingsgrens moet tussen {...} en {...} procent liggen. | validate_home_profile | 329 |
 | Deze bron levert een prijs, maar de eenheid staat op '{...}'. Kies EUR/kWh of ct/kWh. | _validate_unit_matches_type | 464 |
 | Deze bron meet vermogen, maar de eenheid staat op '{...}'. Kies W of kW. Let op: veel slimme-meterintegraties tonen vooral de meterstand in kWh; die is een totaal en geen vermogen, en levert een netbelasting die honderden keren te hoog is. | _validate_unit_matches_type | 450 |
