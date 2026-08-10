@@ -1096,6 +1096,14 @@ async def test_a_resident_may_set_the_operating_fields_of_an_appliance(
         {"name": "Andere naam"},
         {"enabled": False},
         {"ready_before": "07:00", "energy_per_cycle_kwh": 99.0},
+        # The no-run window looks like the ready window and is the opposite kind
+        # of thing: a property of the installation, not of what the resident
+        # wants (SPEC.md §51). If he could widen it, the quiet hours would be
+        # the only thing standing between the dryer and the child asleep above
+        # it — which is exactly what the field exists to stop being true.
+        {"no_run_from": "01:00"},
+        {"no_run_until": "05:00"},
+        {"ready_before": "07:00", "no_run_from": "01:00"},
     ],
 )
 async def test_set_operation_refuses_anything_outside_the_allow_list(

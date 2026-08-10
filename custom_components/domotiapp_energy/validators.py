@@ -85,9 +85,12 @@ from .models import (
     HomeProfile,
     UserPreferences,
     as_finite_float,
+    is_within_window,
     minutes_since_midnight,
     without_negative_zero,
 )
+
+__all__ = ["is_within_window"]
 
 # --- Reading an entity value ------------------------------------------------
 
@@ -678,6 +681,7 @@ def validate_device_profile(device: DeviceProfile) -> list[ValidationIssue]:
 
     issues.extend(_validate_control(device))
     issues.extend(_validate_time_window(device))
+    issues.extend(_validate_no_run_window(device))
     return issues
 
 
@@ -825,22 +829,114 @@ def _validate_time_window(device: DeviceProfile) -> list[ValidationIssue]:
     return []
 
 
+def _validate_no_run_window(device: DeviceProfile) -> list[ValidationIssue]:
+    """Check the hours this appliance may not run in (SPEC.md §51).
+
+    Three things can be wrong, and the third is the one worth building:
+
+    1. a time that cannot be read — the same message the ready window uses;
+    2. equal ends, which is either the whole day or none of it;
+    3. **a ban and a deadline that cannot both be honoured.**
+
+    The third is a category that came into being the moment the ready window
+    gained a counterpart. A wash that may not run before 07:00, must be finished
+    by 08:00 and takes ninety minutes has no possible start: the latest start is
+    06:30, and 06:30 is inside the ban. Without this the appliance would simply
+    never be advised, and the installer would be left looking for a broken
+    sensor — the silent failure this project keeps paying for.
+
+    **The message names both requirements**, because the engine cannot know
+    which of the two the household would rather give up.
+
+    Only decided when everything it needs is present and readable. A missing
+    duration is never filled in with a guess, so an appliance without one is not
+    judged here (SPEC.md §12).
+    """
+    malformed = [
+        ValidationIssue(
+            field_name,
+            VALIDATION_INVALID_TIME_WINDOW,
+            "Gebruik een geldige tijd in de vorm uu:mm.",
+        )
+        for value, field_name in (
+            (device.no_run_from, "no_run_from"),
+            (device.no_run_until, "no_run_until"),
+        )
+        if value is not None and minutes_since_midnight(value) is None
+    ]
+    if malformed:
+        return malformed[:1]
+
+    ban_from = minutes_since_midnight(device.no_run_from)
+    ban_until = minutes_since_midnight(device.no_run_until)
+    if ban_from is None or ban_until is None:
+        return []
+
+    if ban_from == ban_until:
+        return [
+            ValidationIssue(
+                "no_run_until",
+                VALIDATION_INVALID_TIME_WINDOW,
+                "De begin- en eindtijd van het verbod mogen niet gelijk zijn.",
+            )
+        ]
+
+    if not _deadline_is_reachable(device):
+        return [
+            ValidationIssue(
+                "no_run_from",
+                VALIDATION_INVALID_TIME_WINDOW,
+                "Deze twee eisen zijn niet allebei te halen: het apparaat mag "
+                "niet draaien op het moment dat het zou moeten starten om op "
+                "tijd klaar te zijn. Verruim het verbod, of verzet de tijd "
+                "waarop het klaar moet zijn.",
+            )
+        ]
+
+    return []
+
+
+def _deadline_is_reachable(device: DeviceProfile) -> bool:
+    """Return whether any allowed start still meets the deadline.
+
+    Walks the start window minute by minute rather than reasoning about where
+    two wrapping intervals overlap. The window is at most a day, so this is
+    bounded — and, more to the point, it is obviously right, which the closed
+    form was not.
+
+    **Only a complete ready window is judged**, the same limit
+    :func:`_within_window` sets in the advisor and for the same reason: with
+    only a deadline, "finished by 08:00" means the *next* 08:00, and which one
+    that is depends on the moment you ask. There is then no start window to
+    compare against, and calling that impossible would be inventing an answer
+    to a question nobody can settle (SPEC.md §32).
+    """
+    if not device.has_complete_ready_window:
+        return True
+
+    latest = minutes_since_midnight(device.latest_start)
+    earliest = minutes_since_midnight(device.earliest_start)
+    if latest is None or earliest is None:
+        # No duration to subtract, so no start window to test.
+        return True
+
+    span = (latest - earliest) % MINUTES_PER_DAY
+    return any(
+        device.may_run_at((earliest + offset) % MINUTES_PER_DAY)
+        for offset in range(span + 1)
+    )
+
+
 def window_length_minutes(start_minutes: int, finish_minutes: int) -> int:
     """Return how long a time window lasts, wrapping past midnight if needed."""
     return (finish_minutes - start_minutes) % MINUTES_PER_DAY
 
 
-def is_within_window(now_minutes: int, start_minutes: int, finish_minutes: int) -> bool:
-    """Return whether a moment falls inside a window that may cross midnight.
-
-    Shared by the device time windows and the quiet hours so both interpret
-    "22:00 to 06:00" the same way (SPEC.md §16). The start is inclusive and the
-    finish exclusive, so two adjacent windows never both contain a moment.
-    """
-    if start_minutes < finish_minutes:
-        return start_minutes <= now_minutes < finish_minutes
-    # The window wraps: it runs from the start to midnight and on to the finish.
-    return now_minutes >= start_minutes or now_minutes < finish_minutes
+# Re-exported from :mod:`.models`, where it moved when `DeviceProfile` needed it
+# for the no-run window (SPEC.md §51). Everything that turns a stored "HH:MM"
+# into clock arithmetic now lives in one module, and it had to be that one:
+# validators imports models, so the dependency only goes one way. The name stays
+# importable from here because that is where every existing caller looks for it.
 
 
 def validate_preferences(preferences: UserPreferences) -> list[ValidationIssue]:

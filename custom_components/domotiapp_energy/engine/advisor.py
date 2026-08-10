@@ -60,6 +60,7 @@ from .reason_codes import (
     REASON_LOW_ENERGY_PRICE,
     REASON_MISSING_REQUIRED_DATA,
     REASON_NEUTRAL_ENERGY_SITUATION,
+    REASON_OUTSIDE_ALLOWED_WINDOW,
     REASON_QUIET_HOURS_ACTIVE,
     REASON_SOLAR_SURPLUS_AVAILABLE,
 )
@@ -82,6 +83,10 @@ _ADVICE_RANKS: dict[str, int] = {
     # surplus item rather than joining it, and it says the same thing about the
     # same moment — only the recommended action differs.
     REASON_QUIET_HOURS_ACTIVE: ADVICE_RANK_SOLAR,
+    # Same again for the no-run window: it is the surplus advice, explaining
+    # itself instead of vanishing. Same moment, same subject, other action
+    # (SPEC.md §51).
+    REASON_OUTSIDE_ALLOWED_WINDOW: ADVICE_RANK_SOLAR,
     REASON_LOW_ENERGY_PRICE: ADVICE_RANK_PRICE,
     REASON_HIGH_ENERGY_PRICE: ADVICE_RANK_PRICE,
 }
@@ -315,6 +320,26 @@ def _advise_solar_surplus(context: _Context) -> list[AdviceItem]:
         device = _best_device_for_now(context, surplus, include_silenced=True)
         deferred = device is not None
     if device is None:
+        # Nothing qualifies even with the quiet hours lifted. Before falling
+        # silent, find out whether a no-run window is what stands in the way —
+        # silence with no reason is what sends an installer hunting (SPEC.md
+        # §51). Asked last, so it never displaces an advice he could act on.
+        blocked = _best_device_for_now(
+            context, surplus, include_silenced=True, include_blocked=True
+        )
+        if blocked is not None and blocked.has_no_run_window:
+            return [
+                AdviceItem(
+                    id=f"{REASON_OUTSIDE_ALLOWED_WINDOW}:{blocked.id}",
+                    title="Zonneoverschot, maar dit apparaat mag nu niet draaien",
+                    message=_no_run_message(blocked),
+                    severity=SEVERITY_INFO,
+                    reason_code=REASON_OUTSIDE_ALLOWED_WINDOW,
+                    confidence=CONFIDENCE_HIGH,
+                    related_device_ids=[blocked.id],
+                    measurements={MEASUREMENT_SOLAR_SURPLUS_W: round(surplus, 1)},
+                )
+            ]
         return []
 
     if deferred:
@@ -385,6 +410,29 @@ def _quiet_hours_message(context: _Context, device: DeviceProfile) -> str:
         f"{context.config.preferences.quiet_hours_end}. Wacht daarmee tot na "
         f"{context.config.preferences.quiet_hours_end}, of pas de stille uren "
         f"aan bij Mijn voorkeuren."
+    )
+
+
+def _no_run_message(device: DeviceProfile) -> str:
+    """Say that the surplus is real, and that this appliance may not use it now.
+
+    **The window is the installer's, not the resident's**, and the sentence has
+    to make that visible or the resident goes looking in Mijn voorkeuren — where
+    the quiet hours live — and finds nothing that explains it. So it names where
+    the rule was set instead of inviting him to change it, which is the
+    difference with :func:`_quiet_hours_message`.
+
+    No estimated saving here either, for the same reason: an amount beside "not
+    now" reads as an argument against the "not".
+
+    Both bounds are known — `has_no_run_window` is checked before this is
+    called — so the sentence never has a hole in it (SPEC.md §26).
+    """
+    return (
+        f"Er is momenteel zonneoverschot beschikbaar, maar {device.name} mag "
+        f"tussen {device.no_run_from} en {device.no_run_until} niet draaien. "
+        f"Dat is bij de installatie zo ingesteld en staat los van je stille "
+        f"uren. Na {device.no_run_until} kan het weer."
     )
 
 
@@ -683,12 +731,20 @@ def _best_device_for_now(
     surplus: float | None = None,
     *,
     include_silenced: bool = False,
+    include_blocked: bool = False,
 ) -> DeviceProfile | None:
     """Return the device to suggest right now, or None when there is none.
 
     A device qualifies when it is **advisable**, allowed on today's weekday,
     inside its own time window, not silenced by the quiet hours, and — when a
     surplus is given — small enough for that surplus to actually run it.
+
+    ``include_blocked`` drops the no-run window, and exists for one purpose: to
+    find out **whether that window is the reason** there is no advice. Asked
+    only after asking without it, exactly like ``include_silenced``. Without
+    this, a home with a banned dryer and nothing else simply produced silence,
+    and the installer who set the ban had no way to tell that from a broken
+    sensor (SPEC.md §51).
 
     ``include_silenced`` drops the quiet-hours condition, and the caller asks
     for it only after asking without it. That order is the whole point of the
@@ -714,6 +770,7 @@ def _best_device_for_now(
         if is_advisable(device)
         and _allowed_today(device, context)
         and _within_window(device, context.now_minutes)
+        and (include_blocked or device.may_run_at(context.now_minutes))
         and _fits_in_surplus(device, surplus)
         and (include_silenced or not _silenced_by_quiet_hours(device, context))
     ]

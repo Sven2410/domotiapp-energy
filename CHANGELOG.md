@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.15.0
+
+Een apparaat kan nu uren hebben waarin het helemaal niet mag draaien. SPEC §51.
+
+### Toegevoegd
+
+- **Een niet-draaien-venster per apparaat**, met twee grenzen en de gewone middernachtwikkel:
+  *"niet draaien vanaf 23:00, weer toegestaan vanaf 07:00"*. Voor de droger onder de
+  kinderkamer, of wat er ook staat waar geluid 's nachts niet kan.
+
+  **Dit is niet hetzelfde als de stille uren, en dat is de hele reden dat het bestaat.** De
+  stille uren zijn van de bewoner en gelden voor de woning; ze stellen advies uit. Dit is van
+  de installateur, geldt voor dit apparaat, en onderdrukt het. Een bewoner die zijn stille
+  uren inkort verliest de bescherming niet — hij kan dit veld niet eens wijzigen.
+
+- **De hele draaitijd telt mee, niet het startmoment.** Een droger van ruim twee uur met een
+  verbod vanaf 23:00 wordt ook om 22:00 niet geadviseerd: hij zou om kwart over twaalf nog
+  draaien.
+
+- **Een zin wanneer het venster een advies onderdrukt.** Anders is er alleen stilte, en dan
+  gaat de bewoner in Mijn voorkeuren zoeken — waar de stille uren staan — en vindt daar niets
+  dat het verklaart. De zin wijst naar de installatie en zegt tot wanneer.
+
+  Hij verschijnt pas wanneer er niets anders te adviseren valt: een verklaring mag nooit een
+  advies verdringen waar de bewoner iets mee kan.
+
+- **Een melding wanneer het verbod en de deadline elkaar uitsluiten.** Een wasmachine die
+  klaar moet zijn tussen 07:00 en 08:00, 90 minuten draait en niet vóór 07:00 mag draaien,
+  heeft geen enkele mogelijke starttijd. Zonder melding zou hij nooit advies krijgen en zou
+  niemand weten waarom. De melding noemt beide eisen, want welke moet wijken is niet aan ons.
+
+### Overig
+
+- `outside_allowed_window` krijgt zijn eerste lezer. De code stond sinds 0.1.0 gedefinieerd
+  en werd nooit uitgezonden.
+- `is_within_window` is naar `models.py` verhuisd, waar de rest van de klokrekenkunde staat;
+  `validators.py` exporteert de naam opnieuw, dus elke aanroeper vindt hem waar hij stond.
+
 ## 0.14.0
 
 De reparatieronde van SPEC §49, in de volgorde die Sven vaststelde. SPEC §50.

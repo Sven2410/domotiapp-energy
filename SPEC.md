@@ -5218,3 +5218,133 @@ of haar waarde nu gewonnen zou hebben of niet.
   gebeurt en die is aan Sven.
 - **§49.5 en §49.6** wachten op een voorstel, op Sven's verzoek — hij wil dat zien voordat er
   gebouwd wordt.
+
+## 51. Wanneer een apparaat helemaal niet mag draaien
+
+**Gebouwd in 0.15.0**, uit §49.6. Sven's eigen scenario: de droger staat onder de
+kinderkamer en mag 's nachts niet draaien.
+
+### 51.1 Waarom de stille uren dit niet zijn
+
+De stille uren dekten het geval **toevallig** af, en Sven zette de vinger op waarom dat
+niet genoeg is:
+
+> *"Dat de stille uren het toevallig opvangen is niet hetzelfde als dat ik het heb
+> ingesteld. Als een bewoner zijn stille uren verkort, verdwijnt mijn bescherming."*
+
+Dat is precies het verschil dat dit veld draagt:
+
+| | Stille uren | Niet-draaien-venster |
+|---|---|---|
+| Van wie | de **bewoner** | de **installateur** |
+| Wat het zegt | wanneer hij niet gestoord wil worden | wanneer dit apparaat niet mag draaien |
+| Waarom | voorkeur | een eigenschap van de installatie |
+| Waar | Mijn voorkeuren, één keer voor de hele woning | op het apparaat |
+| Effect op advies | **stelt uit**, met een zin erbij (§42.2) | **onderdrukt**, met een zin erbij |
+
+De laatste rij is geen detail. De stille uren zijn een *deferral*: er is een advies, en het
+zegt "wacht tot na 07:00". Het verbod is harder — er komt geen advies, en de zin legt uit
+waarom.
+
+**En de rolafscherming volgt daaruit.** `no_run_from` en `no_run_until` staan bewust **niet**
+in `DEVICE_OPERATION_FIELDS` en niet in `RESIDENT_FIELDS.device`. Kon de bewoner ze
+verruimen, dan waren de stille uren — die hij wél mag inkorten — het enige dat nog tussen de
+droger en het slapende kind stond, en dat is exact wat dit veld moet opheffen.
+
+### 51.2 Twee grenzen, geen impliciete middernacht
+
+Sven vroeg aanvankelijk om één grens (*"`not_before` op de starttijd"*). Dat is voorgelegd
+en het is een venster geworden, om één reden: **één ondergrens vangt een nachtverbod niet.**
+*"Niet starten vóór 07:00"* laat een start om 23:30 gewoon toe.
+
+De derde optie — één grens, met een stilzwijgende bovengrens op middernacht — is afgewezen
+omdat de regel dan nergens op het scherm staat. Dat is de onzichtbare aanname waar §47 over
+gaat.
+
+Een half ingevuld venster beperkt daarom **niets**, en de validator zegt het. Raden dat de
+ontbrekende grens middernacht is, zou dezelfde fout zijn in het klein.
+
+### 51.3 De hele draaitijd, niet het startmoment
+
+**Dit is de kern van `may_run_at()` en de reden dat het een methode is en geen vergelijking.**
+
+Een droger die 135 minuten draait en vanaf 23:00 verboden is, mag om 22:00 net zo min
+starten: hij staat om kwart over twaalf nog te draaien, in de kamer waarvoor het verbod
+getekend is. Alleen het startmoment toetsen zou precies het advies opleveren dat de
+installateur wilde voorkomen.
+
+Drie gevallen, en het derde is degene die je vergeet:
+
+1. de **start** valt in het verbod;
+2. de **laatste actieve minuut** valt in het verbod;
+3. geen van beide, maar de draaitijd **stapt over het hele verbod heen** — start 22:00,
+   verbod 23:00–07:00, tien uur lang.
+
+**De draaitijd is `[start, start + duur)`, eind exclusief**, dezelfde afspraak die
+`is_within_window` al hanteert. Een cyclus die om 23:00 *klaar* is, draait niet om 23:00.
+Het eindpunt als bezet behandelen zou één minuut strenger zijn dan de waarheid, en niets op
+het scherm zou dat verschil uitleggen. De tabel in
+`test_when_the_dryer_may_run` zet 20:45 (mag) naast 20:46 (mag niet) om die grens vast te
+leggen.
+
+**Zonder duur wordt alleen het startmoment beoordeeld.** Dat is het veilige halve antwoord;
+een lengte wordt nooit geraden (§12).
+
+### 51.4 De categorie die hierdoor ontstaat: onmogelijk gevraagd
+
+Een gereed-venster en een verbod kunnen elkaar uitsluiten. De wasmachine van woning 2 moet
+klaar zijn tussen 07:00 en 08:00 en draait 90 minuten, dus zij moet starten tussen 05:30 en
+06:30 — en elk van die minuten valt in een verbod dat tot 07:00 loopt.
+
+Zonder melding zou dat apparaat **nooit advies krijgen** en zou niemand weten waarom. Dat is
+dezelfde stille faalvorm als §49.1, en hij zou door dezelfde deur binnenkomen: een regel die
+klopt met zichzelf en niet met de rest.
+
+`_deadline_is_reachable()` loopt het startvenster minuut voor minuut af. Dat is bewust geen
+gesloten formule: twee wikkelende intervallen die elkaar wel of niet raken is precies het
+soort redenering dat er goed uitziet en fout is.
+
+**Alleen een compleet gereed-venster wordt beoordeeld**, dezelfde grens die `_within_window`
+in de advisor al trekt. Met alleen een deadline betekent *"klaar om 08:00"* de **volgende**
+08:00, en welke dat is hangt af van wanneer je het vraagt; er is dan geen startvenster om
+tegen te toetsen, en onmogelijkheid claimen zou een antwoord verzinnen op een vraag die
+niemand kan beslechten (§32).
+
+De melding noemt **beide** eisen, want de motor kan niet weten welke van de twee het
+huishouden zou willen opgeven.
+
+### 51.5 Het advies respecteert het venster en zegt waarom het zwijgt
+
+Sven's derde eis: *"de reden zichtbaar wanneer hij een advies onderdrukt, zodat ik niet zoek
+naar waarom er niets komt."*
+
+Het normale advies **noemt het venster niet** — het filtert stil, zoals elke andere
+voorwaarde. Pas wanneer er niets overblijft wordt gevraagd of het verbod de reden is, en dán
+verschijnt er een eigen zin. De volgorde is die van de stille uren en om dezelfde reden:
+**een verklaring mag nooit een advies verdringen waar de bewoner iets mee kan.**
+
+De zin wijst bewust naar de installatie en niet naar Mijn voorkeuren:
+
+> *"Er is momenteel zonneoverschot beschikbaar, maar Droger mag tussen 23:00 en 07:00 niet
+> draaien. Dat is bij de installatie zo ingesteld en staat los van je stille uren. Na 07:00
+> kan het weer."*
+
+Zonder die laatste toevoeging gaat de bewoner in Mijn voorkeuren zoeken — waar de stille
+uren staan — en vindt daar niets dat het verklaart.
+
+**Geen bedrag eronder**, net als bij de stille uren: een euro naast "nu niet" leest als een
+argument tegen het "niet".
+
+### 51.6 Dit geeft `outside_allowed_window` zijn eerste lezer
+
+`REASON_OUTSIDE_ALLOWED_WINDOW` stond sinds 0.1.0 in `REASON_CODES`, had een Nederlands
+label in `labels.js`, en werd nooit uitgezonden — een van de vier codes uit die
+inventarisatie. Hij beschrijft exact wat hier gebeurt, dus hij wordt gebruikt in plaats van
+dat er een nieuwe bijkomt.
+
+### 51.7 `is_within_window` is verhuisd naar `models.py`
+
+`DeviceProfile.may_run_at` heeft hem nodig, en `validators.py` importeert al ván `models.py`.
+De afhankelijkheid gaat maar één kant op, dus de klokrekenkunde hoort in de module die
+onderaan ligt. `validators.py` exporteert de naam opnieuw, zodat elke bestaande aanroeper
+hem vindt waar hij hem verwacht.

@@ -230,6 +230,27 @@ describe('an appliance is split down the middle', () => {
     }
   });
 
+  it('keeps the no-run window out of the resident hands', async () => {
+    // It sits between the two ready-window fields he *does* own and looks just
+    // like them, which is exactly why this is worth pinning (SPEC.md §51). The
+    // ready window says when he wants it finished; this says when the machine
+    // may not run at all, because of where it stands. If he could widen it, the
+    // quiet hours would be the only thing left between the dryer and the child
+    // asleep above it — and those are his to shorten.
+    const { dialog } = await openDialog(false);
+    const byName = new Map(fields(dialog).map((field) => [field.name, field]));
+
+    for (const name of ['no_run_from', 'no_run_until']) {
+      assert.ok(byName.has(name), `${name} should still be on screen`);
+      assert.equal(byName.get(name).disabled, true, `${name} should be disabled`);
+    }
+    // And editable for the person who installed it.
+    const installer = await openDialog(true);
+    const theirs = new Map(fields(installer.dialog).map((f) => [f.name, f]));
+    assert.notEqual(theirs.get('no_run_from').disabled, true);
+    assert.notEqual(theirs.get('no_run_until').disabled, true);
+  });
+
   it('drops adding and deleting for a resident', async () => {
     const { tab } = await openTab('Apparaten', 'panel-devices', false);
 
