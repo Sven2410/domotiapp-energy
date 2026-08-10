@@ -39,6 +39,7 @@ from custom_components.domotiapp_energy.const import (
     CONTROL_MODES,
     CONTROL_MONITOR_ONLY,
     DEVICE_TYPE_DISHWASHER,
+    DEVICE_TYPE_DRYER,
     DEVICE_TYPE_GENERIC_MONITOR,
     DEVICE_TYPE_HOME_BATTERY,
     EXPORT_STALE_MINUTES,
@@ -1157,6 +1158,35 @@ def test_a_flexible_device_with_no_bounds_still_misses_the_item() -> None:
     result = evaluate_completeness(config, EnergySnapshot(grid_power_w=1000.0))
 
     assert COMPLETENESS_ITEM_TIME_WINDOWS in result.missing_items
+
+
+def test_any_moment_is_fine_completes_the_item() -> None:
+    """Treat "geen eis" as an answer rather than a gap (SPEC.md §52).
+
+    The dryer of woning 2, in the resident's own words: *"hier zit geen haast
+    op; als hij op woensdagmiddag draait wanneer de zon schijnt, is dat prima."*
+    That is a complete description, and it cost him ten points because the form
+    could not tell it from an unanswered question.
+
+    **The pair with the test above is the whole point**: two empty time fields
+    still miss the item, and only an explicit answer completes it. Letting
+    emptiness count would make a half-configured install score full marks,
+    which is the failure the checklist exists to catch.
+    """
+    config = _config(contract_type=CONTRACT_TYPE_FIXED, fixed_import_price_eur_kwh=0.28)
+    config.devices.append(
+        DeviceProfile(
+            id="droger",
+            device_type=DEVICE_TYPE_DRYER,
+            nominal_power_w=800.0,
+            energy_per_cycle_kwh=1.6,
+            runs_any_time=True,
+        )
+    )
+
+    result = evaluate_completeness(config, EnergySnapshot(grid_power_w=1000.0))
+
+    assert COMPLETENESS_ITEM_TIME_WINDOWS in result.completed_items
 
 
 def test_solar_panels_and_a_meter_but_no_appliances_can_reach_a_hundred() -> None:

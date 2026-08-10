@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.16.0
+
+"Maakt niet uit wanneer hij klaar is" is nu een antwoord in plaats van een gat. SPEC §52.
+
+### Toegevoegd
+
+- **Een schakelaar boven het gereed-venster: *Maakt niet uit wanneer hij klaar is*.** De
+  droger die op elk moment mag draaien is volledig beschreven, en kostte toch tien punten
+  datakwaliteit — twee lege tijdvelden betekenden tegelijk "ik heb geen eis" en "ik heb dit
+  nog niet ingevuld". Alleen het tweede hoort te tellen.
+
+  **Het apparaat blijft volledig adviseerbaar.** Er verandert niets aan het
+  zonneoverschot-advies, aan `has_movable_load` of aan de energiescore; er verdwijnt alleen
+  een deadline om naartoe te rekenen, en daarmee het urgentie-advies voor dat apparaat — wat
+  klopt, want er is geen urgentie.
+
+  Leegte telt nooit als antwoord: een half ingerichte installatie zakt nog steeds. Alleen een
+  expliciete keuze vinkt het item af.
+
+- **De twee tijdvelden gaan inactief in plaats van weg** wanneer de schakelaar aanstaat, en
+  hun waarden blijven bewaard. Verbergen zou de weg terug achter de schakelaar zetten die
+  haar verborg.
+
+- **Het is een bewonersveld.** Hij mag een deadline zetten, dus hij moet ook kunnen zeggen
+  dat hij er geen heeft. Dat is het spiegelbeeld van het niet-draaien-venster uit §51, dat
+  juist bewust van de installateur is — twee velden in hetzelfde vak, op de tegenovergestelde
+  manier beschermd, omdat ze van verschillende mensen zijn.
+
+### Documentatie
+
+- **CLAUDE.md, negende variant: twee plekken die dezelfde vraag anders beantwoorden.** Twee
+  keer voorgekomen — `has_time_window` in 0.6.1 en `_deadline_is_reachable` in 0.15.0. Beide
+  plekken draaien, beide zijn op zichzelf verdedigbaar, en geen enkele test kan het zien,
+  want elke test toetst zijn eigen kant.
+
 ## 0.15.0
 
 Een apparaat kan nu uren hebben waarin het helemaal niet mag draaien. SPEC §51.

@@ -534,6 +534,40 @@ geldt omdat …" en niet "dit is zo". `SOURCE_STALE_MINUTES` doet dat nu per bro
 een guard-test dwingt af dat een nieuw type zijn eigen keuze krijgt in plaats van er
 stilzwijgend een te erven (SPEC.md §47).
 
+### Negende variant: twee plekken die dezelfde vraag anders beantwoorden
+
+**Twee keer voorgekomen, en de tweede keer had ik hem moeten zien aankomen.**
+
+Dit is niet "een test toetst het verkeerde" en ook niet "de code draait niet". Beide plekken
+draaien, beide zijn op zichzelf verdedigbaar, en ze zijn het oneens over dezelfde vraag.
+
+1. **0.6.1 — `has_time_window`.** Eén predicaat bediende twee vragen: *"is er iets ingevuld"*
+   (checklist) en *"is er een venster om tegen te toetsen"* (advisor). Zolang een half
+   venster ongeldig was vielen die samen; op het moment dat één grens een volwaardig antwoord
+   werd, liepen ze uiteen. Opgelost door ze te splitsen in `has_ready_window` en
+   `has_complete_ready_window`.
+2. **§51 — `_deadline_is_reachable`.** De advisor trok de grens al expliciet: met alleen een
+   deadline is er geen startvenster, want *"klaar om 08:00"* betekent de **volgende** 08:00 en
+   welke dat is hangt af van wanneer je het vraagt. Mijn nieuwe validator wist dat niet en
+   liep stilzwijgend de hele dag af — hij claimde onmogelijkheid in een geval dat niet te
+   beslissen is.
+
+**Wat de twee gemeen hebben:** de ene plek had de grens al doordacht en opgeschreven, en de
+andere kwam er later bij zonder hem te lezen. In beide gevallen stond het antwoord er al,
+één functie verderop, in een docstring.
+
+> **De vraag die hem vangt, te stellen zodra je een predicaat schrijft dat op bekende velden
+> oordeelt:** *stelt iets anders in dit project deze vraag al, en wat antwoordt het?*
+
+Niet "bestaat er een helper die ik kan hergebruiken" — dat is de gewone opruimvraag. Dit gaat
+over de *betekenis*: twee plekken die "is dit venster bruikbaar" verschillend beantwoorden
+zijn een bug die geen van beide tests kan zien, want elke test toetst zijn eigen kant.
+
+**Praktisch:** grep vóór het schrijven op de velden waar je op gaat oordelen
+(`ready_before`, `no_run_from`, …) en lees elke lezer die je vindt — niet om code te delen,
+maar om te zien welke randgevallen daar al beslecht zijn. Dat is dezelfde beweging als de
+vierde variant vraagt na een hernoeming, nu vooraf in plaats van achteraf.
+
 ### Een eis die niet van toepassing is, gepresenteerd als een gebrek
 
 **Vijf keer voorgekomen, allemaal in de datakwaliteit**, en elke keer opnieuw ontdekt door

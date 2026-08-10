@@ -280,9 +280,23 @@ def _flexible_devices_have_windows(config: StoredConfiguration) -> bool:
     has told us when it must be finished; demanding a lower bound as well would
     punish the very configuration the ready window was built for. That is what
     happened when both questions shared one predicate.
+
+    **"Any moment is fine" counts as an answer** (SPEC.md §52). The dryer of
+    woning 2 is the case: *"hier zit geen haast op; als hij op woensdagmiddag
+    draait wanneer de zon schijnt, is dat prima."* That is a complete answer,
+    and until `runs_any_time` existed the form could not tell it apart from an
+    unanswered question — so the resident lost ten points for having described
+    his house correctly, and could only get them back by inventing a deadline.
+
+    The check is `has_ready_window or runs_any_time` rather than a three-state
+    field, and that choice carries its own weight: a device stored before this
+    existed keeps passing on its window, and one with neither still fails. No
+    migration, and nothing starts passing that was not already passing.
     """
     advisable = [device for device in config.devices if is_advisable(device)]
-    return bool(advisable) and all(device.has_ready_window for device in advisable)
+    return bool(advisable) and all(
+        device.has_ready_window or device.runs_any_time for device in advisable
+    )
 
 
 def _invalid_items(config: StoredConfiguration, snapshot: EnergySnapshot) -> list[str]:

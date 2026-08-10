@@ -584,8 +584,30 @@ function windowFields(draft) {
   if (!isAdvisable(draft)) {
     return [];
   }
+  // **"Maakt niet uit" has to be an answer, not two empty boxes** (SPEC.md
+  // §52). The dryer of woning 2 is the case: no deadline at all is a complete
+  // description, and the checklist could not tell it from an unanswered
+  // question, so its owner lost points for being accurate.
+  //
+  // The two time fields go **inactive rather than away**, and their values are
+  // kept. Hiding them would put the way back behind the very switch that hid
+  // them — the one-way door this project already ruled out once, and the same
+  // treatment the contract fields get on the Woning tab.
+  const anyTime = draft.runs_any_time === true;
+  const deadline = (fieldDefinition) =>
+    anyTime ? { ...fieldDefinition, disabled: true } : fieldDefinition;
   return [
     {
+      name: 'runs_any_time',
+      label: 'Maakt niet uit wanneer hij klaar is',
+      helper:
+        'Zet dit aan als elk moment goed is. De coach adviseert dit apparaat ' +
+        'dan gewoon op een gunstig moment, alleen zonder deadline om naartoe ' +
+        'te rekenen — en de datakwaliteit rekent het als beantwoord in plaats ' +
+        'van als ontbrekend.',
+      selector: { boolean: {} },
+    },
+    deadline({
       name: 'ready_before',
       label: 'Klaar uiterlijk om',
       // The deadline, and the field a resident actually has an answer for. The
@@ -598,8 +620,8 @@ function windowFields(draft) {
       helper: readyBeforeHelper(draft),
       // Seconds are meaningless for a window a dishwasher runs in.
       selector: { time: { no_second: true } },
-    },
-    {
+    }),
+    deadline({
       name: 'ready_from',
       label: 'Niet eerder klaar dan',
       // The bound that has no equivalent in a start window: washing that is
@@ -611,7 +633,7 @@ function windowFields(draft) {
         'tijd ná "klaar uiterlijk om", dan loopt het venster door tot de ' +
         'volgende dag — 22:00 tot 06:00 is het normale geval.',
       selector: { time: { no_second: true } },
-    },
+    }),
     {
       name: 'no_run_from',
       label: 'Niet draaien vanaf',
@@ -856,6 +878,7 @@ function labelOf(name) {
   const known = {
     ready_before: 'Klaar uiterlijk om',
     ready_from: 'Niet eerder klaar dan',
+    runs_any_time: 'Maakt niet uit wanneer hij klaar is',
     no_run_from: 'Niet draaien vanaf',
     no_run_until: 'Weer toegestaan vanaf',
     days_of_week: 'Dagen',
@@ -974,6 +997,7 @@ const SECTIONS = [
     fields: [
       'is_flexible',
       'is_noisy',
+      'runs_any_time',
       'ready_before',
       'ready_from',
       'no_run_from',

@@ -16,7 +16,7 @@ from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 
 DOMAIN: Final = "domotiapp_energy"
 INTEGRATION_NAME: Final = "DomotiApp Energy"
-VERSION: Final = "0.15.0"
+VERSION: Final = "0.16.0"
 
 MANUFACTURER: Final = "DomotiApp"
 DEVICE_MODEL: Final = "Energy Coach"
@@ -595,10 +595,19 @@ DEFAULT_PRIORITY: Final = PRIORITY_NORMAL
 # removes the row from the data quality and the engine, which is a different
 # act. `is_flexible` is absent for the same kind of reason — it is a statement
 # about the machine, where `is_noisy` is one about the household.
+# `runs_any_time` is the resident's too, and it has to be: he may set a deadline
+# through `ready_before`, so he must also be able to say he has none. Giving him
+# only the half that adds a requirement would leave "geen eis" expressible by
+# the installer alone — the mirror-half rule (SPEC.md §52).
+#
+# `no_run_from` and `no_run_until` are deliberately absent: those say when the
+# machine may not run because of where it stands, which is not his to widen
+# (SPEC.md §51).
 DEVICE_OPERATION_FIELDS: Final[tuple[str, ...]] = (
     "control_mode",
     "ready_from",
     "ready_before",
+    "runs_any_time",
     "days_of_week",
     "is_noisy",
     "priority",

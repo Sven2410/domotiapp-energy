@@ -585,6 +585,49 @@ describe('saving a device', () => {
     );
   });
 
+  it('offers "maakt niet uit" as an answer next to the deadline', async () => {
+    // SPEC.md §52: two empty time fields meant both "no deadline" and "not
+    // answered yet", and only the second should cost points.
+    const { panel, tab } = await openDevicesTab();
+    buttonIn(tab, 'Apparaat toevoegen').click();
+    await settle();
+
+    assert.ok(fieldNames(panel).includes('runs_any_time'));
+  });
+
+  it('greys the deadline out when any moment is fine, and keeps it', async () => {
+    // **Disabled, never removed.** Hiding the two fields would put the way back
+    // behind the switch that hid them — the one-way door this project already
+    // ruled out once, and the rule the contract fields follow on Woning.
+    const { panel, tab } = await openDevicesTab();
+    buttonIn(tab, 'Apparaat toevoegen').click();
+    await settle();
+    change(panel, { ready_before: '20:15' });
+    change(panel, { runs_any_time: true });
+    await settle();
+
+    const byName = new Map(schema(panel).map((field) => [field.name, field]));
+    for (const name of ['ready_before', 'ready_from']) {
+      assert.ok(byName.has(name), `${name} should still be on screen`);
+      assert.equal(byName.get(name).disabled, true, `${name} should be disabled`);
+    }
+    // And the typed deadline survives, so switching back costs nothing.
+    assert.equal(formData(panel).ready_before, '20:15');
+  });
+
+  it('leaves the deadline editable again when the switch goes back off', async () => {
+    const { panel, tab } = await openDevicesTab();
+    buttonIn(tab, 'Apparaat toevoegen').click();
+    await settle();
+    change(panel, { runs_any_time: true });
+    await settle();
+    change(panel, { runs_any_time: false });
+    await settle();
+
+    const byName = new Map(schema(panel).map((field) => [field.name, field]));
+    assert.notEqual(byName.get('ready_before').disabled, true);
+  });
+
   it('places a backend validation issue on the field it is about', async () => {
     const hass = fakeHass({
       config: sampleConfig({
