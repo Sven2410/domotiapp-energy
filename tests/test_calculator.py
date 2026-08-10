@@ -38,8 +38,10 @@ from custom_components.domotiapp_energy.const import (
     CONTRACT_TYPE_FIXED,
     CONTROL_MODES,
     CONTROL_MONITOR_ONLY,
+    DEVICE_LINK_POWER,
     DEVICE_TYPE_DISHWASHER,
     DEVICE_TYPE_DRYER,
+    DEVICE_TYPE_EV_CHARGER,
     DEVICE_TYPE_GENERIC_MONITOR,
     DEVICE_TYPE_HOME_BATTERY,
     EXPORT_STALE_MINUTES,
@@ -3361,3 +3363,53 @@ async def test_a_dynamic_contract_never_falls_back_to_the_tariff_field(
 
     assert metrics.current_price_eur_kwh is None
     assert metrics.price_origin is None
+
+
+def test_a_power_entity_with_the_wrong_unit_is_reported_not_dropped(
+    hass: HomeAssistant,
+) -> None:
+    """SPEC.md §57: refusing in silence made a wrong link look like no link.
+
+    A meter total in kWh is the classic wrong pick — the source form warns about
+    it in so many words — and linking one here produced exactly the same empty
+    row as an appliance nobody had touched.
+    """
+    hass.states.async_set("sensor.meterstand", "1234.5", {"unit_of_measurement": "kWh"})
+    config = _config()
+    config.devices.append(
+        DeviceProfile(
+            id="d1",
+            device_type=DEVICE_TYPE_DISHWASHER,
+            entity_links={DEVICE_LINK_POWER: "sensor.meterstand"},
+        )
+    )
+
+    snapshot = Calculator(hass).build_snapshot(config)
+
+    assert "d1" not in snapshot.device_power_w
+    assert snapshot.device_power_unusable == ["d1"]
+
+
+def test_a_power_entity_in_kilowatts_is_read_and_not_reported(
+    hass: HomeAssistant,
+) -> None:
+    """The other half: the entity's own unit is trusted here, on purpose.
+
+    That is the opposite of the rule for a source, and the difference follows
+    from the consequence — this number is shown on one row, a source's unit
+    decides the surplus, the score and every sentence built on them.
+    """
+    hass.states.async_set("sensor.laadpaal", "3.68", {"unit_of_measurement": "kW"})
+    config = _config()
+    config.devices.append(
+        DeviceProfile(
+            id="d1",
+            device_type=DEVICE_TYPE_EV_CHARGER,
+            entity_links={DEVICE_LINK_POWER: "sensor.laadpaal"},
+        )
+    )
+
+    snapshot = Calculator(hass).build_snapshot(config)
+
+    assert snapshot.device_power_w["d1"] == 3680.0
+    assert snapshot.device_power_unusable == []
