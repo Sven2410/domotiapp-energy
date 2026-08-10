@@ -179,6 +179,9 @@ _OPERATION_SCHEMA = vol.Schema(
         # one has to be expressible.
         vol.Optional("ready_from"): vol.Any(str, None),
         vol.Optional("ready_before"): vol.Any(str, None),
+        # "Any moment is fine" is his answer to give, for the same reason the
+        # deadline above it is (SPEC.md §52).
+        vol.Optional("runs_any_time"): bool,
         vol.Optional("days_of_week"): [
             vol.All(int, vol.Range(min=MIN_DAY_OF_WEEK, max=MAX_DAY_OF_WEEK))
         ],

@@ -67,6 +67,7 @@ from custom_components.domotiapp_energy.const import (
     VALIDATION_UNKNOWN_TYPE,
     VALUE_SOURCE_ATTRIBUTE,
 )
+from custom_components.domotiapp_energy.engine.completeness import is_advisable
 from custom_components.domotiapp_energy.engine.reason_codes import (
     REASON_CODES,
     REASON_INVALID_ENTITY_STATE,
@@ -1889,3 +1890,62 @@ def test_a_broken_ban_time_restricts_nothing_meanwhile() -> None:
     device = _dryer(no_run_from="ochtend")
 
     assert device.may_run_at(minutes_since_midnight("23:30")) is True
+
+
+# --- "Any moment is fine" as an answer (SPEC.md §52) ------------------------
+
+
+def test_a_deadline_and_no_deadline_are_different_answers() -> None:
+    """The distinction the form could not express until §52.
+
+    Two empty time fields meant both "I have no deadline" and "I have not
+    answered yet". The dryer of woning 2 is the first: *"hier zit geen haast
+    op"*. It is not a gap, and its owner should not lose points for having
+    described his house correctly.
+    """
+    unanswered = DeviceProfile(id="d1", device_type=DEVICE_TYPE_DRYER)
+    answered = DeviceProfile(id="d2", device_type=DEVICE_TYPE_DRYER, runs_any_time=True)
+
+    assert unanswered.has_ready_window is False
+    assert unanswered.runs_any_time is False
+    assert answered.runs_any_time is True
+
+
+def test_saying_any_moment_is_fine_keeps_the_appliance_advisable() -> None:
+    """The whole point, and the reason `is_flexible` was the wrong answer.
+
+    Sven's first instinct was to read an existing field — switch `is_flexible`
+    off, which literally means "does not need to be moved". That would have
+    dropped the dryer out of `is_advisable` and out of `has_movable_load`,
+    removing exactly the solar advice the resident wants, and possibly the solar
+    axis of the energy score with it. "Movable" and "has a deadline" are
+    independent, which is the same lesson the home battery taught one device
+    type earlier (SPEC.md §38.2).
+    """
+    device = DeviceProfile(
+        id="droger",
+        device_type=DEVICE_TYPE_DRYER,
+        nominal_power_w=800.0,
+        energy_per_cycle_kwh=1.6,
+        runs_any_time=True,
+    )
+
+    assert is_advisable(device) is True
+    assert device.is_flexible is True
+
+
+def test_a_no_run_window_and_no_deadline_live_side_by_side() -> None:
+    """Two questions, two answers: no deadline, and still not at night."""
+    device = DeviceProfile(
+        id="droger",
+        device_type=DEVICE_TYPE_DRYER,
+        duration_minutes=135,
+        runs_any_time=True,
+        no_run_from="23:00",
+        no_run_until="07:00",
+    )
+
+    assert device.runs_any_time is True
+    assert device.may_run_at(minutes_since_midnight("23:30")) is False
+    assert device.may_run_at(minutes_since_midnight("14:00")) is True
+    assert validate_device_profile(device) == []

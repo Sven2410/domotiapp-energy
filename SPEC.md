@@ -5348,3 +5348,93 @@ dat er een nieuwe bijkomt.
 De afhankelijkheid gaat maar één kant op, dus de klokrekenkunde hoort in de module die
 onderaan ligt. `validators.py` exporteert de naam opnieuw, zodat elke bestaande aanroeper
 hem vindt waar hij hem verwacht.
+
+## 52. "Maakt niet uit" is een antwoord, geen gat
+
+**Gebouwd in 0.16.0**, uit §49.5. De droger van woning 2, in de woorden van de bewoner:
+
+> *"Hier zit geen haast op; als hij op woensdagmiddag draait wanneer de zon schijnt, is dat
+> prima."*
+
+Dat is een **volledige** beschrijving. Toch zakte de datakwaliteit er tien punten door, want
+twee lege tijdvelden betekenden tegelijk *"ik heb geen eis"* en *"ik heb dit nog niet
+ingevuld"*. De bewoner kon het item alleen afvinken door een deadline te verzinnen die hij
+niet heeft — de vorm van §16, nu met een nieuw gezicht.
+
+### 52.1 Waarom het geen bestaand veld kon zijn
+
+Het eerste idee was `is_flexible` uitzetten — een veld dat er al staat en letterlijk *"hoeft
+niet verplaatst te worden"* betekent. Dat is aantrekkelijk: lezen wat er al is in plaats van
+iets toevoegen.
+
+**Het werkt niet, en het zou de droger kapotmaken.** `is_flexible` voedt `is_advisable()`:
+
+```python
+return (device.is_usable
+        and device.device_type not in NEVER_ADVISED_DEVICE_TYPES
+        and device.is_flexible
+        and device.effective_control_mode != CONTROL_MONITOR_ONLY)
+```
+
+Uitzetten haalt het apparaat uit het zonneoverschot-advies — precies wat de bewoner wél wil —
+en uit `has_movable_load`, een voorwaarde op de **zonne-as van de energiescore**. Het cijfer
+zou kunnen zakken omdat iemand een vinkje wilde halen.
+
+**En dit project heeft die les één apparaattype eerder al geleerd.** §38.2: de thuisbatterij
+is *flexibel* en heeft geen cyclus, dus die vlag kon het niet dragen en er kwam een eigen as.
+*"Verplaatsbaar"* en *"heeft een deadline"* zijn onafhankelijk. De droger is dat geval
+opnieuw.
+
+### 52.2 Een schakelaar, geen derde toestand
+
+`runs_any_time: bool`, standaard `False`, en de checklist vraagt:
+
+> `has_ready_window or runs_any_time`
+
+**Dat is met opzet geen enum met drie toestanden**, en de reden is migratie. Een
+drietoestandsveld zou "onbeantwoord" moeten onderscheiden van "vast moment", en elk bestaand
+apparaat draagt die derde toestand niet — dus zou elk apparaat mét gereed-venster ineens
+incompleet zijn, of we zouden een antwoord moeten *afleiden* uit het bestaan van het venster.
+Dat laatste is raden, en dit project raadt niet.
+
+Met `or` is er niets te migreren: een apparaat met een venster slaagt zoals het altijd
+slaagde, een apparaat met geen van beide zakt zoals het altijd zakte, en alleen een
+expliciet antwoord is nieuw.
+
+**Leegte telt nooit als antwoord.** Zou zij dat wel doen, dan scoort een half ingerichte
+installatie vol — precies de faalvorm die de checklist moet vangen. `test_a_flexible_device_
+with_no_bounds_still_misses_the_item` en `test_any_moment_is_fine_completes_the_item` staan
+daarom als paar in de suite.
+
+### 52.3 De twee tijdvelden gaan inactief, niet weg
+
+Staat de schakelaar aan, dan worden *"Klaar uiterlijk om"* en *"Niet eerder klaar dan"*
+uitgeschakeld en **hun waarden blijven bewaard**.
+
+Verbergen zou de weg terug achter de schakelaar zetten die haar verborg — de eenrichtingsdeur
+uit §38, en dezelfde regel die de contractvelden op Woning volgen: *een waarde vervalt wanneer
+de nieuwe keuze haar betekenisloos maakt, en blijft wanneer zij slechts inactief is.*
+
+### 52.4 Het is een bewonersveld
+
+`runs_any_time` staat in `DEVICE_OPERATION_FIELDS` en in `RESIDENT_FIELDS.device`, naast
+`ready_from` en `ready_before`.
+
+**Dat moet ook wel**: de bewoner mag via `ready_before` een deadline zetten, dus hij moet ook
+kunnen zeggen dat hij er geen heeft. Alleen de helft geven die een eis *toevoegt* zou "geen
+eis" iets maken dat alleen de installateur kan uitdrukken — de spiegelhelft-regel.
+
+**Het contrast met §51 is precies het punt.** `no_run_from` en `no_run_until` staan er
+bewust níét in: die zeggen wanneer de machine niet mag draaien vanwege waar hij staat, en dat
+is niet aan de bewoner om te verruimen. Twee velden die in hetzelfde vak staan en op de
+tegenovergestelde manier beschermd zijn, omdat ze van verschillende mensen zijn.
+
+### 52.5 Wat dit niet doet
+
+Het apparaat blijft **volledig adviseerbaar**. Er verandert niets aan `is_advisable`, aan
+`has_movable_load`, aan de energiescore of aan het overschot-advies. Er verdwijnt alleen een
+deadline om naartoe te rekenen, en daarmee het urgentie-advies (§43) voor dit apparaat — wat
+klopt, want er ís geen urgentie.
+
+Het staat ook los van het niet-draaien-venster van §51: een droger kan geen deadline hebben
+én 's nachts verboden zijn. Twee vragen, twee antwoorden.

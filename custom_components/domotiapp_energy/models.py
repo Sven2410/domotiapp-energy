@@ -922,6 +922,14 @@ class DeviceProfile:
     # A resident who shortens his quiet hours must not lose it.
     no_run_from: str | None = None
     no_run_until: str | None = None
+    # "Any moment is fine" as an actual answer rather than an empty field
+    # (SPEC.md §52). Without it, "I have no deadline" and "I have not filled
+    # this in yet" were the same two empty boxes, and the data quality could
+    # only be satisfied by inventing a deadline nobody has.
+    #
+    # Independent of the no-run window above it: a dryer can have no deadline
+    # *and* be banned at night. The two answer different questions.
+    runs_any_time: bool = False
     days_of_week: list[int] = field(default_factory=lambda: list(ALL_DAYS_OF_WEEK))
     notes: str | None = None
     # Left as TYPE_DEFAULT unless the installer chose a value; __post_init__
@@ -967,6 +975,7 @@ class DeviceProfile:
             "ready_before": self.ready_before,
             "no_run_from": self.no_run_from,
             "no_run_until": self.no_run_until,
+            "runs_any_time": self.runs_any_time,
             "days_of_week": list(self.days_of_week),
             "notes": self.notes,
             "is_noisy": self.is_noisy,
@@ -1013,6 +1022,12 @@ class DeviceProfile:
             # these are what the installer typed (SPEC.md §49.2).
             no_run_from=_kept_time(data.get("no_run_from")),
             no_run_until=_kept_time(data.get("no_run_until")),
+            # Absent means an older file, and `False` is right for one: every
+            # device stored before this field existed either has a window (and
+            # passes on that) or has not been answered yet (and should not
+            # silently start passing). No migration is needed, which is exactly
+            # why the checklist reads "window OR this" (SPEC.md §52).
+            runs_any_time=_as_bool(data.get("runs_any_time"), False),
             days_of_week=_as_days_of_week(data.get("days_of_week")),
             notes=_as_optional_str(data.get("notes")),
             # Absent or unusable leaves the sentinel in place, so __post_init__

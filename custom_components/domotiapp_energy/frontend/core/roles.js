@@ -65,6 +65,10 @@ const RESIDENT_FIELDS = {
     'control_mode',
     'ready_from',
     'ready_before',
+    // He may set a deadline, so he must be able to say he has none — giving him
+    // only the half that adds a requirement would make "geen eis" something
+    // only the installer can express (SPEC.md §52).
+    'runs_any_time',
     'days_of_week',
     'is_noisy',
     'priority',

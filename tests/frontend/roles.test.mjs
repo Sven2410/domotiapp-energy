@@ -46,11 +46,19 @@ const DISHWASHER = {
   control_forbidden: false,
 };
 
-/** The six fields SPEC.md §33.4 gives the resident on an appliance. */
+/**
+ * The fields SPEC.md §33.4 gives the resident on an appliance.
+ *
+ * `runs_any_time` joined them in §52 and had to: he may set a deadline through
+ * `ready_before`, so he must be able to say he has none. Handing him only the
+ * half that adds a requirement would make "geen eis" something only the
+ * installer can express.
+ */
 const RESIDENT_DEVICE_FIELDS = [
   'control_mode',
   'ready_from',
   'ready_before',
+  'runs_any_time',
   'days_of_week',
   'is_noisy',
   'priority',
@@ -208,7 +216,7 @@ describe('an appliance is split down the middle', () => {
     return { panel, tab, dialog, hass };
   }
 
-  it('leaves exactly the six resident fields editable', async () => {
+  it('leaves exactly the resident fields editable and nothing else', async () => {
     const { dialog } = await openDialog(false);
 
     const editable = fields(dialog)
