@@ -6774,10 +6774,16 @@ aanleiding"* bedoelt.
 - **De teller *Apparaten die nu draaien* blijft een feit** op `Actuele situatie`. Dat
   is geen handeling.
 
-## 61. Voorstel: het historisch overzicht
+## 61. Het historisch overzicht
 
-**Status: voorstel, ronde 1** (Sven, 2026-08-11, na §60). Er is nog niets aan
-gebouwd, en er staat één beslissing in die aan hem is.
+> **De val waar iemand anders wel in loopt** (Sven, 2026-08-11, over §61.3):
+> **het gemiddelde van een verhouding is niet de verhouding van de sommen.** Een
+> daggemiddelde zelfbenutting uit uurgemiddelden valt structureel te hoog uit bij
+> zon in de ochtend en verbruik in de avond — en het is precies het soort getal
+> dat plausibel oogt en in elke test klopt. Lees §61.3 vóór je aan een dagwaarde
+> begint, welke dan ook.
+
+**Status: akkoord bevonden, nog niet gebouwd** (Sven, 2026-08-11, na §60).
 
 ### 61.1 De vraag die het beantwoordt, en de vraag die het weigert
 
@@ -6806,7 +6812,7 @@ Vier dingen die daaronder vallen, en die het Energie-dashboard niet kan tonen:
 3. **hoe de energiescore liep** — onze eigen indicator;
 4. **of de installatie gezond was** — datakwaliteit, bronnen die wegvielen.
 
-### 61.2 Geen nieuwe opslag, en waarschijnlijk geen nieuwe entiteit
+### 61.2 Geen nieuwe opslag
 
 **Home Assistant bewaart onze eigen sensoren al.** Vijf van de acht entiteiten
 hebben `state_class: measurement`, dus de recorder houdt er statistieken van bij,
@@ -6817,16 +6823,31 @@ weggeschreven (CLAUDE.md regel 9).
 Het logboek dat we al hebben levert de gebeurtenissen: piekrisico, zonneoverschot,
 bronnen die wegvielen, configuratiewijzigingen.
 
-**Twee dingen die geverifieerd moeten worden vóór er iets op gebouwd wordt**, en
-allebei zijn het aannames over Home Assistant en niet over ons:
+**Twee aannames over Home Assistant, geverifieerd in de bron van 2026.8.1** — de
+versie die de klant draait — en niet in de documentatie:
 
-| Aanname | Waarom het uitmaakt |
+| Aanname | Uitkomst |
 |---|---|
-| de recorder bewaart uurstatistieken langer dan de ruwe states (standaard 10 dagen) | zonder dat is "de afgelopen weken" bij de meeste klanten leeg |
-| het paneel mag `recorder/statistics_during_period` aanroepen | anders is er alleen ruwe historie, en die verdwijnt met de purge |
+| de recorder bewaart uurstatistieken langer dan de ruwe states (standaard 10 dagen) | **klopt** |
+| het paneel mag `recorder/statistics_during_period` aanroepen | **klopt**, en zonder adminrecht |
 
-Lees dat in de bron van Home Assistant, niet in de documentatie — dat is de regel
-die dit project al twee keer heeft behoed voor een verkeerde aanname.
+**Wat er precies gelezen is.** `recorder/purge.py` verwijdert states, events,
+attributen, eventtypes, recorder-runs, `statistics_runs` en de rijen van
+`statistics_short_term`. De lange-termijntabel `statistics` — de uurwaarden —
+komt in dat pad niet voor; de enige functie die haar leegt is `clear_statistics`,
+en dat is een expliciete handeling via een eigen WebSocket-commando.
+
+> **Gevolg voor het ontwerp:** de uurgeschiedenis van onze vijf meetsensoren
+> overleeft `purge_keep_days`. De ruwe states niet, dus alles wat fijner is dan een
+> uur bestaat alleen binnen het purge-venster.
+
+`recorder/statistics_during_period` staat geregistreerd zonder `require_admin`,
+net als `coach/recalculate` bij ons: elke ingelogde gebruiker mag het opvragen. Dat
+is precies wat een paneel nodig heeft dat ook een bewoner opent.
+
+**Wat hier níét uit volgt:** dat elke klant statistieken *heeft*. De recorder kan
+uitgeschakeld of ingeperkt zijn, en een woning die net geïnstalleerd is heeft
+niets. Het overzicht toont dus wat er is en zegt het wanneer er minder is (§61.6).
 
 ### 61.3 De valkuil die dit ontwerp bijna insloop
 
@@ -6864,9 +6885,22 @@ Het **Logboek** wordt de diepte. Dat tabblad bestaat al en is nu een technische
 lijst; het wordt een tijdlijn per dag, in de woorden van de klant. Geen zevende
 tabblad: de tabbalk loopt op een telefoon al over twee regels.
 
-### 61.5 De beslissing die aan Sven is
+### 61.5 Besloten: zelfbenutting wordt een eigen entiteit
 
-**Moet zelfbenutting een eigen entiteit worden?**
+**Ja** (Sven, 2026-08-11), met twee voorwaarden die bij het besluit horen:
+
+1. **Geen daggemiddelde erop.** Om de reden van §61.3, en die geldt voor elke
+   dagwaarde die uit dit percentage wordt afgeleid.
+2. **De belofte staat in de README.** Een entiteit die klanten in dashboards en
+   langetermijnstatistieken zetten kan daarna niet meer weg — dezelfde afspraak
+   als bij de bestaande ID's (CLAUDE.md regel 11), en zij hoort te staan waar de
+   klant hem leest en niet alleen in een commit.
+
+De reden om het te doen: **het is de enige van de vier die iets zegt over wat de
+bewoner deed.** Zonder geschiedenis van dat getal mist het product zijn eigen
+onderwerp — de energiescore is erop gebouwd.
+
+De afweging zoals zij lag:
 
 Het is het getal waar dit product over gaat — de energiescore is erop gebouwd —
 en het is het enige van de vier dat iets zegt over wat de *bewoner* deed. Maar het
@@ -6878,15 +6912,14 @@ wordt nergens vastgelegd, dus er is geen geschiedenis van.
 | Kosten | historie begint pas bij installatie; het paneel moet dat zeggen in plaats van een lege grafiek te tekenen | de belangrijkste uitkomst blijft onzichtbaar in de tijd |
 | Risico | het uitnodigt tot precies de daggemiddelden van §61.3 | — |
 
-**Toevoegen is niet brekend** (rule 11 gaat over het *wijzigen* van bestaande
-ID's), maar het is wel een belofte: een entiteit die klanten in dashboards zetten
-kan daarna niet meer weg.
+**Toevoegen is niet brekend** (regel 11 gaat over het *wijzigen* van bestaande
+ID's), maar het is wel een belofte.
 
-Mijn advies: **wel toevoegen, en het daggemiddelde er niet op bouwen.** Dan heeft
-de klant het getal in HA's eigen grafieken — waar hij zelf kan zien wat het doet —
-en houdt ons blok zich bij de drie feiten die los verdedigbaar zijn.
+Wat dat praktisch betekent: de klant krijgt het getal in HA's eigen grafieken,
+waar hij zelf kan zien wat het doet — en ons blok houdt zich bij de drie feiten
+van §61.4, die los verdedigbaar zijn.
 
-### 61.6 Wat dit voorstel niet doet
+### 61.6 Wat dit overzicht niet doet
 
 - **Geen prognose.** Vooruitkijken is een eigen onderwerp (§32.8) en heeft niets
   met historie te maken.
