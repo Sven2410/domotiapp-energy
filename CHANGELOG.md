@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.27.0
+
+Het logboek leest als een tijdlijn. SPEC §61.4 — het laatste openstaande deel van het
+historisch overzicht.
+
+### Gewijzigd
+
+- **Elke dag krijgt een kop:** *Vandaag*, *Gisteren*, en daarvoor de dag voluit
+  (*"zaterdag 9 augustus"*). Een gebeurtenis draagt dan alleen nog het tijdstip — *14:32* in
+  plaats van *11-08-2026, 14:32:07 · Advies herberekend*.
+
+  Wat er stond was technisch juist en las als een export. Wat er nu staat leest als wat er
+  die dag gebeurde.
+
+- **"Info" staat niet meer op elke regel.** Bij een waarschuwing of een fout blijft het woord
+  staan — de betekenis mag nooit alleen in een kleur zitten — maar bij een gewone melding
+  vertaalt dat woord niets en drukt het de zin eronder weg.
+
+- **Het aantal van een samengevoegde reeks staat nu naast het tijdstip:** *"14:32 · 40 keer"*.
+  Dat een reeks is samengevoegd blijft zichtbaar; veertig keer wegvallen is een ander verhaal
+  dan één keer.
+
 ## 0.26.0
 
 De weg terug op een wandtablet. SPEC §62.

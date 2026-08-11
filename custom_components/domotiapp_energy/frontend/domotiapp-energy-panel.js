@@ -30,7 +30,7 @@ import { logbookTab } from './tabs/logbook.js';
 import { overviewTab } from './tabs/overview.js';
 import { preferencesTab } from './tabs/preferences.js';
 
-const VERSION = '0.26.0';
+const VERSION = '0.27.0';
 
 /**
  * Tab order as SPEC.md §33.6 lists it.
@@ -436,6 +436,27 @@ const STYLES = `
     margin: 0 0 2px;
     font-size: 1.1rem;
     overflow-wrap: anywhere;
+  }
+  /* De dagkop in het logboek (SPEC.md §61.4). Hij hoort bij de eerste rij van
+     zijn dag en staat dus binnen die rij — kleiner en in hoofdletters, zodat
+     hij de gebeurtenis eronder niet overstemt.
+
+     **De flex-basis van 100% is hier geen opmaakdetail maar de hele werking.**
+     De rij is een flexcontainer, dus zonder dit kwam de kop naast de
+     gebeurtenis te staan in plaats van erboven — precies het soort fout dat
+     alleen een echte browser laat zien, want jsdom rekent geen cascade.
+
+     En geen backticks in dit commentaar: het hele stylesheet is een template
+     literal, en een backtick hierin sluit hem. Dat brak ooit het complete
+     paneel, en zojuist opnieuw (CLAUDE.md, "lees testuitvoer"). */
+  .day-heading {
+    flex: 0 0 100%;
+    margin: 8px 0 0;
+    font-size: 0.75rem;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--secondary-text-color);
   }
   .row-meta {
     margin: 0;

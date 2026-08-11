@@ -26,13 +26,14 @@ async function settle() {
  * installer is not the layout the resident sees — six tabs against four is
  * exactly the kind of difference a width test has to be able to ask for.
  */
-async function remount({ isAdmin = true, config, coach } = {}) {
+async function remount({ isAdmin = true, config, coach, logs } = {}) {
   document.body.textContent = '';
   const panel = document.createElement('domotiapp-energy-panel');
   panel.hass = fakeHass({
     isAdmin,
     config: config ?? sampleConfig(),
     coach: coach ?? sampleCoach(),
+    logs,
   });
   document.body.appendChild(panel);
   await settle();

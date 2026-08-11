@@ -192,6 +192,97 @@ function hassWithLogs(answer, { isAdmin = true } = {}) {
   return hass;
 }
 
+/** Een tijdstip vandaag, zoals de backend het teruggeeft. */
+function vandaag(uur = 14) {
+  const d = new Date();
+  d.setHours(uur, 32, 0, 0);
+  return d.toISOString();
+}
+
+/** Hetzelfde tijdstip, gisteren. */
+function gisteren(uur = 9) {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  d.setHours(uur, 5, 0, 0);
+  return d.toISOString();
+}
+
+describe('het logboek als tijdlijn (SPEC.md §61.4)', () => {
+  it('zet een kop boven elke dag, in woorden', async () => {
+    const { tab } = await openTab(
+      'Logboek',
+      'logbook',
+      hassWithLogs(
+        logs(
+          { id: 'a', timestamp: vandaag(14) },
+          { id: 'b', timestamp: vandaag(9) },
+          { id: 'c', timestamp: gisteren() },
+        ),
+      ),
+    );
+    await settle();
+
+    const koppen = [...tab.querySelectorAll('.day-heading')]
+      .filter((node) => isVisible(node))
+      .map((node) => node.textContent);
+
+    assert.deepEqual(koppen, ['Vandaag', 'Gisteren']);
+  });
+
+  it('geeft de rij alleen het tijdstip, want de dag staat erboven', async () => {
+    const { tab } = await openTab(
+      'Logboek',
+      'logbook',
+      hassWithLogs(logs({ timestamp: vandaag(14) })),
+    );
+    await settle();
+
+    const rij = visibleText(tab.querySelector('.row-item'));
+
+    assert.match(rij, /14:32/);
+    // Geen volledige datumstempel meer: dat las als een export in plaats van
+    // als een verhaal.
+    assert.doesNotMatch(rij, /\d{2}-\d{2}-\d{4}/);
+  });
+
+  it('herhaalt de kop niet binnen dezelfde dag', async () => {
+    const { tab } = await openTab(
+      'Logboek',
+      'logbook',
+      hassWithLogs(
+        logs({ id: 'a', timestamp: vandaag(14) }, { id: 'b', timestamp: vandaag(9) }),
+      ),
+    );
+    await settle();
+
+    const koppen = [...tab.querySelectorAll('.day-heading')].filter((n) => isVisible(n));
+
+    assert.equal(koppen.length, 1);
+  });
+
+  it('laat "Info" weg, want daar zegt de kleur niets', async () => {
+    // **De regel blijft staan waar zij geldt** (SPEC.md §23): bij een
+    // waarschuwing of een fout mag de betekenis nooit alleen in een tint
+    // zitten. Bij info is er niets te vertalen, en dan is het woord ruis.
+    const { tab } = await openTab(
+      'Logboek',
+      'logbook',
+      hassWithLogs(
+        logs(
+          { id: 'a', severity: 'info', title: 'Advies opnieuw berekend' },
+          { id: 'b', severity: 'warning', title: 'Bron niet beschikbaar' },
+        ),
+      ),
+    );
+    await settle();
+
+    const rijen = [...tab.querySelectorAll('.row-item')].map(visibleText);
+
+    assert.doesNotMatch(rijen[0], /Info/);
+    assert.match(rijen[1], /Waarschuwing/);
+  });
+});
+
 describe('the Logboek tab', () => {
   it('shows each event with its time, type and severity in words', async () => {
     const { tab } = await openTab('Logboek', 'logbook', hassWithLogs(logs({})));
@@ -212,8 +303,10 @@ describe('the Logboek tab', () => {
     );
     await settle();
 
-    // Without this, forty dropouts read as one (SPEC.md §8).
-    assert.match(tab.querySelector('.row-status span').textContent, /40 keer/);
+    // Without this, forty dropouts read as one (SPEC.md §8). Het getal staat
+    // sinds §61.4 naast het tijdstip in plaats van achter het woord voor de
+    // ernst — daar hoort alleen te staan wat de kleur betekent.
+    assert.match(visibleText(tab.querySelector('.row-item')), /40 keer/);
   });
 
   it('says what will appear when the logbook is still empty', async () => {
