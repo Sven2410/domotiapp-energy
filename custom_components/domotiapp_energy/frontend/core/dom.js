@@ -290,6 +290,37 @@ export function formatPrice(value) {
   }).format(value);
 }
 
+/**
+ * Say when a moment is, the way somebody says it out loud.
+ *
+ * *"morgen om 07:00"* rather than *"12-08-2026, 07:00:00"*, because this lands
+ * in a sentence a resident reads once and has to act on: he fills the
+ * dishwasher at ten in the evening and needs to know the flag still counts
+ * tomorrow morning (SPEC.md §32.6).
+ *
+ * Two horizons, which is all a shelf life of at most a day can produce: later
+ * today, or tomorrow. Anything further is a moment this flag cannot reach, so
+ * there is no branch for it.
+ */
+export function formatMoment(iso) {
+  if (!iso) {
+    return null;
+  }
+  const moment = new Date(iso);
+  if (Number.isNaN(moment.getTime())) {
+    return null;
+  }
+  const time = new Intl.DateTimeFormat('nl-NL', {
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(moment);
+
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const days = Math.floor((moment - startOfToday) / 86400000);
+  return days >= 1 ? `morgen om ${time}` : `vandaag om ${time}`;
+}
+
 /** Format an ISO timestamp as a readable Dutch date and time. */
 export function formatTimestamp(iso) {
   if (!iso) {

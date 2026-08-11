@@ -66,6 +66,7 @@ from custom_components.domotiapp_energy.models import (
     HomeProfile,
     StoredConfiguration,
 )
+from custom_components.domotiapp_energy.runtime_store import RuntimeStore
 from custom_components.domotiapp_energy.storage import ConfigurationStore
 
 GRID_ENTITY = "sensor.netmeter"
@@ -381,7 +382,9 @@ async def test_calculations_never_overlap(
             active -= 1
             return result
 
-    coordinator = EnergyCoordinator(hass, entry, store, _CountingProvider())
+    coordinator = EnergyCoordinator(
+        hass, entry, store, RuntimeStore(hass), _CountingProvider()
+    )
     await asyncio.gather(coordinator.async_refresh(), coordinator.async_refresh())
 
     assert concurrent == 1

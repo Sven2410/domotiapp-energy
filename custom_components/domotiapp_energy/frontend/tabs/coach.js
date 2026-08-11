@@ -23,6 +23,7 @@ import {
   button,
   card,
   el,
+  formatMoment,
   formatNumber,
   formatTimestamp,
   notice,
@@ -102,7 +103,18 @@ export const coachTab = {
     const calculatedRow = statRow('Laatste berekening', { empty: 'Nog niet berekend' });
 
     const recalculateButton = button('Opnieuw berekenen', { primary: true });
+    // **The second of the two places this button belongs** (SPEC.md §44.6).
+    // The other is on Apparaten, where a resident is tidying the kitchen; this
+    // one is the moment he reads "start nu om 07:00 te halen" and thinks "hij
+    // is niet vol". Leaving either out means remembering, at the wrong moment,
+    // where the other one is.
+    const readyButton = button('Klaar / vol');
+    const readyLine = el('p', { class: 'advice-message' });
     const recalculateNotice = notice('mdi:refresh');
+    // Which appliance the primary advice is about, when that appliance waits
+    // to be told there is work in it, and what its flag currently says.
+    let readyDevice = null;
+    let readyFlags = {};
 
     mainCard.body.append(
       adviceTitle,
@@ -111,7 +123,8 @@ export const coachTab = {
       savingRateRow.element,
       reasonRow.element,
       calculatedRow.element,
-      el('div', { class: 'actions' }, [recalculateButton]),
+      readyLine,
+      el('div', { class: 'actions' }, [recalculateButton, readyButton]),
       recalculateNotice.element,
     );
 
@@ -273,6 +286,48 @@ export const coachTab = {
       answerDialog.show({ focusReturnsTo: opener });
     }
 
+    /**
+     * Say how long "hij is vol" stays true, in the words somebody would use.
+     *
+     * The same two sentences the appliance row uses, for the same reason
+     * (SPEC.md §32.6): where nothing is linked, expiring is the only way the
+     * flag ever goes out, and that belongs in the sentence at the moment the
+     * button is pressed.
+     */
+    function describeReady(flag) {
+      if (!flag) {
+        return '';
+      }
+      const until = formatMoment(flag.expires_at);
+      if (flag.auto_clears) {
+        return `Staat vol. Dit vervalt ${until}, of eerder zodra hij klaar is.`;
+      }
+      return (
+        `Staat vol. We kunnen niet zien wanneer hij klaar is, dus dit blijft ` +
+        `staan tot ${until}. Zet het eerder uit als er niets meer in zit.`
+      );
+    }
+
+    /**
+     * Say the appliance this advice is about has work in it, or take it back.
+     *
+     * The appliance comes from the advice itself (`related_device_ids`), so
+     * the button can never be about something else than the sentence above it.
+     */
+    async function toggleReady() {
+      if (!readyDevice) {
+        return;
+      }
+      const wasSet = Boolean(readyFlags[readyDevice.id]);
+      try {
+        const api = createApi(getHass());
+        await api.setDeviceReady(readyDevice.id, !wasSet);
+        state.setLive(await api.getCoach());
+      } catch (error) {
+        recalculateNotice.set(describeError(error), { tone: 'warning' });
+      }
+    }
+
     async function recalculate() {
       state.setSaving(true);
       recalculateButton.disabled = true;
@@ -290,6 +345,8 @@ export const coachTab = {
       }
     }
 
+    onTap(readyButton, () => toggleReady());
+
     onTap(recalculateButton, () => {
       if (!recalculateButton.disabled) {
         recalculate();
@@ -304,6 +361,20 @@ export const coachTab = {
       const prefs = preferences();
 
       const primary = live.primary_advice;
+      // The flag belongs to the appliance this advice is about, and the button
+      // only appears where that appliance waits to be told there is work in it
+      // (SPEC.md §32.5). Anywhere else it would be a button without meaning.
+      readyFlags = live.ready_devices || {};
+      const devices = panelState.config?.devices || [];
+      const subject = (primary?.related_device_ids || [])[0];
+      readyDevice =
+        devices.find((row) => row.id === subject && row.needs_ready_flag) || null;
+      const readyState = readyDevice ? readyFlags[readyDevice.id] : null;
+      setVisible(readyButton, Boolean(readyDevice));
+      readyButton.textContent = readyState ? 'Toch niet vol' : 'Klaar / vol';
+      readyLine.textContent = describeReady(readyState);
+      setVisible(readyLine, Boolean(readyState));
+
       adviceTitle.textContent = primary?.title || 'Nog geen advies berekend';
       adviceMessage.textContent =
         primary?.message ||

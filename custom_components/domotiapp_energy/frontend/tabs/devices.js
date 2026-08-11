@@ -42,6 +42,7 @@ import {
   button,
   card,
   el,
+  formatMoment,
   formatNumber,
   notice,
   section,
@@ -93,6 +94,19 @@ const NOISY_BY_DEFAULT = new Set([
 
 /** Types that are not flexible unless the installer says otherwise. */
 const INFLEXIBLE_BY_DEFAULT = new Set(['generic_monitor', 'heat_pump']);
+
+/**
+ * Types somebody loads by hand, so the coach waits to be told (SPEC.md §32.5).
+ *
+ * A charger is deliberately absent: it can see through its status entity
+ * whether a car is attached, and a flag somebody has to flip while the system
+ * can see the answer is the busywork this round removes.
+ */
+const NEEDS_READY_FLAG_BY_DEFAULT = new Set([
+  'dishwasher',
+  'washing_machine',
+  'dryer',
+]);
 
 const PRIORITY_LABELS = {
   low: 'Laag',
@@ -220,6 +234,11 @@ function noisyByDefault(deviceType) {
 /** Whether this type is flexible by default (SPEC.md §8). */
 function flexibleByDefault(deviceType) {
   return !INFLEXIBLE_BY_DEFAULT.has(deviceType);
+}
+
+/** Whether this type waits to be told there is work in it (SPEC.md §32.5). */
+function needsReadyFlagByDefault(deviceType) {
+  return NEEDS_READY_FLAG_BY_DEFAULT.has(deviceType);
 }
 
 /**
@@ -795,6 +814,21 @@ function behaviourFields(draft) {
       selector: { number: { min: 0, step: 10, unit_of_measurement: 'W' } },
     },
     {
+      name: 'needs_ready_flag',
+      label: 'Moet gemeld worden dat er werk in zit',
+      // A dishwasher starts when the door closes and nothing here knows
+      // whether there is anything in it (SPEC.md §32.5). A charger can see a
+      // car for itself, so it is off by type — but an installer may switch it
+      // on where that link is missing.
+      helper:
+        `Standaard voor dit type: ${
+          needsReadyFlagByDefault(draft.device_type) ? 'ja' : 'nee'
+        }. Staat dit aan, dan adviseert de coach dit apparaat pas te starten ` +
+        'nadat iemand op "Klaar / vol" heeft gedrukt. Zo wordt er nooit een ' +
+        'lege machine geadviseerd.',
+      selector: { boolean: {} },
+    },
+    {
       name: 'is_flexible',
       label: 'Verplaatsbaar in de tijd',
       helper: `Standaard voor dit type: ${
@@ -1015,6 +1049,7 @@ function labelOf(name) {
     control_mode: 'Bedieningsniveau',
     is_flexible: 'Verplaatsbaar in de tijd',
     can_modulate: 'Kan op deelvermogen draaien',
+    needs_ready_flag: 'Moet gemeld worden dat er werk in zit',
     min_power_w: 'Minimaal vermogen',
   };
   return known[name] || name;
@@ -1122,6 +1157,7 @@ const SECTIONS = [
     fields: [
       'is_flexible',
       'is_noisy',
+      'needs_ready_flag',
       'runs_any_time',
       'ready_before',
       'ready_days',
@@ -1190,6 +1226,10 @@ export const devicesTab = {
     // unlinked one from getting an empty line (SPEC.md §37).
     let devicePower = {};
     let powerUnusable = [];
+    // Which appliances a resident has said there is work in, with the moment
+    // each flag expires (SPEC.md §32.5). Live state, so it arrives with the
+    // coach result rather than with the device rows.
+    let readyFlags = {};
     // The lowest running power per appliance id, kept in the coordinator's
     // memory since the last restart (SPEC.md §59.3). Only the appliances that
     // have actually been seen running appear in it.
@@ -1293,6 +1333,9 @@ export const devicesTab = {
       if (!touched.has('is_flexible')) {
         draft.is_flexible = flexibleByDefault(draft.device_type);
       }
+      if (!touched.has('needs_ready_flag')) {
+        draft.needs_ready_flag = needsReadyFlagByDefault(draft.device_type);
+      }
     }
 
     // --- Rows ---------------------------------------------------------------
@@ -1306,18 +1349,29 @@ export const devicesTab = {
       const statusText = el('span');
       status.append(statusIcon, statusText);
 
+      // **One of the two places this button belongs** (SPEC.md §44.6): here,
+      // where a resident is tidying the kitchen and fills the machine at the
+      // end of it. The other is under the advice that asks about it — the same
+      // command, the two moments he thinks of it.
+      const readyButton = button('Klaar / vol');
+      const readyLine = el('p', { class: 'row-meta' });
       const editButton = button('Bewerken');
       const deleteButton = button('Verwijderen');
       deleteButton.classList.add('button-danger');
 
       const row = el('div', { class: 'row-item' }, [
-        el('div', { class: 'row-main' }, [name, meta, power, status]),
-        el('div', { class: 'row-buttons' }, [editButton, deleteButton]),
+        el('div', { class: 'row-main' }, [name, meta, power, readyLine, status]),
+        el('div', { class: 'row-buttons' }, [
+          readyButton,
+          editButton,
+          deleteButton,
+        ]),
       ]);
 
       let current = null;
       onTap(editButton, () => current && openDialog(current, editButton));
       onTap(deleteButton, () => current && askDelete(current, deleteButton));
+      onTap(readyButton, () => current && toggleReady(current));
 
       return {
         element: row,
@@ -1344,6 +1398,14 @@ export const devicesTab = {
               : '';
           power.dataset.tone = refused ? 'warning' : '';
           setVisible(power, hasReading || refused);
+
+          // The flag, and the sentence that goes with it. Only on appliances
+          // that need one: a charger is not asked whether somebody loaded it.
+          const flag = readyFlags[device.id];
+          setVisible(readyButton, Boolean(device.needs_ready_flag));
+          readyButton.textContent = flag ? 'Toch niet vol' : 'Klaar / vol';
+          readyLine.textContent = describeReady(flag);
+          setVisible(readyLine, Boolean(device.needs_ready_flag && flag));
           // A resident opens the same dialog and can change six fields in it,
           // so "Instellen" rather than "Bewerken" or "Bekijken": he is not
           // editing the appliance, and he is not only looking either.
@@ -1420,6 +1482,45 @@ export const devicesTab = {
         return '';
       }
       return ` · laagste meting sinds herstart: ${formatNumber(lowest)} W`;
+    }
+
+    /**
+     * Say how long "hij is vol" stays true, in the words somebody would use.
+     *
+     * **Two whole sentences, and which one you get is not a detail** (SPEC.md
+     * §32.6). With a status or remaining-time entity the flag goes out by
+     * itself when the programme ends and the expiry is a backstop. Without
+     * one, expiring is the *only* way it ever goes out — and the resident has
+     * to know that when he presses the button, not when he wonders why
+     * nothing happened.
+     *
+     * The moment is named either way, because somebody who fills the
+     * dishwasher at ten in the evening needs to know it still counts tomorrow.
+     */
+    function describeReady(flag) {
+      if (!flag) {
+        return '';
+      }
+      const until = formatMoment(flag.expires_at);
+      if (flag.auto_clears) {
+        return `Staat vol. Dit vervalt ${until}, of eerder zodra hij klaar is.`;
+      }
+      return (
+        `Staat vol. We kunnen niet zien wanneer hij klaar is, dus dit blijft ` +
+        `staan tot ${until}. Zet het eerder uit als er niets meer in zit.`
+      );
+    }
+
+    /** Say it, or take it back. The panel state refreshes with the answer. */
+    async function toggleReady(device) {
+      const wasSet = Boolean(readyFlags[device.id]);
+      try {
+        const api = createApi(getHass());
+        await api.setDeviceReady(device.id, !wasSet);
+        state.setLive(await api.getCoach());
+      } catch (error) {
+        listNotice.set(describeError(error), { tone: 'warning' });
+      }
     }
 
     /**
@@ -1870,6 +1971,7 @@ export const devicesTab = {
         applyRoleToTab();
       }
       devicePower = panelState.live?.metrics?.device_power_w || {};
+      readyFlags = panelState.live?.ready_devices || {};
       powerUnusable = panelState.live?.metrics?.device_power_unusable || [];
       deviceLowest = panelState.live?.metrics?.device_power_lowest_w || {};
       rowList.sync(config.devices || []);
