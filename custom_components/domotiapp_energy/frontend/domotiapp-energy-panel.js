@@ -30,7 +30,7 @@ import { logbookTab } from './tabs/logbook.js';
 import { overviewTab } from './tabs/overview.js';
 import { preferencesTab } from './tabs/preferences.js';
 
-const VERSION = '0.26.0';
+const VERSION = '0.27.0';
 
 /**
  * Tab order as SPEC.md §33.6 lists it.
@@ -436,6 +436,17 @@ const STYLES = `
     margin: 0 0 2px;
     font-size: 1.1rem;
     overflow-wrap: anywhere;
+  }
+  /* De dagkop in het logboek (SPEC.md §61.4). Hij hoort bij de eerste rij van
+     zijn dag, dus hij staat binnen die rij en boven de scheidingslijn — kleiner
+     en in hoofdletters, zodat hij de gebeurtenis eronder niet overstemt. */
+  .day-heading {
+    margin: 8px 0 12px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--secondary-text-color);
   }
   .row-meta {
     margin: 0;

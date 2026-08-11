@@ -20,7 +20,7 @@ is dit de invoer en niet de uitvoer.
 - **Engelse regels staan apart**, onderaan. Een Engelse zin in dit product is
   een fout tenzij zij een identifier is: de UI is Nederlands (CLAUDE.md).
 
-**922 Nederlandse teksten**, waarvan 127 op meer dan één plek. En 13 Engelse regels om na te lopen.
+**924 Nederlandse teksten**, waarvan 127 op meer dan één plek. En 13 Engelse regels om na te lopen.
 
 
 ## `custom_components/domotiapp_energy/const.py`
@@ -183,8 +183,10 @@ is dit de invoer en niet de uitvoer.
 
 | Tekst | Waar | Regel |
 |---|---|---|
+| Gisteren | dom | 248 |
 | Niet beschikbaar ↔ | dom | 44 |
 | Nog niet berekend ↔ | dom | 68 |
+| Vandaag | dom | 245 |
 | button button-primary | dom | 175 |
 
 ## `custom_components/domotiapp_energy/frontend/core/labels.js`
@@ -609,29 +611,29 @@ is dit de invoer en niet de uitvoer.
 
 | Tekst | Waar | Regel |
 |---|---|---|
-| Advies herberekend | logbook | 20 |
-| Apparaat toegevoegd ↔ | logbook | 18 |
-| Apparaat verwijderd ↔ | logbook | 19 |
-| Bezig met wissen… | logbook | 135 |
-| Bron niet beschikbaar ↔ | logbook | 21 |
-| Configuratie gewijzigd | logbook | 17 |
-| Configuratieprobleem | logbook | 25 |
-| Fout ↔ | logbook | 33 |
-| Gelukt | logbook | 31 |
-| Het logboek is gewist. | logbook | 139 |
-| Het logboek is leeg. Hier komt te staan wat DomotiApp Energy | logbook | 59 |
-| Info | logbook | 30 |
-| Logboek ↔ | logbook | 38 |
-| Logboek ↔ | logbook | 43 |
-| Logboek wissen ↔ | logbook | 46 |
-| Logboek wissen ↔ | logbook | 151 |
-| Ongeldige meting ↔ | logbook | 22 |
-| Piekrisico gesignaleerd | logbook | 23 |
-| Waarschuwing ↔ | logbook | 32 |
-| Weet je zeker dat je het logboek wilt wissen? De gebeurtenissen | logbook | 153 |
-| Wissen | logbook | 155 |
-| Zonneoverschot gesignaleerd | logbook | 24 |
-| zijn daarna weg. De configuratie zelf verandert niet. | logbook | 154 |
+| Advies herberekend | logbook | 21 |
+| Apparaat toegevoegd ↔ | logbook | 19 |
+| Apparaat verwijderd ↔ | logbook | 20 |
+| Bezig met wissen… | logbook | 158 |
+| Bron niet beschikbaar ↔ | logbook | 22 |
+| Configuratie gewijzigd | logbook | 18 |
+| Configuratieprobleem | logbook | 26 |
+| Fout ↔ | logbook | 34 |
+| Gelukt | logbook | 32 |
+| Het logboek is gewist. | logbook | 162 |
+| Het logboek is leeg. Hier komt te staan wat DomotiApp Energy | logbook | 60 |
+| Info | logbook | 31 |
+| Logboek ↔ | logbook | 39 |
+| Logboek ↔ | logbook | 44 |
+| Logboek wissen ↔ | logbook | 47 |
+| Logboek wissen ↔ | logbook | 174 |
+| Ongeldige meting ↔ | logbook | 23 |
+| Piekrisico gesignaleerd | logbook | 24 |
+| Waarschuwing ↔ | logbook | 33 |
+| Weet je zeker dat je het logboek wilt wissen? De gebeurtenissen | logbook | 176 |
+| Wissen | logbook | 178 |
+| Zonneoverschot gesignaleerd | logbook | 25 |
+| zijn daarna weg. De configuratie zelf verandert niet. | logbook | 177 |
 
 ## `custom_components/domotiapp_energy/frontend/tabs/overview.js`
 

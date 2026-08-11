@@ -15,6 +15,17 @@
  * collapsed run of identical events reads as a single occurrence, and "the
  * source dropped out once" is a different story from "the source dropped out
  * forty times" (SPEC.md §8).
+ *
+ * **Een tijdlijn en geen tabel** (SPEC.md §61.4). Wat hier stond was een lijst
+ * met per regel een volledige datumstempel en het soort gebeurtenis erachter —
+ * technisch juist, en te lezen als een export. Nu draagt elke dag een kop en
+ * elke rij alleen nog het tijdstip: *"Vandaag · 14:32"* in plaats van
+ * *"11-08-2026, 14:32:07 · Advies herberekend"*.
+ *
+ * De kop hangt aan de eerste rij van zijn dag in plaats van aan een eigen
+ * element. Dat houdt één gesleutelde lijst overeind — de rijen worden
+ * toegevoegd en verwijderd zoals overal in dit paneel — en de kop verhuist
+ * vanzelf mee wanneer de rij erboven verdwijnt.
  */
 
 import { createApi, describeError } from '../core/api.js';
@@ -23,7 +34,8 @@ import {
   button,
   card,
   el,
-  formatTimestamp,
+  formatDayHeading,
+  formatTimeOfDay,
   notice,
   setVisible,
 } from '../core/dom.js';
@@ -90,6 +102,10 @@ export const logbookTab = {
     const confirmDialog = createConfirmDialog({ overlay });
 
     function createLogRow() {
+      // De dagkop hoort bij de rij die hem opent, niet bij een eigen element:
+      // zo blijft het één gesleutelde lijst en verhuist de kop mee wanneer de
+      // rij eronder verdwijnt.
+      const heading = el('h3', { class: 'day-heading' });
       const title = el('p', { class: 'row-name' });
       const meta = el('p', { class: 'row-meta' });
       const message = el('p', { class: 'row-meta' });
@@ -99,16 +115,23 @@ export const logbookTab = {
       status.append(statusIcon, statusText);
 
       const row = el('div', { class: 'row-item' }, [
+        heading,
         el('div', { class: 'row-main' }, [title, meta, message, status]),
       ]);
 
       return {
         element: row,
         update(entry) {
+          heading.textContent = entry.dayHeading || '';
+          setVisible(heading, Boolean(entry.dayHeading));
+
           title.textContent = entry.title || EVENT_LABELS[entry.event_type] || '';
+          // Alleen het tijdstip: de dag staat in de kop erboven. En de
+          // hoeveelheid ernaast, want een samengevoegde reeks die zich als één
+          // gebeurtenis voordoet vertelt het verkeerde verhaal (SPEC.md §8).
           meta.textContent = [
-            formatTimestamp(entry.timestamp) || '',
-            EVENT_LABELS[entry.event_type] || entry.event_type,
+            formatTimeOfDay(entry.timestamp) || '',
+            entry.count > 1 ? `${entry.count} keer` : '',
           ]
             .filter(Boolean)
             .join(' · ');
@@ -117,23 +140,34 @@ export const logbookTab = {
           const severity = SEVERITY[entry.severity] || SEVERITY.info;
           statusIcon.setAttribute('icon', severity.icon);
           status.dataset.tone = severity.tone;
-          // The count is the whole point of the anti-spam rule: a run that was
-          // collapsed has to say how often it happened (SPEC.md §8).
-          statusText.textContent =
-            entry.count > 1
-              ? `${severity.label} · ${entry.count} keer samengevoegd`
-              : severity.label;
+          // **Het woord blijft staan waar de kleur iets zegt** (SPEC.md §23):
+          // een waarschuwing of een fout mag nooit alleen aan een tint te zien
+          // zijn. Bij `info` zegt de tint niets, en dan is "Info" op elke regel
+          // ruis die de zin eronder wegdrukt.
+          statusText.textContent = entry.severity === 'info' ? '' : severity.label;
+          setVisible(status, entry.severity !== 'info');
         },
       };
     }
 
     function show(list) {
       entries = list;
-      // The backend gives every entry a uuid4; the index is only a fallback so
-      // a damaged row can still be listed rather than dropped.
-      rowList.sync(
-        entries.map((entry, index) => ({ ...entry, id: entry.id || `row-${index}` })),
-      );
+      // De kop komt op de eerste rij van elke dag. Berekend bij het tonen en
+      // niet in de rij zelf, want een rij weet niet wat er boven haar staat.
+      let vorigeKop = null;
+      const items = entries.map((entry, index) => {
+        const kop = formatDayHeading(entry.timestamp);
+        const opent = kop !== null && kop !== vorigeKop;
+        vorigeKop = kop ?? vorigeKop;
+        return {
+          ...entry,
+          // The backend gives every entry a uuid4; the index is only a fallback
+          // so a damaged row can still be listed rather than dropped.
+          id: entry.id || `row-${index}`,
+          dayHeading: opent ? kop : null,
+        };
+      });
+      rowList.sync(items);
     }
 
     async function load() {
