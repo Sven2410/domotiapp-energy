@@ -228,6 +228,11 @@ binary_sensor.domotiapp_energy_peak_risk
 binary_sensor.domotiapp_energy_attention
 ```
 
+**An entity here is a promise.** Customers build dashboards, automations and long-term
+statistics on these IDs, so one that ships cannot be taken away again — which is why a new
+one is added deliberately rather than because it happened to be available. `state_class`
+means Home Assistant keeps its history, and that history is the point of adding one.
+
 The displayed names *do* follow the interface language. `sensor.domotiapp_energy_current_advice`
 carries the advice message, reason code, confidence, severity, measurements, the full
 advice list and the time of the last calculation as attributes; its state is the advice
@@ -358,8 +363,17 @@ script — is allowed.
   later release; in 0.1.0 everything except `monitor_only` behaves as `advice_only`.
 - **No forecasts are used yet.** `price_forecast` and `solar_forecast` can be
   configured, but the engine does not read them.
-- **No history.** Every calculation looks at the present moment only. There are no
-  trends, no daily totals and no "what did yesterday cost".
+- **No history yet, and it will never claim what you saved.** Every calculation looks at
+  the present moment only. A historical overview is planned, and two things are settled
+  about it in advance because they are what people ask first:
+
+  - **Consumption stays with Home Assistant's own Energy dashboard.** It reads your
+    meters directly, in kWh. Anything built here from power readings would be a worse
+    copy of a screen you already have.
+  - **It will never say what this integration saved you.** The coach advises; it does not
+    control, and nothing here knows whether you followed the advice. A euro figure would
+    need a version of last week in which you did not — and that version does not exist.
+    What it can show is what the coach saw, what it said, and what happened next.
 - **The energy score jumps, and is often absent.** It reads one moment, so a component
   stepping in or out moves the number without anybody doing anything: a home whose solar
   axis reads 30 in the afternoon can read 90 in the evening on the price axis alone. A
