@@ -4,6 +4,7 @@
   "codeowners": ["@Sven2410"],
   "config_flow": true,
   "dependencies": ["http", "frontend", "panel_custom", "websocket_api"],
+  "after_dependencies": ["recorder"],
   "documentation": "https://github.com/Sven2410/domotiapp-energy",
   "integration_type": "service",
   "iot_class": "calculated",

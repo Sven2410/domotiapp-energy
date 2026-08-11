@@ -1052,8 +1052,8 @@ is dit de invoer en niet de uitvoer.
 |---|---|
 | DomotiApp Energy has been removed. The energy configuration is kept in %s under .storage/, so adding the integration again restores it. Delete that file to start over | `custom_components/domotiapp_energy/__init__.py:145` |
 | Clearing ready flag for %r: %s reports %r | `custom_components/domotiapp_energy/coordinator.py:406` |
-| No recorder: skipping the history | `custom_components/domotiapp_energy/engine/history.py:280` |
-| Could not read the %s statistics | `custom_components/domotiapp_energy/engine/history.py:304` |
+| No recorder: skipping the history | `custom_components/domotiapp_energy/engine/history.py:287` |
+| Could not read the %s statistics | `custom_components/domotiapp_energy/engine/history.py:311` |
 | No alternative coach provider is available in this release | `custom_components/domotiapp_energy/engine/providers.py:250` |
 | Dropping ready flag for %r: %r is not a timestamp | `custom_components/domotiapp_energy/runtime_store.py:83` |
 | Migrating %s from schema %s.%s to %s.%s | `custom_components/domotiapp_energy/storage.py:102` |

@@ -277,6 +277,13 @@ async def _async_read(
     if _RECORDER not in hass.config.components:
         # Een woning kan de recorder uitgeschakeld hebben. Dat is een keuze van
         # de eigenaar en geen storing, dus er wordt niets gemeld.
+        #
+        # **Daarom staat de recorder in `after_dependencies` en niet in
+        # `dependencies`** (manifest.json). Het eerste zegt "laad hem vóór ons
+        # als hij er is", het tweede zou hem verplicht stellen — en dan zou
+        # precies de woning die hem bewust uitzette de integratie helemaal niet
+        # meer kunnen laden. hassfest eist een van de twee; welke van de twee is
+        # onze keuze, en deze is het.
         _LOGGER.debug("No recorder: skipping the history")
         return _Rows()
 
