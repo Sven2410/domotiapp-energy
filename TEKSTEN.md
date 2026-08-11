@@ -624,27 +624,27 @@ is dit de invoer en niet de uitvoer.
 
 | Tekst | Waar | Regel |
 |---|---|---|
-| Actief | overview | 586 |
+| Actief | overview | 596 |
 | Actuele energieprijs ↔ | overview | 235 |
 | Actuele situatie | overview | 202 |
 | Advies ↔ | overview | 265 |
-| Alle gegevens voor een betrouwbaar advies zijn ingevuld. ↔ | overview | 659 |
+| Alle gegevens voor een betrouwbaar advies zijn ingevuld. ↔ | overview | 669 |
 | Apparaten die nu draaien | overview | 241 |
 | Boven de drempel die ook het advies gebruikt. | overview | 416 |
 | Datakwaliteit | overview | 172 |
-| De hele dag compleet | overview | 445 |
+| De hele dag compleet | overview | 455 |
 | De stroomprijs is op dit moment laag, dus er is geen duur verbruik om | overview | 98 |
-| Energiebronnen om je slimme meter of omvormer te koppelen. | overview | 603 |
+| Energiebronnen om je slimme meter of omvormer te koppelen. | overview | 613 |
 | Energiescore | overview | 168 |
 | Er is nog geen cijfer, omdat de installatie nog niet compleet is. | overview | 43 |
 | Er is nog geen geschiedenis van gisteren. Vanaf de eerste hele dag | overview | 392 |
 | Er is nu opwek, maar geen apparaat of batterij die verbruik kan | overview | 76 |
 | Er is op dit moment niets te doen. | overview | 302 |
-| Er zijn nog geen energiebronnen gekoppeld. Ga naar het tabblad | overview | 602 |
-| Er zijn op dit moment geen waarschuwingen. | overview | 529 |
-| Fout ↔ | overview | 586 |
+| Er zijn nog geen energiebronnen gekoppeld. Ga naar het tabblad | overview | 612 |
+| Er zijn op dit moment geen waarschuwingen. | overview | 539 |
+| Fout ↔ | overview | 596 |
 | Geen afname gemeten | overview | 323 |
-| Geen bruikbare prijsbron | overview | 541 |
+| Geen bruikbare prijsbron | overview | 551 |
 | Geen cijfer | overview | 170 |
 | Het prijsmoment telt niet mee zolang de lage en de hoge prijsdrempel | overview | 124 |
 | Het prijsmoment telt niet mee, want bij een vast tarief is het ene | overview | 121 |
@@ -652,29 +652,29 @@ is dit de invoer en niet de uitvoer.
 | Het prijsmoment telt niet mee, want de stroom is nu goedkoop en er is | overview | 130 |
 | Het tabblad Energiecoach laat zien wat er ontbreekt. | overview | 44 |
 | Het tarief is altijd gelijk en er zijn geen zonnepanelen, dus er is | overview | 57 |
-| Het vermogen van je thuisbatterij kan niet uitgelezen worden. Een | overview | 698 |
+| Het vermogen van je thuisbatterij kan niet uitgelezen worden. Een | overview | 708 |
 | Hoe het gisteren ging | overview | 319 |
 | Hoogste in 30 dagen | overview | 333 |
 | Hoogste netvermogen | overview | 323 |
 | Installatie ↔ | overview | 324 |
-| Je omvormer levert op dit moment geen waarde, dus het | overview | 712 |
+| Je omvormer levert op dit moment geen waarde, dus het | overview | 722 |
 | Je panelen leveren op dit moment niets en de stroomprijs is laag. Er | overview | 83 |
 | Je panelen leveren op dit moment niets, en bij een vast tarief is het | overview | 91 |
 | Je panelen leveren op dit moment, maar terugleveren levert je meer op | overview | 65 |
-| Klaar / vol ↔ | overview | 460 |
-| Klaar / vol ↔ | overview | 475 |
+| Klaar / vol ↔ | overview | 470 |
+| Klaar / vol ↔ | overview | 485 |
 | Laatste berekening ↔ | overview | 196 |
-| Laden… | overview | 586 |
-| Naamloos apparaat ↔ | overview | 473 |
-| Negatief betekent teruglevering aan het net. | overview | 666 |
+| Laden… | overview | 596 |
+| Naamloos apparaat ↔ | overview | 483 |
+| Negatief betekent teruglevering aan het net. | overview | 676 |
 | Netvermogen | overview | 203 |
 | Niet beschikbaar ↔ | overview | 37 |
-| Niet de hele dag compleet | overview | 446 |
+| Niet de hele dag compleet | overview | 456 |
 | Niet gemeten ↔ | overview | 321 |
 | Niet gemeten ↔ | overview | 324 |
 | Niet gemeten ↔ | overview | 333 |
-| Nog geen advies berekend ↔ | overview | 729 |
-| Nog geen prijs bekend — koppel een prijsbron of vul het vaste leveringstarief in | overview | 542 |
+| Nog geen advies berekend ↔ | overview | 739 |
+| Nog geen prijs bekend — koppel een prijsbron of vul het vaste leveringstarief in | overview | 552 |
 | Nog niet berekend ↔ | overview | 197 |
 | Nog niet ingesteld | overview | 36 |
 | Op dit moment | overview | 149 |
@@ -682,15 +682,15 @@ is dit de invoer en niet de uitvoer.
 | Percentage van maximum | overview | 228 |
 | Status | overview | 195 |
 | Thuisverbruik | overview | 156 |
-| Toch niet vol ↔ | overview | 475 |
-| Vast leveringstarief, zoals ingevuld bij Woning. | overview | 558 |
-| Vast leveringstarief, zoals ingevuld bij Woning. De gekoppelde prijsbron bepaalt dit bedrag niet, maar neemt het over zodra dit veld leeg is of het contract dynamisch wordt. | overview | 557 |
+| Toch niet vol ↔ | overview | 485 |
+| Vast leveringstarief, zoals ingevuld bij Woning. | overview | 568 |
+| Vast leveringstarief, zoals ingevuld bij Woning. De gekoppelde prijsbron bepaalt dit bedrag niet, maar neemt het over zodra dit veld leeg is of het contract dynamisch wordt. | overview | 567 |
 | Voor kWh, kosten en wat je zelf verbruikte: | overview | 340 |
-| Waarschuwing ↔ | overview | 513 |
+| Waarschuwing ↔ | overview | 523 |
 | Waarschuwingen | overview | 270 |
 | Wat je nu kunt doen | overview | 296 |
 | Zelfbenutting | overview | 224 |
-| Zodra er een energiebron gekoppeld is, verschijnt hier het hoofdadvies. ↔ | overview | 732 |
+| Zodra er een energiebron gekoppeld is, verschijnt hier het hoofdadvies. ↔ | overview | 742 |
 | Zolang de lage en de hoge prijsdrempel niet zijn ingevuld, is niet te | overview | 50 |
 | Zonnebenutting telt niet mee, want deze woning heeft geen zonnepanelen. ↔ | overview | 108 |
 | Zonnebenutting telt niet mee, want er is geen apparaat of batterij die | overview | 115 |
@@ -700,12 +700,12 @@ is dit de invoer en niet de uitvoer.
 | Zonneoverschot ↔ | overview | 211 |
 | Zonneoverschot ↔ | overview | 320 |
 | Zonneproductie | overview | 207 |
-| batterij die laadt of ontlaadt verschuift wat er van het net | overview | 699 |
+| batterij die laadt of ontlaadt verschuift wat er van het net | overview | 709 |
 | bepalen of dit een duur moment is. Vul ze in bij Installatie. | overview | 51 |
-| bij Energiebronnen. | overview | 714 |
+| bij Energiebronnen. | overview | 724 |
 | dan de stroom je kost. Zelf verbruiken zou je nu geld kosten, dus er | overview | 66 |
-| datakwaliteit is nog niet compleet. Het tabblad Energiecoach | overview | 657 |
-| de batterij om dit op te lossen. | overview | 702 |
+| datakwaliteit is nog niet compleet. Het tabblad Energiecoach | overview | 667 |
+| de batterij om dit op te lossen. | overview | 712 |
 | dus geen duur verbruik om te vermijden. | overview | 131 |
 | ene moment niet beter dan het andere. Er is nu dus niets te verbeteren. | overview | 92 |
 | geen moment dat beter is dan een ander. Er valt daarom niets te | overview | 58 |
@@ -713,8 +713,8 @@ is dit de invoer en niet de uitvoer.
 | hoeveel van je opwek je zelf gebruikt. | overview | 113 |
 | is nu dus geen overschot om te benutten en geen duur verbruik om te | overview | 84 |
 | is voordeliger. | overview | 68 |
-| komt, dus het thuisverbruik is niet te berekenen en het | overview | 700 |
-| laat zien welke. | overview | 658 |
+| komt, dus het thuisverbruik is niet te berekenen en het | overview | 710 |
+| laat zien welke. | overview | 668 |
 | moment niet duurder dan het andere. | overview | 122 |
 | niet uit te lezen. | overview | 128 |
 | niet zijn ingevuld. Vul ze in bij Installatie. | overview | 125 |
@@ -723,11 +723,11 @@ is dit de invoer en niet de uitvoer.
 | optimaliseren. Het advies blijft gewoon werken. | overview | 59 |
 | staat hier hoe het ging. | overview | 393 |
 | te vermijden. | overview | 99 |
-| thuisverbruik is niet te berekenen. Controleer de zonnebron | overview | 713 |
+| thuisverbruik is niet te berekenen. Controleer de zonnebron | overview | 723 |
 | valt aan je opwek niets te benutten. De coach zegt hetzelfde: wachten | overview | 67 |
 | verbruik naar dit moment kan verplaatsen. | overview | 116 |
 | verplaatsen. Er valt daarom niets te benutten dat nu niet al gebeurt. | overview | 77 |
-| zonneoverschot kan te hoog zijn. Koppel de vermogenssensor van | overview | 701 |
+| zonneoverschot kan te hoog zijn. Koppel de vermogenssensor van | overview | 711 |
 
 ## `custom_components/domotiapp_energy/frontend/tabs/preferences.js`
 

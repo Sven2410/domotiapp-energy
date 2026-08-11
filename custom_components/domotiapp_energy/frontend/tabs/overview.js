@@ -497,12 +497,22 @@ export const overviewTab = {
 
       const maand = day.peak_month_w;
       const dagen = day.days_over_warning;
+      // Het percentage staat erbij en niet alleen de watts, want dát is het
+      // getal waarmee een installateur uitlegt of een aansluiting te krap is:
+      // 174% zegt in één blik meer dan 10.000 W. Het werd berekend en nergens
+      // gelezen tot de browsercontrole erop viel — een veld zonder lezer is de
+      // helft van een belofte (SPEC.md §16).
+      const deelMaand =
+        typeof day.peak_month_percent === 'number'
+          ? `${formatNumber(day.peak_month_percent, { decimals: 0 })}% van je maximum.`
+          : '';
+      const overDagen =
+        typeof dagen === 'number' && typeof day.days_known === 'number'
+          ? `Op ${dagen} van de ${day.days_known} gemeten dagen boven je ` +
+            `waarschuwingsgrens.`
+          : '';
       peakMonthRow.set(typeof maand === 'number' ? `${formatNumber(maand)} W` : null, {
-        hint:
-          typeof dagen === 'number' && typeof day.days_known === 'number'
-            ? `Op ${dagen} van de ${day.days_known} gemeten dagen boven je ` +
-              `waarschuwingsgrens.`
-            : null,
+        hint: [deelMaand, overDagen].filter(Boolean).join(' ') || null,
       });
 
       completeRow.set(

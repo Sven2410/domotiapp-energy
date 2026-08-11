@@ -261,6 +261,10 @@ describe('hoe het gisteren ging', () => {
 
     assert.match(tekst, /Hoogste in 30 dagen/);
     assert.match(tekst, /5\.100 W/);
+    // Het percentage hoort erbij: 89% zegt in één blik meer dan 5.100 W, en het
+    // is het getal waarmee een installateur uitlegt of een aansluiting te krap
+    // is. Het werd berekend en nergens gelezen tot de browsercontrole erop viel.
+    assert.match(tekst, /89% van je maximum/);
     assert.match(tekst, /Op 2 van de 30 gemeten dagen boven je waarschuwingsgrens/);
   });
 
