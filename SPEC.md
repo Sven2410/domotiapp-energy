@@ -6619,3 +6619,114 @@ advies uitblijft.
   getal: het leeft in het geheugen van de coordinator en gaat nooit naar de
   opslag (CLAUDE.md regel 9). Zonder die woorden leest het als *"het laagste dat
   deze paal kan"* — een uitspraak over de hardware die dit product niet mag doen.
+
+## 60. Voorstel: bediening staat op het Overzicht, niet op een insteltabblad
+
+**Status: voorstel, ronde 1** (aanleiding: Sven, 2026-08-11, bij het opleveren van
+fase 3). Er is nog niets aan gebouwd.
+
+De gereed-vlag kreeg zijn knop op twee plekken, zoals §44.6 voorschrijft: onder het
+advies, en op Apparaten bij het apparaat. Die tweede plek is fout, en de reden is
+niet de knop maar het tabblad:
+
+> **Apparaten is waar een installateur iets inricht. Een bewoner met een volle
+> vaatwasser gaat daar niet heen.**
+
+Het scherm dat hij openslaat is het Overzicht. Daar hoort dus alles wat hij op een
+moment *doet* — en dat is breder dan deze ene knop.
+
+### 60.1 De regel die eruit volgt
+
+> **Wat de bewoner instelt staat waar het hoort te staan. Wat hij op een moment
+> doet, staat op het Overzicht.**
+
+Dat is een andere as dan §33.3 (*de installateur bezit wat de woning is, de bewoner
+wat zij moet doen*), en de twee vullen elkaar aan. §33.3 verdeelt **velden** over
+eigenaren; deze regel verdeelt **handelingen en instellingen** over schermen. Een
+bewoner bezit zijn stille uren én de gereed-vlag, maar het eerste stelt hij één keer
+in en het tweede doet hij twee keer per dag.
+
+Toets: *waar staat iemand als hij dit doet?* Bij de stille uren zit hij erbij te
+denken — dat mag een tabblad zijn. Bij "hij is vol" staat hij met zijn telefoon in de
+keuken, en dan telt elke tik.
+
+### 60.2 Eén sectie, en waarom niet twee
+
+Op het Overzicht, onder `Advies`: **"Wat je nu kunt doen"**.
+
+De verleiding is om per soort handeling een sectie te maken — de vlag bij de
+apparaten, `Nu aangestuurd` (§44.4) voor de aansturing, goedkeuringen bij het advies.
+Dat levert bij de aansturingsrelease opnieuw het probleem op dat deze sectie oplost:
+de bewoner moet weten wélke sectie zijn handeling draagt.
+
+Dus: **één sectie, met rijen van verschillende soort.** `Nu aangestuurd` uit §44.4
+wordt een rijsoort binnen deze sectie in plaats van een sectie ernaast.
+
+| Rijsoort | Wanneer zichtbaar | Wat er staat | Knop |
+|---|---|---|---|
+| **gereed-vlag** | apparaat met `needs_ready_flag` | leeg, of *"Staat vol. Dit vervalt vandaag om 20:35, of eerder zodra hij klaar is."* | *Klaar / vol* of *Toch niet vol* |
+| **aangestuurd** (§44) | DomotiApp stuurt dit apparaat nu aan | wat, sinds wanneer, en waarom in de woorden van het advies | *Stop* |
+| **goedkeuring** (§44.6) | een advies vraagt erom | wat de coach wil doen en waarom | *Goedkeuren* |
+| **start nu** (§44.3) | een advies vraagt erom | de zin van dat advies | *Start nu* |
+
+**De sectie bestaat op grond van de configuratie, de rijen volgen het moment.**
+Dezelfde regel als §39.3 en §44.4, en om dezelfde reden: *"waar zit die knop"* is een
+vraag die je niet voor het eerst wilt stellen op het moment dat je hem nodig hebt.
+Heeft de woning geen enkel apparaat dat de bewoner bedient, dan is er geen sectie —
+geen tekortkoming tonen die deze woning niet kan opheffen.
+
+### 60.3 Wat er op Apparaten overblijft, en waarom de knop daar weg moet
+
+Apparaten houdt wat het apparaat **is**: type, vermogen, venster, koppelingen, de
+bedieningsafspraak. De gereed-knop verdwijnt daar, en niet alleen omdat hij elders
+beter staat:
+
+- **een knop op een configuratierij nodigt uit tot de verkeerde lezing** — dat het
+  iets *instelt* in plaats van iets doet;
+- **twee plekken zijn alleen te verdedigen als het twee momenten zijn** (§44.6). Onder
+  het advies en op het Overzicht zijn dat: "ik lees dit advies" en "ik sta in de
+  keuken". Apparaten is geen moment dat een bewoner heeft.
+
+**Wat we ervoor opgeven, eerlijk genoemd:** een installateur die een verse installatie
+test, kan de vlag niet meer aanzetten op het tabblad waar hij toch al is. Dat is
+gemak bij het testen, geen behoefte van een klant, en `ha_check --ws
+domotiapp_energy/devices/set_ready` doet het.
+
+### 60.4 De volgorde op het Overzicht
+
+Nu drie kaarten: `Op dit moment`, `Actuele situatie`, `Advies`. Dit voorstel voegt er
+één toe, en het historisch overzicht komt daarna. De volgorde die daaruit volgt:
+
+1. **Op dit moment** — hoe staat het ervoor
+2. **Actuele situatie** — de cijfers eronder
+3. **Advies** — wat zou ik doen
+4. **Wat je nu kunt doen** — en hier doe je het
+5. *(later)* **de geschiedenis** — hoe het liep
+
+Vier boven vijf, want handelen gaat over nu en de geschiedenis over gisteren. Drie en
+vier grenzen aan elkaar met opzet: de aanleiding en de handeling staan onder elkaar op
+het scherm dat de bewoner opent, en dát is wat §44.6 met *"de handeling hoort bij de
+aanleiding"* bedoelt.
+
+### 60.5 Gevolgen voor de aansturingsrelease
+
+- **§44.3** (de tabel "waar de handelingen landen") wordt vervangen door §60.2. Elke
+  handeling landt in de sectie op het Overzicht, plus — waar zij een aanleiding heeft
+  — onder dat advies in de Energiecoach.
+- **§44.4** (`Nu aangestuurd` als eigen sectie) vervalt als sectie en blijft als
+  rijsoort. De inhoud verandert niet: wat, sinds wanneer, waarom, en één *Stop*.
+- **§44.6** blijft overeind, met de tweede plek verlegd van Apparaten naar het
+  Overzicht. De redenering was altijd al "twee momenten", en dit corrigeert alleen
+  wáár het tweede moment plaatsvindt.
+- **`control_forbidden`**: een knop verschijnt nooit, ook niet uitgegrijsd (§44.3).
+  Ongewijzigd, en in één sectie is dat makkelijker vol te houden dan in vier.
+
+### 60.6 Wat dit voorstel niet doet
+
+- **De Energiecoach houdt zijn knop onder het advies.** Dat is de aanleiding zelf, en
+  wie doorklikt naar het waarom moet daar kunnen handelen.
+- **Geen rolafscherming op de sectie.** Een installateur ziet hem ook; hij woont
+  alleen niet in deze woning. Verbergen zou een handeling verstoppen voor iemand die
+  hem legitiem kan doen.
+- **De teller *Apparaten die nu draaien* blijft een feit** op `Actuele situatie`. Dat
+  is geen handeling.
