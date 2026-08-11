@@ -111,6 +111,22 @@ The panel appears in the sidebar as **DomotiApp Energy**. Work through it in thi
 5. **Energiecoach** — the advice, and five fixed questions you can ask about it.
 6. **Logboek** — what the integration has signalled.
 
+### On a wall tablet, set the way back
+
+A tablet running Fully Kiosk usually has no sidebar, and then **every link out of this panel
+is one-way**: whoever leaves cannot come back.
+
+Fill in **Woning → Navigatie → Terug naar dashboard** with the address of that home's own
+dashboard, for example `/lovelace/0`. A back button then appears at the top left of the
+panel. Leave it empty and there is no button — which is the right answer for an installation
+with a sidebar, where the button would be redundant.
+
+The second field, **Energiedashboard**, does the same for the link to consumption in kWh on
+the Overzicht: filled in it is a link, empty it is a sentence that still says where to look.
+
+Nothing is guessed here. `/lovelace/0` would be a claim about how this home is laid out, and
+the integration does not make those (see "The strict manual configuration principle").
+
 ## The tabs
 
 Six tabs, and **the same six for everybody**. Nothing is hidden from a resident; what he

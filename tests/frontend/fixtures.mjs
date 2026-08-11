@@ -112,6 +112,7 @@ export function fakeHass({
   config,
   coach,
   history,
+  logs,
   issues = {},
 } = {}) {
   const stored = config ?? sampleConfig();
@@ -119,6 +120,9 @@ export function fakeHass({
     'domotiapp_energy/config/get': stored,
     'domotiapp_energy/coach/get': coach ?? sampleCoach(),
     'domotiapp_energy/history/get': history ?? sampleHistory(),
+    // Leeg tenzij een test er iets in zet: een logboek is bij een verse
+    // installatie leeg, en dat is de toestand die het meest voorkomt.
+    'domotiapp_energy/logs/list': { logs: logs ?? [] },
   };
   const sent = [];
   let revision = stored.revision;

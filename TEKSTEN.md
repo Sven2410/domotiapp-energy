@@ -20,45 +20,46 @@ is dit de invoer en niet de uitvoer.
 - **Engelse regels staan apart**, onderaan. Een Engelse zin in dit product is
   een fout tenzij zij een identifier is: de UI is Nederlands (CLAUDE.md).
 
-**907 Nederlandse teksten**, waarvan 126 op meer dan één plek. En 13 Engelse regels om na te lopen.
+**925 Nederlandse teksten**, waarvan 127 op meer dan één plek. En 14 Engelse regels om na te lopen.
 
 
 ## `custom_components/domotiapp_energy/const.py`
 
 | Tekst | Waar | Regel |
 |---|---|---|
-| Attention | module | 1108 |
-| Current advice | module | 1105 |
-| Data quality | module | 1102 |
+| Attention | module | 1111 |
+| Current advice | module | 1108 |
+| Data quality | module | 1105 |
 | DomotiApp | module | 21 |
 | DomotiApp Energy ↔ | module | 18 |
 | DomotiApp Energy ↔ | module | 39 |
 | Energy Coach | module | 22 |
-| Grid power | module | 1103 |
-| Home consumption | module | 1107 |
+| Grid power | module | 1106 |
+| Home consumption | module | 1110 |
 | Mijn woning | module | 29 |
-| Peak risk | module | 1106 |
-| Score | module | 1101 |
-| Self consumption | module | 1109 |
-| Solar surplus | module | 1104 |
+| Peak risk | module | 1109 |
+| Score | module | 1104 |
+| Self consumption | module | 1112 |
+| Solar surplus | module | 1107 |
 
 ## `custom_components/domotiapp_energy/coordinator.py`
 
 | Tekst | Waar | Regel |
 |---|---|---|
-| Advies opnieuw berekend | async_recalculate | 257 |
-| De woning {...} {...}% van het ingestelde maximale netvermogen. Dat ligt op of boven de waarschuwingsgrens van {...}%. | _async_log_findings | 527 |
-| Er is {...} W zonneoverschot beschikbaar. | _async_log_findings | 546 |
-| Het energieadvies is opnieuw berekend. | async_recalculate | 258 |
-| Linked entity %s changed | _handle_tracked_state_event | 268 |
-| No linked entities to watch | async_rebuild_state_listener | 231 |
-| Piekbelasting gesignaleerd | _async_log_findings | 526 |
-| Watching %s linked entities | async_rebuild_state_listener | 234 |
-| Zonneoverschot beschikbaar ↔ | _async_log_findings | 545 |
-| levert terug met ↔ | _async_log_findings | 523 |
-| {...} forget ready flags of deleted appliances | _handle_configuration_change | 303 |
-| {...} recalculate after configuration change | _handle_configuration_change | 308 |
-| {...} safety recalculation | async_start | 214 |
+| Advies opnieuw berekend | async_recalculate | 267 |
+| De woning {...} {...}% van het ingestelde maximale netvermogen. Dat ligt op of boven de waarschuwingsgrens van {...}%. | _async_log_findings | 569 |
+| Er is {...} W zonneoverschot beschikbaar. | _async_log_findings | 588 |
+| Het energieadvies is opnieuw berekend. | async_recalculate | 268 |
+| Linked entity %s changed | _handle_tracked_state_event | 278 |
+| No linked entities to watch | async_rebuild_state_listener | 241 |
+| Not reporting %s source failures yet: Home Assistant is %s | _async_update_data | 363 |
+| Piekbelasting gesignaleerd | _async_log_findings | 568 |
+| Watching %s linked entities | async_rebuild_state_listener | 244 |
+| Zonneoverschot beschikbaar ↔ | _async_log_findings | 587 |
+| levert terug met ↔ | _async_log_findings | 565 |
+| {...} forget ready flags of deleted appliances | _handle_configuration_change | 323 |
+| {...} recalculate after configuration change | _handle_configuration_change | 328 |
+| {...} safety recalculation | async_start | 224 |
 
 ## `custom_components/domotiapp_energy/engine/advisor.py`
 
@@ -183,8 +184,10 @@ is dit de invoer en niet de uitvoer.
 
 | Tekst | Waar | Regel |
 |---|---|---|
+| Gisteren | dom | 248 |
 | Niet beschikbaar ↔ | dom | 44 |
 | Nog niet berekend ↔ | dom | 68 |
+| Vandaag | dom | 245 |
 | button button-primary | dom | 175 |
 
 ## `custom_components/domotiapp_energy/frontend/core/labels.js`
@@ -225,8 +228,10 @@ is dit de invoer en niet de uitvoer.
 
 | Tekst | Waar | Regel |
 |---|---|---|
-| DomotiApp Energy tabbladen | domotiapp-energy-panel | 113 |
-| Gegevens laden… | domotiapp-energy-panel | 235 |
+| Dashboard | domotiapp-energy-panel | 143 |
+| DomotiApp Energy tabbladen | domotiapp-energy-panel | 150 |
+| Gegevens laden… | domotiapp-energy-panel | 277 |
+| Terug naar het dashboard | domotiapp-energy-panel | 139 |
 
 ## `custom_components/domotiapp_energy/frontend/tabs/coach.js`
 
@@ -502,89 +507,100 @@ is dit de invoer en niet de uitvoer.
 
 | Tekst | Waar | Regel |
 |---|---|---|
-| (marktprijs + opslag + energiebelasting) × (1 + btw). Een prijsbron | home | 435 |
+| (marktprijs + opslag + energiebelasting) × (1 + btw). Een prijsbron | home | 477 |
+| /lovelace/0. Zonder dit adres verschijnt er geen terugknop. Op een | home | 312 |
 | 1 fase | home | 42 |
 | 3 fasen | home | 43 |
 | Aantal fasen | home | 37 |
-| Adviesinstellingen | home | 375 |
-| Alleen adviseren ↔ | home | 468 |
+| Adviesinstellingen | home | 404 |
+| Alleen adviseren ↔ | home | 510 |
 | Alleen nodig als je terugleverprijsbron de kale marktprijs levert. | home | 256 |
-| Automatisch aansturen ↔ | home | 470 |
-| Bedieningsniveau ↔ | home | 376 |
-| Bedieningsniveau ↔ | home | 463 |
-| Besparen | home | 321 |
-| Bezig met opslaan… ↔ | home | 736 |
-| Comfort | home | 319 |
-| Contract en prijzen | home | 374 |
+| Automatisch aansturen ↔ | home | 512 |
+| Bedieningsniveau ↔ | home | 406 |
+| Bedieningsniveau ↔ | home | 505 |
+| Besparen | home | 344 |
+| Bezig met opslaan… ↔ | home | 791 |
+| Comfort | home | 342 |
+| Contract en prijzen | home | 403 |
 | Contractsoort | home | 192 |
 | De salderingsregeling stopt landelijk op 1 januari 2027. Laat leeg als | home | 280 |
-| De woninggegevens zijn intussen ergens anders gewijzigd. Het | home | 766 |
-| De woninggegevens zijn opgeslagen. | home | 748 |
-| DomotiApp Energy meet, rekent en adviseert; het stuurt in deze versie | home | 482 |
-| DomotiApp Energy rekent overal met de all-in prijs: | home | 434 |
+| De woninggegevens zijn intussen ergens anders gewijzigd. Het | home | 821 |
+| De woninggegevens zijn opgeslagen. | home | 803 |
+| DomotiApp Energy meet, rekent en adviseert; het stuurt in deze versie | home | 524 |
+| DomotiApp Energy rekent overal met de all-in prijs: | home | 476 |
 | Dynamisch tarief | home | 198 |
 | Een bedrag per kWh, exclusief btw — géén vast maandbedrag. Reken een | home | 226 |
 | Een bedrag per kWh, exclusief btw. Nodig zodra een prijsbron de kale | home | 215 |
 | Een bedrag per teruggeleverde kWh — géén vast maandbedrag. Reken een | home | 270 |
 | Energiebelasting | home | 213 |
-| Er is intussen ergens anders iets aan de configuratie gewijzigd, ↔ | home | 773 |
-| Gebalanceerd | home | 320 |
+| Energiedashboard | home | 318 |
+| Er is intussen ergens anders iets aan de configuratie gewijzigd, ↔ | home | 828 |
+| Gebalanceerd | home | 343 |
+| Geen terugknop ingesteld. Nodig bij een wandtablet zonder zijbalk. | home | 715 |
+| Het adres van het hoofddashboard van deze woning, bijvoorbeeld | home | 311 |
 | Het all-in bedrag per kWh, inclusief energiebelasting en btw — dus wat | home | 207 |
 | Het btw-percentage over de leveringsprijs. In Nederland 21%. | home | 235 |
 | Het vaste bedrag dat de klant per teruggeleverde kWh daadwerkelijk | home | 244 |
 | Het vermogen waarboven DomotiApp Energy waarschuwt. | home | 57 |
-| Hier blijven ↔ | home | 499 |
+| Hier blijven ↔ | home | 541 |
 | Hoge prijsgrens (all-in) | home | 297 |
 | Hoofdzekering per fase | home | 50 |
 | In ampère, zoals op de zekering staat. | home | 51 |
 | Inhouding leverancier op teruglevering | home | 251 |
-| Je hebt wijzigingen die nog niet zijn opgeslagen. Sla ze op, of verwerp ↔ | home | 837 |
+| Je hebt wijzigingen die nog niet zijn opgeslagen. Sla ze op, of verwerp ↔ | home | 892 |
 | Lage prijsgrens (all-in) | home | 286 |
 | Maximaal netvermogen | home | 56 |
-| Maximaal zelf verbruiken | home | 322 |
-| Minimaal zonneoverschot | home | 308 |
+| Maximaal zelf verbruiken | home | 345 |
+| Minimaal zonneoverschot | home | 331 |
 | Naam van de woning | home | 34 |
-| Opslaan ↔ | home | 490 |
+| Navigatie | home | 405 |
+| Opslaan ↔ | home | 532 |
 | Opslag leverancier | home | 221 |
 | Percentage van het maximale netvermogen. | home | 63 |
 | Saldering geldt tot | home | 278 |
-| Standaardstrategie | home | 314 |
+| Standaardstrategie | home | 337 |
+| Terug naar dashboard | home | 309 |
 | Terugleverkosten | home | 263 |
 | Terugleververgoeding (all-in) | home | 240 |
-| Vanaf dit overschot adviseert DomotiApp Energy een apparaat. | home | 309 |
+| Vanaf dit overschot adviseert DomotiApp Energy een apparaat. | home | 332 |
 | Vast leveringstarief (all-in) | home | 205 |
 | Vast tarief | home | 197 |
 | Vergelijk met de all-in prijs, niet met de kale marktprijs van je ↔ | home | 291 |
 | Vergelijk met de all-in prijs, niet met de kale marktprijs van je ↔ | home | 299 |
-| Verwerpen en verdergaan ↔ | home | 498 |
-| Vragen om goedkeuring ↔ | home | 469 |
+| Verwerpen en verdergaan ↔ | home | 540 |
+| Vragen om goedkeuring ↔ | home | 511 |
 | Vul 0 in als er niets wordt ingehouden. | home | 257 |
+| Waar het verbruik in kWh van deze woning staat, meestal /energy. | home | 320 |
 | Waarschuwen vanaf | home | 62 |
 | Wat de leverancier per teruggeleverde kWh inhoudt op de marktprijs. | home | 255 |
-| Wijzigingen verwerpen ↔ | home | 491 |
-| Woning | home | 367 |
-| Woning en aansluiting | home | 373 |
-| al all-in is, wordt ongewijzigd gebruikt. Bij de bron zelf geef je aan | home | 437 |
+| Wijzigingen verwerpen ↔ | home | 533 |
+| Woning | home | 396 |
+| Woning en aansluiting | home | 402 |
+| Zonder dit adres noemt het Overzicht het dashboard wel, maar zonder | home | 321 |
+| al all-in is, wordt ongewijzigd gebruikt. Bij de bron zelf geef je aan | home | 479 |
 | betaalt; laat het leeg als je het niet weet, dan toont de coach geen | home | 272 |
 | de klant werkelijk betaalt. | home | 208 |
 | deze woning niet saldeert; de omslag gaat daarna vanzelf. | home | 281 |
-| die de kale marktprijs levert wordt daarmee omgerekend; een bron die | home | 436 |
-| formulier is opnieuw geladen met de actuele gegevens, zodat je ↔ | home | 767 |
-| geen enkel apparaat aan. De andere bedieningsniveaus staan hier al wel, | home | 483 |
+| die de kale marktprijs levert wordt daarmee omgerekend; een bron die | home | 478 |
+| formulier is opnieuw geladen met de actuele gegevens, zodat je ↔ | home | 822 |
+| geen enkel apparaat aan. De andere bedieningsniveaus staan hier al wel, | home | 525 |
 | geschatte besparing in plaats van een bedrag dat op een aanname rust. | home | 273 |
+| link — zodat niemand op een wandtablet ergens belandt waar hij niet | home | 322 |
 | maandbedrag niet om: alleen de opslag per kWh hoort hier. | home | 227 |
 | maandstaffel om. Vul 0 in als deze aansluiting geen terugleverkosten | home | 271 |
-| maar niet aan de woninggegevens. Je invoer staat er nog; druk | home | 774 |
-| maar zijn nog niet beschikbaar. | home | 484 |
+| maar niet aan de woninggegevens. Je invoer staat er nog; druk | home | 829 |
+| maar zijn nog niet beschikbaar. | home | 526 |
 | marktprijs levert; die wordt hiermee naar een all-in prijs omgerekend. | home | 216 |
+| meer wegkomt. | home | 323 |
 | niet omgerekend. | home | 246 |
-| niet overschrijft wat je niet gezien hebt. ↔ | home | 768 |
-| opnieuw op Opslaan om hem te bewaren. ↔ | home | 775 |
+| niet overschrijft wat je niet gezien hebt. ↔ | home | 823 |
+| opnieuw op Opslaan om hem te bewaren. ↔ | home | 830 |
 | vergoed krijgt. Geen marktprijs en geen percentage: dit veld wordt | home | 245 |
-| welke van de twee het is. | home | 438 |
-| ze om verder te gaan. ↔ | home | 838 |
-| zonder naam ↔ | home | 601 |
-| zonder naam ↔ | home | 630 |
+| wandtablet zonder zijbalk kan de bewoner dit paneel dan niet verlaten. | home | 313 |
+| welke van de twee het is. | home | 480 |
+| ze om verder te gaan. ↔ | home | 893 |
+| zonder naam ↔ | home | 646 |
+| zonder naam ↔ | home | 675 |
 
 ## `custom_components/domotiapp_energy/frontend/tabs/installation.js`
 
@@ -596,55 +612,55 @@ is dit de invoer en niet de uitvoer.
 
 | Tekst | Waar | Regel |
 |---|---|---|
-| Advies herberekend | logbook | 20 |
-| Apparaat toegevoegd ↔ | logbook | 18 |
-| Apparaat verwijderd ↔ | logbook | 19 |
-| Bezig met wissen… | logbook | 135 |
-| Bron niet beschikbaar ↔ | logbook | 21 |
-| Configuratie gewijzigd | logbook | 17 |
-| Configuratieprobleem | logbook | 25 |
-| Fout ↔ | logbook | 33 |
-| Gelukt | logbook | 31 |
-| Het logboek is gewist. | logbook | 139 |
-| Het logboek is leeg. Hier komt te staan wat DomotiApp Energy | logbook | 59 |
-| Info | logbook | 30 |
-| Logboek ↔ | logbook | 38 |
-| Logboek ↔ | logbook | 43 |
-| Logboek wissen ↔ | logbook | 46 |
-| Logboek wissen ↔ | logbook | 151 |
-| Ongeldige meting ↔ | logbook | 22 |
-| Piekrisico gesignaleerd | logbook | 23 |
-| Waarschuwing ↔ | logbook | 32 |
-| Weet je zeker dat je het logboek wilt wissen? De gebeurtenissen | logbook | 153 |
-| Wissen | logbook | 155 |
-| Zonneoverschot gesignaleerd | logbook | 24 |
-| zijn daarna weg. De configuratie zelf verandert niet. | logbook | 154 |
+| Advies herberekend | logbook | 21 |
+| Apparaat toegevoegd ↔ | logbook | 19 |
+| Apparaat verwijderd ↔ | logbook | 20 |
+| Bezig met wissen… | logbook | 158 |
+| Bron niet beschikbaar ↔ | logbook | 22 |
+| Configuratie gewijzigd | logbook | 18 |
+| Configuratieprobleem | logbook | 26 |
+| Fout ↔ | logbook | 34 |
+| Gelukt | logbook | 32 |
+| Het logboek is gewist. | logbook | 162 |
+| Het logboek is leeg. Hier komt te staan wat DomotiApp Energy | logbook | 60 |
+| Info | logbook | 31 |
+| Logboek ↔ | logbook | 39 |
+| Logboek ↔ | logbook | 44 |
+| Logboek wissen ↔ | logbook | 47 |
+| Logboek wissen ↔ | logbook | 174 |
+| Ongeldige meting ↔ | logbook | 23 |
+| Piekrisico gesignaleerd | logbook | 24 |
+| Waarschuwing ↔ | logbook | 33 |
+| Weet je zeker dat je het logboek wilt wissen? De gebeurtenissen | logbook | 176 |
+| Wissen | logbook | 178 |
+| Zonneoverschot gesignaleerd | logbook | 25 |
+| zijn daarna weg. De configuratie zelf verandert niet. | logbook | 177 |
 
 ## `custom_components/domotiapp_energy/frontend/tabs/overview.js`
 
 | Tekst | Waar | Regel |
 |---|---|---|
-| Actief | overview | 596 |
+| Actief | overview | 619 |
 | Actuele energieprijs ↔ | overview | 235 |
 | Actuele situatie | overview | 202 |
 | Advies ↔ | overview | 265 |
-| Alle gegevens voor een betrouwbaar advies zijn ingevuld. ↔ | overview | 669 |
+| Alle gegevens voor een betrouwbaar advies zijn ingevuld. ↔ | overview | 692 |
 | Apparaten die nu draaien | overview | 241 |
-| Boven de drempel die ook het advies gebruikt. | overview | 416 |
+| Boven de drempel die ook het advies gebruikt. | overview | 430 |
 | Datakwaliteit | overview | 172 |
-| De hele dag compleet | overview | 455 |
+| De hele dag compleet | overview | 469 |
 | De stroomprijs is op dit moment laag, dus er is geen duur verbruik om | overview | 98 |
-| Energiebronnen om je slimme meter of omvormer te koppelen. | overview | 613 |
+| Energiebronnen om je slimme meter of omvormer te koppelen. | overview | 636 |
 | Energiescore | overview | 168 |
 | Er is nog geen cijfer, omdat de installatie nog niet compleet is. | overview | 43 |
-| Er is nog geen geschiedenis van gisteren. Vanaf de eerste hele dag | overview | 392 |
+| Er is nog geen geschiedenis van gisteren. Vanaf de eerste hele dag | overview | 406 |
 | Er is nu opwek, maar geen apparaat of batterij die verbruik kan | overview | 76 |
 | Er is op dit moment niets te doen. | overview | 302 |
-| Er zijn nog geen energiebronnen gekoppeld. Ga naar het tabblad | overview | 612 |
-| Er zijn op dit moment geen waarschuwingen. | overview | 539 |
-| Fout ↔ | overview | 596 |
+| Er zijn nog geen energiebronnen gekoppeld. Ga naar het tabblad | overview | 635 |
+| Er zijn op dit moment geen waarschuwingen. | overview | 553 |
+| Fout ↔ | overview | 619 |
 | Geen afname gemeten | overview | 323 |
-| Geen bruikbare prijsbron | overview | 551 |
+| Geen bruikbare prijsbron | overview | 565 |
 | Geen cijfer | overview | 170 |
 | Het prijsmoment telt niet mee zolang de lage en de hoge prijsdrempel | overview | 124 |
 | Het prijsmoment telt niet mee, want bij een vast tarief is het ene | overview | 121 |
@@ -652,29 +668,29 @@ is dit de invoer en niet de uitvoer.
 | Het prijsmoment telt niet mee, want de stroom is nu goedkoop en er is | overview | 130 |
 | Het tabblad Energiecoach laat zien wat er ontbreekt. | overview | 44 |
 | Het tarief is altijd gelijk en er zijn geen zonnepanelen, dus er is | overview | 57 |
-| Het vermogen van je thuisbatterij kan niet uitgelezen worden. Een | overview | 708 |
+| Het vermogen van je thuisbatterij kan niet uitgelezen worden. Een | overview | 731 |
 | Hoe het gisteren ging | overview | 319 |
 | Hoogste in 30 dagen | overview | 333 |
 | Hoogste netvermogen | overview | 323 |
 | Installatie ↔ | overview | 324 |
-| Je omvormer levert op dit moment geen waarde, dus het | overview | 722 |
+| Je omvormer levert op dit moment geen waarde, dus het | overview | 745 |
 | Je panelen leveren op dit moment niets en de stroomprijs is laag. Er | overview | 83 |
 | Je panelen leveren op dit moment niets, en bij een vast tarief is het | overview | 91 |
 | Je panelen leveren op dit moment, maar terugleveren levert je meer op | overview | 65 |
-| Klaar / vol ↔ | overview | 470 |
-| Klaar / vol ↔ | overview | 485 |
+| Klaar / vol ↔ | overview | 484 |
+| Klaar / vol ↔ | overview | 499 |
 | Laatste berekening ↔ | overview | 196 |
-| Laden… | overview | 596 |
-| Naamloos apparaat ↔ | overview | 483 |
-| Negatief betekent teruglevering aan het net. | overview | 676 |
+| Laden… | overview | 619 |
+| Naamloos apparaat ↔ | overview | 497 |
+| Negatief betekent teruglevering aan het net. | overview | 699 |
 | Netvermogen | overview | 203 |
 | Niet beschikbaar ↔ | overview | 37 |
-| Niet de hele dag compleet | overview | 456 |
+| Niet de hele dag compleet | overview | 470 |
 | Niet gemeten ↔ | overview | 321 |
 | Niet gemeten ↔ | overview | 324 |
 | Niet gemeten ↔ | overview | 333 |
-| Nog geen advies berekend ↔ | overview | 739 |
-| Nog geen prijs bekend — koppel een prijsbron of vul het vaste leveringstarief in | overview | 552 |
+| Nog geen advies berekend ↔ | overview | 762 |
+| Nog geen prijs bekend — koppel een prijsbron of vul het vaste leveringstarief in | overview | 566 |
 | Nog niet berekend ↔ | overview | 197 |
 | Nog niet ingesteld | overview | 36 |
 | Op dit moment | overview | 149 |
@@ -682,15 +698,15 @@ is dit de invoer en niet de uitvoer.
 | Percentage van maximum | overview | 228 |
 | Status | overview | 195 |
 | Thuisverbruik | overview | 156 |
-| Toch niet vol ↔ | overview | 485 |
-| Vast leveringstarief, zoals ingevuld bij Woning. | overview | 568 |
-| Vast leveringstarief, zoals ingevuld bij Woning. De gekoppelde prijsbron bepaalt dit bedrag niet, maar neemt het over zodra dit veld leeg is of het contract dynamisch wordt. | overview | 567 |
-| Voor kWh, kosten en wat je zelf verbruikte: | overview | 340 |
-| Waarschuwing ↔ | overview | 523 |
+| Toch niet vol ↔ | overview | 499 |
+| Vast leveringstarief, zoals ingevuld bij Woning. | overview | 582 |
+| Vast leveringstarief, zoals ingevuld bij Woning. De gekoppelde prijsbron bepaalt dit bedrag niet, maar neemt het over zodra dit veld leeg is of het contract dynamisch wordt. | overview | 581 |
+| Voor kWh, kosten en wat je zelf verbruikte: | overview | 347 |
+| Waarschuwing ↔ | overview | 537 |
 | Waarschuwingen | overview | 270 |
 | Wat je nu kunt doen | overview | 296 |
 | Zelfbenutting | overview | 224 |
-| Zodra er een energiebron gekoppeld is, verschijnt hier het hoofdadvies. ↔ | overview | 742 |
+| Zodra er een energiebron gekoppeld is, verschijnt hier het hoofdadvies. ↔ | overview | 765 |
 | Zolang de lage en de hoge prijsdrempel niet zijn ingevuld, is niet te | overview | 50 |
 | Zonnebenutting telt niet mee, want deze woning heeft geen zonnepanelen. ↔ | overview | 108 |
 | Zonnebenutting telt niet mee, want er is geen apparaat of batterij die | overview | 115 |
@@ -700,34 +716,35 @@ is dit de invoer en niet de uitvoer.
 | Zonneoverschot ↔ | overview | 211 |
 | Zonneoverschot ↔ | overview | 320 |
 | Zonneproductie | overview | 207 |
-| batterij die laadt of ontlaadt verschuift wat er van het net | overview | 709 |
+| batterij die laadt of ontlaadt verschuift wat er van het net | overview | 732 |
 | bepalen of dit een duur moment is. Vul ze in bij Installatie. | overview | 51 |
-| bij Energiebronnen. | overview | 724 |
+| bij Energiebronnen. | overview | 747 |
 | dan de stroom je kost. Zelf verbruiken zou je nu geld kosten, dus er | overview | 66 |
-| datakwaliteit is nog niet compleet. Het tabblad Energiecoach | overview | 667 |
-| de batterij om dit op te lossen. | overview | 712 |
+| datakwaliteit is nog niet compleet. Het tabblad Energiecoach | overview | 690 |
+| de batterij om dit op te lossen. | overview | 735 |
 | dus geen duur verbruik om te vermijden. | overview | 131 |
 | ene moment niet beter dan het andere. Er is nu dus niets te verbeteren. | overview | 92 |
 | geen moment dat beter is dan een ander. Er valt daarom niets te | overview | 58 |
-| het Energie-dashboard van Home Assistant | overview | 341 |
+| het Energie-dashboard van Home Assistant ↔ | overview | 350 |
+| het Energie-dashboard van Home Assistant ↔ | overview | 355 |
 | hoeveel van je opwek je zelf gebruikt. | overview | 113 |
 | is nu dus geen overschot om te benutten en geen duur verbruik om te | overview | 84 |
 | is voordeliger. | overview | 68 |
-| komt, dus het thuisverbruik is niet te berekenen en het | overview | 710 |
-| laat zien welke. | overview | 668 |
+| komt, dus het thuisverbruik is niet te berekenen en het | overview | 733 |
+| laat zien welke. | overview | 691 |
 | moment niet duurder dan het andere. | overview | 122 |
 | niet uit te lezen. | overview | 128 |
 | niet zijn ingevuld. Vul ze in bij Installatie. | overview | 125 |
 | op dan de stroom je kost, dus je opwek zelf gebruiken zou je geld kosten. | overview | 119 |
 | op dit moment | overview | 169 |
 | optimaliseren. Het advies blijft gewoon werken. | overview | 59 |
-| staat hier hoe het ging. | overview | 393 |
+| staat hier hoe het ging. | overview | 407 |
 | te vermijden. | overview | 99 |
-| thuisverbruik is niet te berekenen. Controleer de zonnebron | overview | 723 |
+| thuisverbruik is niet te berekenen. Controleer de zonnebron | overview | 746 |
 | valt aan je opwek niets te benutten. De coach zegt hetzelfde: wachten | overview | 67 |
 | verbruik naar dit moment kan verplaatsen. | overview | 116 |
 | verplaatsen. Er valt daarom niets te benutten dat nu niet al gebeurt. | overview | 77 |
-| zonneoverschot kan te hoog zijn. Koppel de vermogenssensor van | overview | 711 |
+| zonneoverschot kan te hoog zijn. Koppel de vermogenssensor van | overview | 734 |
 
 ## `custom_components/domotiapp_energy/frontend/tabs/preferences.js`
 
@@ -960,52 +977,53 @@ is dit de invoer en niet de uitvoer.
 
 | Tekst | Waar | Regel |
 |---|---|---|
-| Begin en einde van de stille uren mogen niet gelijk zijn. | validate_preferences | 982 |
-| De begin- en eindtijd van het gereed-venster mogen niet gelijk zijn. | _validate_time_window | 825 |
-| De begin- en eindtijd van het verbod mogen niet gelijk zijn. | _validate_no_run_window | 880 |
-| De duur | validate_device_profile | 671 |
-| De energiebelasting kan niet negatief zijn. | validate_home_profile | 360 |
-| De hoge prijsgrens moet boven de lage prijsgrens liggen. | _validate_price_thresholds | 428 |
-| De hoofdzekering moet tussen {...} en {...} ampère liggen. | validate_home_profile | 315 |
-| De minimale besparing kan niet negatief zijn. | validate_preferences | 961 |
-| De prijsbron levert de kale marktprijs. Vul de energiebelasting en de opslag van de leverancier per kWh in; zonder die twee is de all-in prijs niet te berekenen en wordt de prijs niet gebruikt. | _validate_price_components | 1045 |
-| De schaalfactor moet groter zijn dan 0. | validate_energy_source | 506 |
-| De terugleverprijsbron levert de kale marktprijs. Vul in wat de leverancier per teruggeleverde kWh inhoudt; zonder dat bedrag is de vergoeding niet te berekenen en wordt de bron niet gebruikt. Vul 0 in als de leverancier niets inhoudt. | _validate_feed_in_components | 1081 |
-| De waarschuwingsgrens moet tussen {...} en {...} procent liggen. | validate_home_profile | 331 |
-| Deze bron levert een prijs, maar de eenheid staat op '{...}'. Kies EUR/kWh of ct/kWh. | _validate_unit_matches_type | 466 |
-| Deze bron meet vermogen, maar de eenheid staat op '{...}'. Kies W of kW. Let op: veel slimme-meterintegraties tonen vooral de meterstand in kWh; die is een totaal en geen vermogen, en levert een netbelasting die honderden keren te hoog is. | _validate_unit_matches_type | 452 |
-| Deze twee eisen zijn niet allebei te halen: het apparaat mag niet draaien op het moment dat het zou moeten starten om op tijd klaar te zijn. Verruim het verbod, of verzet de tijd waarop het klaar moet zijn. | _validate_no_run_window | 889 |
-| Dit bedieningsniveau vraagt om aansturing, maar er is geen besturingsmogelijkheid aangevinkt. Controleer wat deze apparatuur werkelijk ondersteunt. | _validate_control | 721 |
-| Een cyclus van 24 uur of langer is niet te combineren met een gereed-venster: er is dan geen starttijd op de klok te bepalen. | _validate_time_window | 807 |
-| Gebruik een geldige tijd in de vorm uu:mm. ↔ | _validate_time_window | 781 |
-| Gebruik een geldige tijd in de vorm uu:mm. ↔ | _validate_no_run_window | 859 |
-| Gebruik een geldige tijd in de vorm uu:mm. ↔ | validate_preferences | 972 |
-| Geef aan of een positieve waarde afname of teruglevering betekent. | _validate_grid_meter | 609 |
-| Geef aan wat deze bron levert: de kale marktprijs of de all-in prijs die de klant betaalt. Zonder die keuze wordt de prijs niet gebruikt. | _validate_price_source | 568 |
-| Geef aan wat deze bron levert: de kale marktprijs of de vergoeding die de klant werkelijk krijgt. Zonder die keuze wordt de terugleververgoeding niet gebruikt. | _validate_price_source | 562 |
-| Het apparaattype '{...}' is niet bekend. Kies een geldig type. | validate_device_profile | 641 |
-| Het brontype '{...}' is niet bekend. Kies een geldig type. | validate_energy_source | 484 |
-| Het btw-percentage moet tussen {...} en {...} liggen. | validate_home_profile | 350 |
-| Het energieverbruik per cyclus | validate_device_profile | 669 |
-| Het ingevulde netvermogen ligt boven het theoretische maximum van {...} W ({...} x 230 V x {...} A). Controleer de hoofdzekering. | _validate_max_grid_power | 402 |
-| Het maximale netvermogen moet groter zijn dan 0 W. | _validate_max_grid_power | 390 |
-| Het minimale zonneoverschot kan niet negatief zijn. | validate_home_profile | 369 |
-| Het nominale vermogen | validate_device_profile | 665 |
-| Kies 1 of 3 fasen. | validate_home_profile | 304 |
-| Kies een geldig bedieningsniveau. | validate_device_profile | 660 |
-| Kies een geldige eenheid. | validate_energy_source | 495 |
-| Kies een geldige prioriteit. | validate_device_profile | 651 |
-| Kies een vast of dynamisch contract. | validate_home_profile | 341 |
-| Kies hoe de netmeter meet: één ondertekende waarde of gescheiden afname en teruglevering. | _validate_grid_meter | 588 |
-| Koppel de entiteit die de afname meet. | _validate_grid_meter | 619 |
-| Koppel de entiteit die de teruglevering meet. | _validate_grid_meter | 627 |
-| Koppel een entiteit aan deze bron. ↔ | validate_energy_source | 533 |
-| Koppel een entiteit aan deze bron. ↔ | _validate_grid_meter | 601 |
-| Noteer waarom aansturing hier is uitgesloten, zodat de reden later terug te vinden is. | _validate_control | 735 |
-| Toon minimaal {...} en maximaal {...} adviezen. | validate_preferences | 951 |
-| Voor deze installatie is aansturing uitgesloten. Kies 'alleen monitoren' of 'alleen adviseren'. | _validate_control | 708 |
-| Vul de naam in van het attribuut dat uitgelezen moet worden. | validate_energy_source | 518 |
-| {...} kan niet negatief zijn. | validate_device_profile | 678 |
+| Begin en einde van de stille uren mogen niet gelijk zijn. | validate_preferences | 1015 |
+| De begin- en eindtijd van het gereed-venster mogen niet gelijk zijn. | _validate_time_window | 858 |
+| De begin- en eindtijd van het verbod mogen niet gelijk zijn. | _validate_no_run_window | 913 |
+| De duur | validate_device_profile | 704 |
+| De energiebelasting kan niet negatief zijn. | validate_home_profile | 393 |
+| De hoge prijsgrens moet boven de lage prijsgrens liggen. | _validate_price_thresholds | 461 |
+| De hoofdzekering moet tussen {...} en {...} ampère liggen. | validate_home_profile | 347 |
+| De minimale besparing kan niet negatief zijn. | validate_preferences | 994 |
+| De prijsbron levert de kale marktprijs. Vul de energiebelasting en de opslag van de leverancier per kWh in; zonder die twee is de all-in prijs niet te berekenen en wordt de prijs niet gebruikt. | _validate_price_components | 1078 |
+| De schaalfactor moet groter zijn dan 0. | validate_energy_source | 539 |
+| De terugleverprijsbron levert de kale marktprijs. Vul in wat de leverancier per teruggeleverde kWh inhoudt; zonder dat bedrag is de vergoeding niet te berekenen en wordt de bron niet gebruikt. Vul 0 in als de leverancier niets inhoudt. | _validate_feed_in_components | 1114 |
+| De waarschuwingsgrens moet tussen {...} en {...} procent liggen. | validate_home_profile | 364 |
+| Deze bron levert een prijs, maar de eenheid staat op '{...}'. Kies EUR/kWh of ct/kWh. | _validate_unit_matches_type | 499 |
+| Deze bron meet vermogen, maar de eenheid staat op '{...}'. Kies W of kW. Let op: veel slimme-meterintegraties tonen vooral de meterstand in kWh; die is een totaal en geen vermogen, en levert een netbelasting die honderden keren te hoog is. | _validate_unit_matches_type | 485 |
+| Deze twee eisen zijn niet allebei te halen: het apparaat mag niet draaien op het moment dat het zou moeten starten om op tijd klaar te zijn. Verruim het verbod, of verzet de tijd waarop het klaar moet zijn. | _validate_no_run_window | 922 |
+| Dit bedieningsniveau vraagt om aansturing, maar er is geen besturingsmogelijkheid aangevinkt. Controleer wat deze apparatuur werkelijk ondersteunt. | _validate_control | 754 |
+| Een cyclus van 24 uur of langer is niet te combineren met een gereed-venster: er is dan geen starttijd op de klok te bepalen. | _validate_time_window | 840 |
+| Gebruik een adres binnen deze Home Assistant, beginnend met een schuine streep — bijvoorbeeld /lovelace/0. | _validate_dashboard_paths | 320 |
+| Gebruik een geldige tijd in de vorm uu:mm. ↔ | _validate_time_window | 814 |
+| Gebruik een geldige tijd in de vorm uu:mm. ↔ | _validate_no_run_window | 892 |
+| Gebruik een geldige tijd in de vorm uu:mm. ↔ | validate_preferences | 1005 |
+| Geef aan of een positieve waarde afname of teruglevering betekent. | _validate_grid_meter | 642 |
+| Geef aan wat deze bron levert: de kale marktprijs of de all-in prijs die de klant betaalt. Zonder die keuze wordt de prijs niet gebruikt. | _validate_price_source | 601 |
+| Geef aan wat deze bron levert: de kale marktprijs of de vergoeding die de klant werkelijk krijgt. Zonder die keuze wordt de terugleververgoeding niet gebruikt. | _validate_price_source | 595 |
+| Het apparaattype '{...}' is niet bekend. Kies een geldig type. | validate_device_profile | 674 |
+| Het brontype '{...}' is niet bekend. Kies een geldig type. | validate_energy_source | 517 |
+| Het btw-percentage moet tussen {...} en {...} liggen. | validate_home_profile | 383 |
+| Het energieverbruik per cyclus | validate_device_profile | 702 |
+| Het ingevulde netvermogen ligt boven het theoretische maximum van {...} W ({...} x 230 V x {...} A). Controleer de hoofdzekering. | _validate_max_grid_power | 435 |
+| Het maximale netvermogen moet groter zijn dan 0 W. | _validate_max_grid_power | 423 |
+| Het minimale zonneoverschot kan niet negatief zijn. | validate_home_profile | 402 |
+| Het nominale vermogen | validate_device_profile | 698 |
+| Kies 1 of 3 fasen. | validate_home_profile | 336 |
+| Kies een geldig bedieningsniveau. | validate_device_profile | 693 |
+| Kies een geldige eenheid. | validate_energy_source | 528 |
+| Kies een geldige prioriteit. | validate_device_profile | 684 |
+| Kies een vast of dynamisch contract. | validate_home_profile | 374 |
+| Kies hoe de netmeter meet: één ondertekende waarde of gescheiden afname en teruglevering. | _validate_grid_meter | 621 |
+| Koppel de entiteit die de afname meet. | _validate_grid_meter | 652 |
+| Koppel de entiteit die de teruglevering meet. | _validate_grid_meter | 660 |
+| Koppel een entiteit aan deze bron. ↔ | validate_energy_source | 566 |
+| Koppel een entiteit aan deze bron. ↔ | _validate_grid_meter | 634 |
+| Noteer waarom aansturing hier is uitgesloten, zodat de reden later terug te vinden is. | _validate_control | 768 |
+| Toon minimaal {...} en maximaal {...} adviezen. | validate_preferences | 984 |
+| Voor deze installatie is aansturing uitgesloten. Kies 'alleen monitoren' of 'alleen adviseren'. | _validate_control | 741 |
+| Vul de naam in van het attribuut dat uitgelezen moet worden. | validate_energy_source | 551 |
+| {...} kan niet negatief zijn. | validate_device_profile | 711 |
 
 ## `custom_components/domotiapp_energy/websocket_api.py`
 
@@ -1051,7 +1069,8 @@ is dit de invoer en niet de uitvoer.
 | Tekst | Waar |
 |---|---|
 | DomotiApp Energy has been removed. The energy configuration is kept in %s under .storage/, so adding the integration again restores it. Delete that file to start over | `custom_components/domotiapp_energy/__init__.py:145` |
-| Clearing ready flag for %r: %s reports %r | `custom_components/domotiapp_energy/coordinator.py:406` |
+| Home Assistant has started: recalculating | `custom_components/domotiapp_energy/coordinator.py:288` |
+| Clearing ready flag for %r: %s reports %r | `custom_components/domotiapp_energy/coordinator.py:448` |
 | No recorder: skipping the history | `custom_components/domotiapp_energy/engine/history.py:287` |
 | Could not read the %s statistics | `custom_components/domotiapp_energy/engine/history.py:311` |
 | No alternative coach provider is available in this release | `custom_components/domotiapp_energy/engine/providers.py:250` |

@@ -322,6 +322,64 @@ export function formatMoment(iso) {
 }
 
 /** Format an ISO timestamp as a readable Dutch date and time. */
+/**
+ * De kop boven een dag in de tijdlijn (SPEC.md §61.4).
+ *
+ * *"Vandaag"*, *"Gisteren"*, en daarvoor de dag voluit: *"zaterdag 9 augustus"*.
+ * Zo leest een logboek als een verhaal in plaats van als een tabel met datums,
+ * en dat is precies het verschil dat §61.4 vraagt.
+ *
+ * **Bewust niet `formatMoment`**, hoewel die er sterk op lijkt. Die beantwoordt
+ * *"wanneer is dit moment"* voor iets dat hooguit een dag vooruit ligt — een
+ * vervaltermijn — en kent daarom maar twee uitkomsten. Dit kijkt terug, over
+ * tweehonderd gebeurtenissen, en heeft een derde nodig. Twee vragen die op
+ * elkaar lijken en het niet zijn, dus twee functies (SPEC.md §60.2).
+ */
+export function formatDayHeading(iso) {
+  if (!iso) {
+    return null;
+  }
+  const moment = new Date(iso);
+  if (Number.isNaN(moment.getTime())) {
+    return null;
+  }
+  // **Kalenderdagen, niet verstreken tijd.** Gisteren om 09:05 ligt nog geen
+  // vierentwintig uur achter ons, dus een verschil in milliseconden noemt het
+  // "Vandaag". Beide momenten worden daarom eerst teruggebracht tot hun eigen
+  // middernacht; pas dan telt het verschil dagen.
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const startOfThatDay = new Date(moment);
+  startOfThatDay.setHours(0, 0, 0, 0);
+  const days = Math.round((startOfToday - startOfThatDay) / 86400000);
+  if (days <= 0) {
+    return 'Vandaag';
+  }
+  if (days === 1) {
+    return 'Gisteren';
+  }
+  return new Intl.DateTimeFormat('nl-NL', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  }).format(moment);
+}
+
+/** Alleen het tijdstip, voor een rij die al onder een dagkop staat. */
+export function formatTimeOfDay(iso) {
+  if (!iso) {
+    return null;
+  }
+  const moment = new Date(iso);
+  if (Number.isNaN(moment.getTime())) {
+    return null;
+  }
+  return new Intl.DateTimeFormat('nl-NL', {
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(moment);
+}
+
 export function formatTimestamp(iso) {
   if (!iso) {
     return null;

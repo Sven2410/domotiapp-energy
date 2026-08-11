@@ -353,3 +353,55 @@ test.describe('both roles get the same bar', () => {
     expect(lines).toBeLessThanOrEqual(2);
   });
 });
+
+test.describe('de dagkop in het logboek', () => {
+  /**
+   * **Precies wat jsdom niet kan zien** (SPEC.md §61.4). De kop staat binnen de
+   * rij van zijn dag, en `.row-item` is een flexrij — zonder `flex-basis: 100%`
+   * komt hij naast de gebeurtenis te staan in plaats van erboven. De DOM is in
+   * beide gevallen identiek, dus alleen een echte cascade beslist dit.
+   *
+   * Zo is het ook één keer opgeleverd, en pas in de browser gezien.
+   */
+  test('staat boven de gebeurtenis en niet ernaast', async ({ page }) => {
+    const geometrie = await page.evaluate(async () => {
+      const nu = new Date();
+      nu.setHours(14, 32, 0, 0);
+      await window.harness.remount({
+        logs: [
+          {
+            id: 'a',
+            timestamp: nu.toISOString(),
+            event_type: 'source_unavailable',
+            title: 'Bron niet beschikbaar',
+            message: 'De netmeter kon niet worden gelezen.',
+            severity: 'warning',
+            count: 1,
+          },
+        ],
+      });
+      const knop = window.harness
+        .findAll('.tab-button')
+        .find((node) => node.textContent.includes('Logboek'));
+      knop.click();
+      await window.harness.settle();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      const kop = window.harness.find('.day-heading');
+      const inhoud = window.harness.find('.row-item .row-main');
+      if (!kop || !inhoud) {
+        return null;
+      }
+      const k = kop.getBoundingClientRect();
+      const i = inhoud.getBoundingClientRect();
+      return { kopOnder: k.bottom, inhoudBoven: i.top, kopBreedte: k.width, rij: window.harness.find('.row-item').getBoundingClientRect().width };
+    });
+
+    expect(geometrie).not.toBeNull();
+    // Boven, niet ernaast: de onderkant van de kop ligt op of boven de
+    // bovenkant van de gebeurtenis.
+    expect(geometrie.kopOnder).toBeLessThanOrEqual(geometrie.inhoudBoven + 1);
+    // En hij beslaat de hele rij, want dat is wat hem de regel laat breken.
+    expect(geometrie.kopBreedte).toBeGreaterThan(geometrie.rij * 0.9);
+  });
+});

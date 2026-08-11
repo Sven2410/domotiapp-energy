@@ -2040,3 +2040,41 @@ def test_a_device_without_ready_days_is_unchanged() -> None:
 
     assert device.ready_days is None
     assert all(device.deadline_applies_on(day) for day in range(7))
+
+
+def test_a_dashboard_path_must_stay_inside_this_home_assistant() -> None:
+    """SPEC.md §62.3: een volledige URL verlaat deze installatie.
+
+    Dan is de weg terug helemaal weg, en dat is precies wat deze velden moeten
+    voorkomen. De waarde blijft staan en wordt gemeld — weggooien zou de
+    installateur zijn invoer kosten zonder te zeggen waarom (§53).
+    """
+    home = HomeProfile(home_dashboard_path="https://example.com/dash")
+
+    issues = validate_home_profile(home)
+
+    velden = [issue.field for issue in issues]
+    assert "home_dashboard_path" in velden
+    assert home.home_dashboard_path == "https://example.com/dash"
+
+
+def test_an_empty_dashboard_path_is_a_decision_and_not_a_fault() -> None:
+    """Leeg betekent "hier mag niet genavigeerd worden" (SPEC.md §62.3).
+
+    Daarom geen enkele melding: bij een woning met een zijbalk is er niets aan
+    de hand, en er is met opzet geen veld dat zegt of dit een wandtablet is.
+    """
+    issues = validate_home_profile(HomeProfile())
+
+    assert not [issue for issue in issues if "dashboard" in issue.field]
+
+
+def test_a_path_inside_home_assistant_passes() -> None:
+    """Een gewoon dashboardpad, zoals de hulptekst voorstelt."""
+    home = HomeProfile(
+        home_dashboard_path="/lovelace/0", energy_dashboard_path="/energy"
+    )
+
+    issues = validate_home_profile(home)
+
+    assert not [issue for issue in issues if "dashboard" in issue.field]

@@ -967,3 +967,50 @@ describe('the actual energy price on the Overzicht', () => {
     assert.match(priceRow(panel).value, /prijsbron of vul het vaste leveringstarief/);
   });
 });
+
+describe('de weg terug (SPEC.md §62)', () => {
+  it('toont geen terugknop zolang er geen bestemming is', async () => {
+    // Leeg betekent "hier mag niet genavigeerd worden", en /lovelace/0 gokken
+    // zou een uitspraak zijn over een inrichting die wij niet kennen (§62.3).
+    const panel = await mountPanel();
+
+    const knop = panel.shadowRoot.querySelector('.back-button');
+
+    assert.ok(knop);
+    assert.equal(isVisible(knop), false);
+  });
+
+  it('toont hem zodra de installateur een dashboard invulde', async () => {
+    const basis = sampleConfig();
+    const panel = await mountPanel(
+      fakeHass({
+        config: {
+          ...basis,
+          home: { ...basis.home, home_dashboard_path: '/lovelace/thuis' },
+        },
+      }),
+    );
+
+    const knop = panel.shadowRoot.querySelector('.back-button');
+
+    assert.equal(isVisible(knop), true);
+    assert.match(knop.textContent, /Dashboard/);
+  });
+
+  it('staat buiten de tabbalk, want weggaan is geen tabblad', async () => {
+    const basis = sampleConfig();
+    const panel = await mountPanel(
+      fakeHass({
+        config: {
+          ...basis,
+          home: { ...basis.home, home_dashboard_path: '/lovelace/thuis' },
+        },
+      }),
+    );
+
+    const knop = panel.shadowRoot.querySelector('.back-button');
+
+    assert.equal(knop.closest('.tabs'), null);
+    assert.ok(knop.closest('.tab-row'));
+  });
+});

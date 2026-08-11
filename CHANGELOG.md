@@ -1,5 +1,82 @@
 # Changelog
 
+## 0.27.1
+
+Geen loze waarschuwingen meer bij het opstarten. SPEC §63.
+
+### Fixed
+
+- **Bij elke herstart van Home Assistant meldde het logboek dat alle bronnen niet beschikbaar
+  waren.** Dat kwam niet door je bronnen: DomotiApp Energy wordt opgezet zodra zijn eigen
+  afhankelijkheden klaar zijn, en Home Assistant start integraties parallel — dus je
+  omvormer, je prijsbron en je slimme meter bestonden op dat moment nog niet.
+
+  De melding klopte feitelijk en betekende niets: een seconde later waren ze er wel. Bij elke
+  update van Home Assistant kreeg je zo drie waarschuwingen die niets te betekenen hadden, en
+  dat is erger dan ruis — het leert je waarschuwingen negeren.
+
+  Een leesfout tijdens het opstarten gaat nu naar het technische log en niet naar het
+  logboek, en zodra Home Assistant klaar is met starten wordt er opnieuw gerekend. Pas daarna
+  telt een bron die niet gelezen kan worden als een echte melding.
+
+## 0.27.0
+
+Het logboek leest als een tijdlijn. SPEC §61.4 — het laatste openstaande deel van het
+historisch overzicht.
+
+### Gewijzigd
+
+- **Elke dag krijgt een kop:** *Vandaag*, *Gisteren*, en daarvoor de dag voluit
+  (*"zaterdag 9 augustus"*). Een gebeurtenis draagt dan alleen nog het tijdstip — *14:32* in
+  plaats van *11-08-2026, 14:32:07 · Advies herberekend*.
+
+  Wat er stond was technisch juist en las als een export. Wat er nu staat leest als wat er
+  die dag gebeurde.
+
+- **"Info" staat niet meer op elke regel.** Bij een waarschuwing of een fout blijft het woord
+  staan — de betekenis mag nooit alleen in een kleur zitten — maar bij een gewone melding
+  vertaalt dat woord niets en drukt het de zin eronder weg.
+
+- **Het aantal van een samengevoegde reeks staat nu naast het tijdstip:** *"14:32 · 40 keer"*.
+  Dat een reeks is samengevoegd blijft zichtbaar; veertig keer wegvallen is een ander verhaal
+  dan één keer.
+
+## 0.26.0
+
+De weg terug op een wandtablet. SPEC §62.
+
+Op een tablet met Fully Kiosk en zonder zijbalk is elke navigatie uit dit paneel
+eenrichtingsverkeer: wie wegklikt, komt niet terug. Dat gold voor de link naar het
+Energie-dashboard uit 0.25.0, en er was sowieso geen weg terug naar het hoofddashboard.
+
+### Toegevoegd
+
+- **Een terugknop linksboven**, naast de tabbalk en er buiten — het paneel verlaten is geen
+  tabblad. Hij verschijnt zodra je bij Woning invult waar het hoofddashboard van deze woning
+  staat.
+
+- **Twee velden onder "Navigatie"** bij Woning: waar *terug* heen gaat, en waar het verbruik
+  van deze klant staat. Ze verschillen per woning, dus ze worden niet geraden.
+
+### Gewijzigd
+
+- **De link naar het Energie-dashboard is voorwaardelijk geworden.** Is er geen adres
+  ingevuld, dan staat de zin er nog steeds — hij bestaat om te zeggen wáár het antwoord
+  woont — maar zonder link. Zo belandt niemand op een wandtablet ergens waar hij niet meer
+  wegkomt, en blijft een klant die kWh zoekt weten waar dat staat.
+
+### Niet gebouwd, en waarom
+
+- **Geen pop-up met het Energie-dashboard erin.** Het kán: Home Assistant staat toe dat een
+  pagina van dezelfde origin haar in een iframe zet. Maar dan draait de hele HA-frontend een
+  tweede keer, mét zijbalk, in een venster op een wandtablet — een pagina in een pagina.
+
+- **Geen kiosk-instelling.** Een leeg adres zegt al "hier mag niet genavigeerd worden". Een
+  tweede vraag zou hetzelfde nog eens stellen, en met de eerste uiteen gaan lopen.
+
+- **Niets in de datakwaliteit.** Een woning met een zijbalk heeft geen terugknop nodig en kan
+  dat item dus nooit afvinken — precies de fout die dit project vijf keer heeft opgeruimd.
+
 ## 0.25.0
 
 Het historisch overzicht, eerste helft. SPEC §61.

@@ -6783,8 +6783,7 @@ aanleiding"* bedoelt.
 > dat plausibel oogt en in elke test klopt. Lees §61.3 vóór je aan een dagwaarde
 > begint, welke dan ook.
 
-**Status: het blok is gebouwd in 0.25.0; het logboek als tijdlijn (§61.4) staat nog
-open** (Sven, 2026-08-11, na §60).
+**Status: gebouwd. Het blok in 0.25.0, het logboek als tijdlijn in 0.27.0.**
 
 ### 61.1 De vraag die het beantwoordt, en de vraag die het weigert
 
@@ -6992,7 +6991,7 @@ zevende tabblad — de uitzondering staat gewoon in het blok.
 - **Geen bewaartermijn van onszelf.** Wat HA bewaart, bewaart HA; wij tonen wat er
   is en zeggen het wanneer er minder is.
 
-## 62. Voorstel: navigatie uit het paneel, en de wandtablet
+## 62. Navigatie uit het paneel, en de wandtablet
 
 **Status: akkoord bevonden en gebouwd in 0.26.0** (Sven, 2026-08-11, na §61).
 
@@ -7137,3 +7136,81 @@ home*, want dat is waar iemand kijkt die dit voor het eerst doet.
   en dat vraagt om een beheerscherm dat niemand gevraagd heeft.
 - **Geen iframe**, om de reden van §62.2.
 - **Geen tweede vraag over de kiosk** (§62.3).
+## 63. Een leesfout tijdens het opstarten is geen leesfout
+
+**Gevonden op productie, 2026-08-11**, door Sven bij zijn eigen installatie.
+
+Zijn logboek stond vol met *"Bron niet beschikbaar"* voor alle drie zijn bronnen
+— prijs, omvormer en slimme meter — met reden `invalid_entity_state`, terwijl die
+sensoren in Ontwikkelhulpmiddelen gewoon een waarde gaven.
+
+### 63.1 Wat het werkelijk was
+
+**Drie integraties die op precies hetzelfde moment stilvallen, is geen eigenschap
+van die integraties.** Het waren herstartmomenten.
+
+Wij worden opgezet zodra onze eigen afhankelijkheden klaar zijn — `http`,
+`frontend`, `panel_custom`, `websocket_api` en sinds 0.25.0 `recorder` — en Home
+Assistant zet integraties parallel op. Op dat moment bestaan `sensor.solaredge_…`,
+de prijssensor en de P1-meter nog niet. `async_config_entry_first_refresh()` leest
+dan een wereld die nog niet af is, alle bronnen falen tegelijk, en drie regels
+gaan het logboek in.
+
+**Feitelijk juist en praktisch onzin**: een seconde later bestaan ze wel.
+
+De aanname die dit blootlegt, in de vorm van §47:
+
+> **"Als ik lees, bestaat de wereld al."** Waar bij elke herberekening behalve de
+> allereerste.
+
+### 63.2 Twee dwaalsporen die de diagnose kostten, en wat ze leren
+
+**De verouderingsregel (§47) leek de dader** — drie bronnen die stilvallen terwijl
+hun waarde klopt, is precies wat een te krap venster doet. Wat het uitsloot was
+één rekensom: `last_reported` loopt altijd gelijk of vóór op de *laatst
+bijgewerkt* die Ontwikkelhulpmiddelen toont. Was die vier minuten oud, dan kon de
+meting niet ouder zijn — en de vensters zijn vijftien minuten en vier uur.
+
+**"Na 21:38 niets meer in het log" leek te bewijzen dat de coordinator stilstond.**
+Dat bewijst niets: die regel komt uit `storage.py`, en daar zit de anti-spam. Een
+mislukte bron wordt per onderwerp één keer gemeld en daarna niet meer. Zowel *"hij
+draait en faalt nog steeds"* als *"hij draait niet"* zien er identiek uit.
+
+Wat het wél besliste was *Laatste berekening* op het Overzicht: die liep mee, dus
+de motor draaide gewoon door.
+
+**En de ontbrekende energiescore was geen storing maar het ontwerp** (§35): 's
+avonds levert de zonne-as niets en bij een vast contract vervalt de prijs-as, dus
+er is geen cijfer. De tegel zei het ook.
+
+> Alle drie de dwaalsporen hadden dezelfde vorm: een waarneming die klopte, en een
+> gevolgtrekking over een ander onderwerp dan de waarneming ging (de tiende
+> variant in CLAUDE.md).
+
+### 63.3 Wat er gebouwd is
+
+1. **Tijdens het opstarten wordt een bronfout niet gemeld.** Zij gaat naar het
+   debuglog, waar zij een ontwikkelaar wel iets zegt, en niet naar het logboek van
+   de klant. Een fout die alleen over timing gaat is geen uitspraak over de
+   installatie.
+2. **Een herberekening op `async_at_started`.** Dat is het moment waarop de
+   bronnen van een klant bestaan.
+3. **Pas daarna** beoordeelt de motor een bron als niet beschikbaar.
+
+De eerste berekening bij het opzetten blijft staan: zonder haar hebben onze
+entiteiten geen waarde tot HA klaar is met starten, en dat kan bij een grote
+installatie minuten duren.
+
+**Waarom `async_at_started` en niet alleen de state-listener.** Die listener vangt
+het gewone geval al — verschijnt een bron later, dan is dat een statuswijziging.
+Maar dan hangt het herstel af van de vraag óf er nog iets verandert, en een
+prijsbron die per uur schrijft verandert een uur lang niet. Tot dan zou de klant
+een oordeel over zijn installatie krijgen dat op een halve wereld rust.
+
+### 63.4 Wat er met opzet niet gebeurt
+
+**De bronintegraties komen niet in `after_dependencies`.** Dat zou betekenen dat
+wij moeten weten welke integraties een klant gebruikt — SolarEdge, Frank Energie,
+een P1-lezer — en dat is precies de discovery die regel 1 van CLAUDE.md verbiedt.
+De volgorde is een probleem van het moment, niet van de configuratie, en zij wordt
+op het moment opgelost.

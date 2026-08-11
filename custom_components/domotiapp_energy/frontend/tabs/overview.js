@@ -395,12 +395,26 @@ export const overviewTab = {
     // Wie kWh, kosten of zelf verbruikte energie zoekt, hoort te weten dat het
     // Energie-dashboard van Home Assistant dat toont — uit de meters zelf.
     // Zonder deze regel zoekt hij het hier en concludeert hij dat het ontbreekt.
+    //
+    // **De zin blijft, alleen de link is voorwaardelijk** (SPEC.md §62.4). Hij
+    // bestaat om te zeggen wáár het antwoord woont, niet om te navigeren — en
+    // dat doel overleeft het wegvallen van de link volledig. Zonder ingevuld
+    // adres zou een link bovendien twee dingen kunnen doen die allebei fout
+    // zijn: naar een leeg dashboard sturen, of een bewoner op een wandtablet
+    // ergens achterlaten waar hij niet meer wegkomt.
     const energyPointer = el('p', { class: 'row-meta' });
-    energyPointer.append(
-      document.createTextNode('Voor kWh, kosten en wat je zelf verbruikte: '),
-      el('a', { href: '/energy', text: 'het Energie-dashboard van Home Assistant' }),
-      document.createTextNode('.'),
+    const energyLead = document.createTextNode(
+      'Voor kWh, kosten en wat je zelf verbruikte: ',
     );
+    const energyLink = el('a', {
+      text: 'het Energie-dashboard van Home Assistant',
+    });
+    // Een span en geen kale tekstknoop, want verbergen loopt in dit paneel via
+    // een klasse (core/dom.js `setVisible`) en een tekstknoop draagt er geen.
+    const energyPlain = el('span', {
+      text: 'het Energie-dashboard van Home Assistant',
+    });
+    energyPointer.append(energyLead, energyLink, energyPlain, document.createTextNode('.'));
     const historyNotice = notice('mdi:clock-outline');
     historyCard.body.append(
       surplusHoursRow.element,
@@ -704,6 +718,15 @@ export const overviewTab = {
 
     function update(panelState) {
       const { config, live, status } = panelState;
+
+      // Dezelfde regel als bij de terugknop: een ingevuld adres is tegelijk de
+      // bestemming en de toestemming om ernaartoe te gaan (SPEC.md §62.3).
+      const energyPath = config?.home?.energy_dashboard_path || null;
+      if (energyPath) {
+        energyLink.setAttribute('href', energyPath);
+      }
+      setVisible(energyLink, Boolean(energyPath));
+      setVisible(energyPlain, !energyPath);
 
       // **The section exists on grounds of the configuration, its rows follow
       // the moment** — the rule of SPEC.md §39.3 and §44.4. A home with

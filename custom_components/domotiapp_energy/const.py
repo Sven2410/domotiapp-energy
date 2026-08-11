@@ -16,7 +16,7 @@ from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 
 DOMAIN: Final = "domotiapp_energy"
 INTEGRATION_NAME: Final = "DomotiApp Energy"
-VERSION: Final = "0.25.0"
+VERSION: Final = "0.27.1"
 
 MANUFACTURER: Final = "DomotiApp"
 DEVICE_MODEL: Final = "Energy Coach"
@@ -770,6 +770,9 @@ VALIDATION_REQUIRED: Final = "required"
 VALIDATION_OUT_OF_RANGE: Final = "out_of_range"
 VALIDATION_INVALID_CHOICE: Final = "invalid_choice"
 VALIDATION_INVALID_TIME_WINDOW: Final = "invalid_time_window"
+# Een bestemming die het paneel niet kan volgen (SPEC.md §62.3). De waarde
+# blijft staan en wordt gemeld, zoals bij elke andere ingetypte tekst (§53).
+VALIDATION_INVALID_PATH: Final = "invalid_path"
 VALIDATION_UNKNOWN_TYPE: Final = INVALID_REASON_UNKNOWN_TYPE
 # The intended control mode needs hardware that cannot do it. A warning, not a
 # block: the installer may be describing a device they are about to replace.
