@@ -62,6 +62,13 @@ class DayHistory:
     peak_grid_power_w: float | None = None
     peak_grid_load_percent: float | None = None
     complete_all_day: bool | None = None
+    # Over hoeveel uur van de dag er überhaupt iets is vastgelegd. **Gevonden in
+    # de browser**, op een instance die gisteren maar zeven uur aan stond: zes
+    # uur zonneoverschot "gisteren" is iets anders wanneer er van die dag maar
+    # zeven uur bekend is. Home Assistant staat bij een klant meestal dag en
+    # nacht aan — meestal, en dat is precies het soort aanname dat dit project
+    # niet stilzwijgend maakt (SPEC.md §47).
+    hours_recorded: int = 0
     # Waar of onwaar: is er überhaupt iets vastgelegd over deze dag. Het paneel
     # zegt daarmee "nog geen geschiedenis" in plaats van drie lege regels.
     has_data: bool = False
@@ -74,6 +81,7 @@ class DayHistory:
             "peak_grid_power_w": self.peak_grid_power_w,
             "peak_grid_load_percent": self.peak_grid_load_percent,
             "complete_all_day": self.complete_all_day,
+            "hours_recorded": self.hours_recorded,
             "has_data": self.has_data,
         }
 
@@ -132,6 +140,7 @@ async def async_yesterday(
         return day
 
     day.has_data = True
+    day.hours_recorded = _hours_recorded(rows)
     day.surplus_hours = _surplus_hours(rows, config)
     day.peak_grid_power_w, day.peak_grid_load_percent = _peak_load(rows, config)
     day.complete_all_day = _complete_all_day(rows)
@@ -186,6 +195,29 @@ async def _async_read_hours(
         return _Rows()
 
     return _Rows(by_id={key: list(value) for key, value in result.items()})
+
+
+def _hours_recorded(rows: _Rows) -> int:
+    """Geef over hoeveel uur van gisteren er iets is vastgelegd.
+
+    **Een dag met gaten is geen dag**, en het verschil is niet te zien aan de
+    getallen zelf: zes uur zonneoverschot leest hetzelfde of de recorder nu
+    vierentwintig uur kende of zeven. Home Assistant kan uit hebben gestaan voor
+    een update, een stroomstoring of — zoals op de testinstance — omdat de doos
+    pas 's middags aanging.
+
+    De ruimste van de drie reeksen telt: een sensor kan afzonderlijk niets te
+    melden hebben gehad, en dat is een ander verhaal dan een uur waarin niets
+    draaide.
+    """
+    return max(
+        len(rows.by_id.get(statistic_id(key), []))
+        for key in (
+            ENTITY_KEY_SOLAR_SURPLUS,
+            ENTITY_KEY_GRID_POWER,
+            ENTITY_KEY_DATA_QUALITY,
+        )
+    )
 
 
 def _surplus_hours(rows: _Rows, config: StoredConfiguration) -> int | None:

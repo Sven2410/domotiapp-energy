@@ -38,6 +38,9 @@ import {
 import { createRowList } from '../core/rows.js';
 import { onTap } from '../core/tap.js';
 
+/** Waartegen "hield hij de hele dag bij" wordt afgemeten (SPEC.md §61.4). */
+const HOURS_IN_A_DAY = 24;
+
 const EMPTY_NOT_CONFIGURED = 'Nog niet ingesteld';
 const EMPTY_NOT_AVAILABLE = 'Niet beschikbaar';
 
@@ -421,11 +424,24 @@ export const overviewTab = {
       // de drempel lag: een uur met een half uur dubbel overschot en een half
       // uur niets telt mee. Precisie suggereren die er niet is, is erger dan
       // afronden (§61.4).
+      //
+      // En de hint zegt het wanneer de dag gaten heeft. **Gevonden in de
+      // browser**: op een instance die gisteren maar zeven uur aanstond las
+      // "ongeveer 6 uur zonneoverschot" als een uitspraak over een hele dag.
+      // Zes van zeven bekende uren is iets heel anders dan zes van
+      // vierentwintig, en aan het getal zelf is dat niet te zien.
+      const uren = day.hours_recorded;
+      const heleDag = typeof uren !== 'number' || uren >= HOURS_IN_A_DAY;
       surplusHoursRow.set(
         day.surplus_hours === null || day.surplus_hours === undefined
           ? null
           : `ongeveer ${day.surplus_hours} uur`,
-        { hint: 'Boven de drempel die ook het advies gebruikt.' },
+        {
+          hint: heleDag
+            ? 'Boven de drempel die ook het advies gebruikt.'
+            : `Boven de drempel die ook het advies gebruikt. Home Assistant ` +
+              `hield gisteren ${uren} van de 24 uur bij.`,
+        },
       );
 
       const piek = day.peak_grid_power_w;

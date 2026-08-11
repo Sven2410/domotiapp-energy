@@ -22,6 +22,7 @@ from custom_components.domotiapp_energy.const import (
 from custom_components.domotiapp_energy.engine.history import (
     DayHistory,
     _complete_all_day,
+    _hours_recorded,
     _peak_load,
     _Rows,
     _surplus_hours,
@@ -166,3 +167,32 @@ async def test_the_day_never_carries_a_daily_self_consumption(
 
     assert not [naam for naam in velden if "self_consumption" in naam]
     assert not [naam for naam in velden if "average" in naam or "gemiddeld" in naam]
+
+
+async def test_a_day_with_gaps_says_how_much_of_it_is_known(
+    hass: HomeAssistant,
+) -> None:
+    """**Gevonden in de browser** (§61.4), en aan de getallen niet te zien.
+
+    Op een instance die gisteren maar zeven uur aanstond las "ongeveer 6 uur
+    zonneoverschot" als een uitspraak over een hele dag. Zes van zeven bekende
+    uren is iets anders dan zes van vierentwintig, en het verschil zit niet in
+    het getal maar in wat eromheen bekend is.
+    """
+    zeven = _rows(
+        **{
+            ENTITY_KEY_SOLAR_SURPLUS: [{"mean": 600.0}] * 7,
+            ENTITY_KEY_GRID_POWER: [{"max": 800.0}] * 7,
+        }
+    )
+
+    assert _hours_recorded(zeven) == 7
+    # De ruimste reeks telt: één sensor die niets te melden had is een ander
+    # verhaal dan een uur waarin Home Assistant uit stond.
+    ongelijk = _rows(
+        **{
+            ENTITY_KEY_SOLAR_SURPLUS: [{"mean": 600.0}] * 24,
+            ENTITY_KEY_DATA_QUALITY: [{"min": 100.0}] * 3,
+        }
+    )
+    assert _hours_recorded(ongelijk) == 24
