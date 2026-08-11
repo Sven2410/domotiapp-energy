@@ -143,3 +143,78 @@ describe('wat er in de sectie staat', () => {
     );
   });
 });
+
+describe('hoe het gisteren ging', () => {
+  function historyCard(tab) {
+    return card(tab, 'Hoe het gisteren ging');
+  }
+
+  it('zwijgt met één zin zolang er geen dag geweest is', async () => {
+    // Een woning die vannacht is opgeleverd hoort geen drie lege regels te
+    // zien: dat is geen storing maar een dag die nog niet bestond (§61.2).
+    const { tab } = await openOverview();
+
+    assert.match(visibleText(historyCard(tab)), /nog geen geschiedenis van gisteren/);
+    assert.doesNotMatch(visibleText(historyCard(tab)), /Zonneoverschot/);
+  });
+
+  it('zet de drie feiten neer zodra er een dag is', async () => {
+    const { tab } = await openOverview(
+      fakeHass({
+        history: {
+          date: '2026-08-10',
+          surplus_hours: 4,
+          peak_grid_power_w: 4600,
+          peak_grid_load_percent: 80,
+          complete_all_day: true,
+          has_data: true,
+        },
+      }),
+    );
+    const tekst = visibleText(historyCard(tab));
+
+    assert.match(tekst, /ongeveer 4 uur/);
+    assert.match(tekst, /4\.600 W/);
+    assert.match(tekst, /80% van je maximum/);
+    assert.match(tekst, /De hele dag compleet/);
+  });
+
+  it('zegt "ongeveer", want een uurgemiddelde is grof', async () => {
+    // Precisie suggereren die er niet is, is erger dan afronden: een uur met
+    // een half uur dubbel overschot en een half uur niets telt hier mee.
+    const { tab } = await openOverview(
+      fakeHass({ history: { surplus_hours: 6, has_data: true } }),
+    );
+
+    assert.match(visibleText(historyCard(tab)), /ongeveer 6 uur/);
+  });
+
+  it('meldt geen piek op een dag waarop de woning alleen terugleverde', async () => {
+    const { tab } = await openOverview(
+      fakeHass({
+        history: { surplus_hours: 7, peak_grid_power_w: null, has_data: true },
+      }),
+    );
+
+    assert.match(visibleText(historyCard(tab)), /Geen afname gemeten/);
+  });
+
+  it('belooft nergens wat het opgeleverd heeft', async () => {
+    // **De grens van dit blok** (§61.1). De coach adviseert; of het advies is
+    // opgevolgd weet niemand, dus een euro of een besparing hoort hier niet.
+    const { tab } = await openOverview(
+      fakeHass({
+        history: {
+          surplus_hours: 4,
+          peak_grid_power_w: 4600,
+          peak_grid_load_percent: 80,
+          complete_all_day: true,
+          has_data: true,
+        },
+      }),
+    );
+    const tekst = visibleText(historyCard(tab));
+
+    assert.doesNotMatch(tekst, /bespaar|opgeleverd|€/i);
+  });
+});

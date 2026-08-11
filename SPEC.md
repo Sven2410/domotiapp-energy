@@ -6783,7 +6783,8 @@ aanleiding"* bedoelt.
 > dat plausibel oogt en in elke test klopt. Lees §61.3 vóór je aan een dagwaarde
 > begint, welke dan ook.
 
-**Status: akkoord bevonden, nog niet gebouwd** (Sven, 2026-08-11, na §60).
+**Status: het blok is gebouwd in 0.25.0; het logboek als tijdlijn (§61.4) staat nog
+open** (Sven, 2026-08-11, na §60).
 
 ### 61.1 De vraag die het beantwoordt, en de vraag die het weigert
 

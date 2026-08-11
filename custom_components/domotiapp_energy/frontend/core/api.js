@@ -116,6 +116,14 @@ export function createApi(hass) {
     setDeviceReady: (deviceId, ready) =>
       call('devices/set_ready', { device_id: deviceId, ready }),
 
+    /**
+     * Gisteren in drie feiten (SPEC.md §61).
+     *
+     * Leest wat Home Assistant al over onze eigen sensoren bewaarde; er is geen
+     * eigen opslag en er wordt niets geschreven, dus ook geen revision.
+     */
+    getHistory: () => call('history/get'),
+
     /** Recalculate now. Open to every user: it changes no configuration. */
     recalculate: () => call('coach/recalculate'),
   };

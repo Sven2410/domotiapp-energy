@@ -44,6 +44,9 @@
       },
       "current_advice": {
         "name": "Current advice"
+      },
+      "self_consumption": {
+        "name": "Self consumption"
       }
     },
     "binary_sensor": {

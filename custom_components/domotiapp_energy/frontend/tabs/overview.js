@@ -343,6 +343,31 @@ export const overviewTab = {
     const actionNotice = notice('mdi:alert-circle-outline');
     actionCard.body.append(actionList.element, actionNotice.element);
 
+    // --- Yesterday ----------------------------------------------------------
+    //
+    // **Onder de bediening, want handelen gaat over nu en geschiedenis over
+    // gisteren** (SPEC.md §60.4). Drie feiten, en dat is een grens en geen
+    // richtlijn (§61.4): een blok dat groeit wordt een dashboard, en dan zijn
+    // we het Energie-dashboard van Home Assistant aan het nabouwen — dat leest
+    // de meters zelf en doet het beter.
+    //
+    // Elk feit zegt met opzet minder dan een klant zou willen. Er staat niet
+    // wat het opleverde, want dat weet niemand: de coach adviseert, en of het
+    // advies is opgevolgd is nergens vastgelegd (§61.1).
+    const historyCard = card('Hoe het gisteren ging');
+    const surplusHoursRow = statRow('Zonneoverschot', {
+      empty: 'Niet gemeten',
+    });
+    const peakRow = statRow('Hoogste netvermogen', { empty: 'Geen afname gemeten' });
+    const completeRow = statRow('Installatie', { empty: 'Niet gemeten' });
+    const historyNotice = notice('mdi:clock-outline');
+    historyCard.body.append(
+      surplusHoursRow.element,
+      peakRow.element,
+      completeRow.element,
+      historyNotice.element,
+    );
+
     // The "Configuratie" card was removed in 0.4.1. It restated the home name
     // and counted the rows two tabs away, which is not a reading of this
     // moment and cost a screenful on a phone.
@@ -356,7 +381,74 @@ export const overviewTab = {
       powerCard.element,
       adviceCard.element,
       actionCard.element,
+      historyCard.element,
     );
+
+    /**
+     * Zet gisteren neer, of zeg dat er nog niets is.
+     *
+     * **Eén keer opgehaald bij het opbouwen van het tabblad**, en niet bij elke
+     * herberekening: gisteren verandert niet meer. Een woning die vannacht is
+     * opgeleverd krijgt één zin in plaats van drie lege regels — dat is geen
+     * storing maar een dag die nog niet bestond (§61.2).
+     */
+    async function loadYesterday() {
+      let day = null;
+      try {
+        day = await createApi(getHass()).getHistory();
+      } catch (error) {
+        historyNotice.set(describeError(error), { tone: 'warning' });
+        setVisible(historyCard.element, false);
+        return;
+      }
+
+      const heeftIets = Boolean(day?.has_data);
+      setVisible(surplusHoursRow.element, heeftIets);
+      setVisible(peakRow.element, heeftIets);
+      setVisible(completeRow.element, heeftIets);
+      historyNotice.set(
+        heeftIets
+          ? ''
+          : 'Er is nog geen geschiedenis van gisteren. Vanaf de eerste hele dag ' +
+              'staat hier hoe het ging.',
+        { tone: 'info' },
+      );
+      if (!heeftIets) {
+        return;
+      }
+
+      // "Ongeveer", want dit telt uren waarin het *gemiddelde* overschot boven
+      // de drempel lag: een uur met een half uur dubbel overschot en een half
+      // uur niets telt mee. Precisie suggereren die er niet is, is erger dan
+      // afronden (§61.4).
+      surplusHoursRow.set(
+        day.surplus_hours === null || day.surplus_hours === undefined
+          ? null
+          : `ongeveer ${day.surplus_hours} uur`,
+        { hint: 'Boven de drempel die ook het advies gebruikt.' },
+      );
+
+      const piek = day.peak_grid_power_w;
+      peakRow.set(
+        typeof piek === 'number' ? `${formatNumber(piek)} W` : null,
+        {
+          hint:
+            typeof day.peak_grid_load_percent === 'number'
+              ? `${formatNumber(day.peak_grid_load_percent, { decimals: 0 })}% van je maximum.`
+              : null,
+        },
+      );
+
+      completeRow.set(
+        day.complete_all_day === null || day.complete_all_day === undefined
+          ? null
+          : day.complete_all_day
+            ? 'De hele dag compleet'
+            : 'Niet de hele dag compleet',
+      );
+    }
+
+    loadYesterday();
 
     /** Live flags, refreshed with every calculation. */
     let readyFlags = {};

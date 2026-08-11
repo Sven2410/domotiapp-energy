@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.25.0
+
+Het historisch overzicht, eerste helft. SPEC §61.
+
+### Toegevoegd
+
+- **"Hoe het gisteren ging"** op het Overzicht, onder de bediening: hoeveel uur er
+  zonneoverschot was, wat het hoogste netvermogen was en of de installatie de hele dag
+  compleet was. Drie feiten, en dat is een grens en geen richtlijn — een blok dat groeit
+  wordt een dashboard.
+
+  Elk feit zegt met opzet minder dan je zou willen. *"Ongeveer 4 uur zonneoverschot"* zegt
+  niet dat je het gebruikt hebt, en er staat nergens wat het opgeleverd heeft: de coach
+  adviseert, en of het advies is opgevolgd weet niemand.
+
+  Is er nog geen hele dag geweest, dan staat er één zin in plaats van drie lege regels.
+
+- **`sensor.domotiapp_energy_self_consumption`** — de negende entiteit, en de enige van onze
+  cijfers die zegt wat de *bewoner* deed. Home Assistant bewaart hem, dus je kunt er zelf een
+  grafiek van maken. Een entiteit is een belofte: hij kan niet meer weg.
+
+### Niet gebouwd, en waarom
+
+- **Geen dagelijkse zelfbenutting.** Het gemiddelde van een verhouding is niet de verhouding
+  van de sommen: een ochtenduur met 200 W opwek waarvan je alles gebruikt telt in zo'n
+  gemiddelde even zwaar als een middaguur met 4 kW waarvan je de helft terugleverde. Dat
+  getal valt structureel te hoog uit voor precies de woning die het meest te winnen heeft.
+  De juiste dagwaarde vraagt om kWh, en die heeft het Energie-dashboard van HA al.
+
+- **Geen verbruiksgrafieken.** Die leest HA rechtstreeks uit je meters; alles wat wij uit
+  vermogensgemiddelden zouden bouwen is daar een slechtere kopie van.
+
 ## 0.24.0
 
 Bediening staat op het Overzicht. SPEC §60.

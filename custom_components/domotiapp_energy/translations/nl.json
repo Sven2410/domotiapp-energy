@@ -44,6 +44,9 @@
       },
       "current_advice": {
         "name": "Actueel advies"
+      },
+      "self_consumption": {
+        "name": "Zelfbenutting"
       }
     },
     "binary_sensor": {

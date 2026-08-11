@@ -46,6 +46,7 @@ from custom_components.domotiapp_energy.const import (
     ENTITY_KEY_GRID_POWER,
     ENTITY_KEY_HOME_CONSUMPTION,
     ENTITY_KEY_PEAK_RISK,
+    ENTITY_KEY_SELF_CONSUMPTION,
     ENTITY_KEY_SOLAR_SURPLUS,
     ENTITY_KEYS,
     ENTITY_OBJECT_ID_NAMES,
@@ -84,6 +85,7 @@ SENSOR_DATA_QUALITY = "sensor.domotiapp_energy_data_quality"
 SENSOR_GRID_POWER = "sensor.domotiapp_energy_grid_power"
 SENSOR_HOME_CONSUMPTION = "sensor.domotiapp_energy_home_consumption"
 SENSOR_SOLAR_SURPLUS = "sensor.domotiapp_energy_solar_surplus"
+SENSOR_SELF_CONSUMPTION = "sensor.domotiapp_energy_self_consumption"
 SENSOR_CURRENT_ADVICE = "sensor.domotiapp_energy_current_advice"
 BINARY_SENSOR_PEAK_RISK = "binary_sensor.domotiapp_energy_peak_risk"
 BINARY_SENSOR_ATTENTION = "binary_sensor.domotiapp_energy_attention"
@@ -156,10 +158,12 @@ async def entry_fixture(
     return entry
 
 
-async def test_the_eight_entity_ids_are_built_from_the_pinned_english_names(
+async def test_the_nine_entity_ids_are_built_from_the_pinned_english_names(
     hass: HomeAssistant, entry: MockConfigEntry
 ) -> None:
-    """The eight ids of SPEC.md §19, §36.7 and §45 exist, and the registry shows how.
+    """The nine ids exist, and the registry shows how they were built.
+
+    SPEC.md §19, §36.7, §45 and §61.5.
 
     ``object_id_base`` is the name Home Assistant prefixed with the device name
     to reach the id. It has to be the pinned English name: that is what stops a
@@ -175,6 +179,7 @@ async def test_the_eight_entity_ids_are_built_from_the_pinned_english_names(
         SENSOR_GRID_POWER: ENTITY_KEY_GRID_POWER,
         SENSOR_HOME_CONSUMPTION: ENTITY_KEY_HOME_CONSUMPTION,
         SENSOR_SOLAR_SURPLUS: ENTITY_KEY_SOLAR_SURPLUS,
+        SENSOR_SELF_CONSUMPTION: ENTITY_KEY_SELF_CONSUMPTION,
         SENSOR_CURRENT_ADVICE: ENTITY_KEY_CURRENT_ADVICE,
         BINARY_SENSOR_PEAK_RISK: ENTITY_KEY_PEAK_RISK,
         BINARY_SENSOR_ATTENTION: ENTITY_KEY_ATTENTION,
@@ -182,6 +187,8 @@ async def test_the_eight_entity_ids_are_built_from_the_pinned_english_names(
 
     # Every key has a row: an entity added to the package without a row here
     # would otherwise ship unguarded, which is how the eighth one nearly did.
+    # The ninth (self-consumption, §61.5) is the reason this line keeps earning
+    # its place — it is a promise to the customer's dashboards, not a detail.
     assert set(expected.values()) == set(ENTITY_KEYS)
 
     for entity_id, key in expected.items():

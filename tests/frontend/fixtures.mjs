@@ -89,11 +89,36 @@ export function sampleCoach(overrides = {}) {
  * checked. The write commands answer in the real shape: `revision`, `item` and
  * `issues` (SPEC.md §14).
  */
-export function fakeHass({ isAdmin = true, config, coach, issues = {} } = {}) {
+/**
+ * Gisteren, zoals `history/get` het teruggeeft (SPEC.md §61).
+ *
+ * Standaard een dag zonder geschiedenis: dat is wat een verse installatie ziet,
+ * en het is de toestand waarin het blok zich stil moet houden.
+ */
+export function sampleHistory(overrides = {}) {
+  return {
+    date: '2026-08-10',
+    surplus_hours: null,
+    peak_grid_power_w: null,
+    peak_grid_load_percent: null,
+    complete_all_day: null,
+    has_data: false,
+    ...overrides,
+  };
+}
+
+export function fakeHass({
+  isAdmin = true,
+  config,
+  coach,
+  history,
+  issues = {},
+} = {}) {
   const stored = config ?? sampleConfig();
   const answers = {
     'domotiapp_energy/config/get': stored,
     'domotiapp_energy/coach/get': coach ?? sampleCoach(),
+    'domotiapp_energy/history/get': history ?? sampleHistory(),
   };
   const sent = [];
   let revision = stored.revision;
