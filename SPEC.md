@@ -6991,3 +6991,150 @@ zevende tabblad — de uitzondering staat gewoon in het blok.
   vraagt.
 - **Geen bewaartermijn van onszelf.** Wat HA bewaart, bewaart HA; wij tonen wat er
   is en zeggen het wanneer er minder is.
+
+## 62. Voorstel: navigatie uit het paneel, en de wandtablet
+
+**Status: voorstel, ronde 1** (Sven, 2026-08-11, na §61). Er is nog niets aan
+gebouwd.
+
+> **De regel die het zwaarst weegt, en die iemand later niet stelt als hij "even
+> een linkje" toevoegt:**
+>
+> **Op een wandtablet is elke navigatie uit dit paneel eenrichtingsverkeer.**
+>
+> Fully Kiosk zonder zijbalk betekent: wie hier wegklikt, komt niet terug. Elke
+> verwijzing die het paneel verlaat moet die vraag beantwoorden vóór zij bestaat.
+
+### 62.1 De aanleiding
+
+Twee gevallen bij klanten van DomotiTech, allebei op een wandtablet zonder
+zijbalk:
+
+1. **De link naar `/energy`** die §61 toevoegde is een navigatie. Wie hem volgt,
+   kan niet meer terug.
+2. **Er is geen weg terug naar het hoofddashboard.** De installateur navigeert
+   er met een tegel naartoe; het paneel zelf heeft geen knop terug.
+
+En beide bestemmingen verschillen per klant: niet elke woning heeft haar
+hoofddashboard op dezelfde URL, en het energiedashboard kan een eigen dashboard
+zijn.
+
+### 62.2 Een pop-up kan, en juist daarom is de vraag interessant
+
+**Geverifieerd in de bron van HA 2026.8.1**, `components/http/headers.py`:
+
+```python
+added_headers[X_FRAME_OPTIONS] = "SAMEORIGIN"
+```
+
+`SAMEORIGIN` **staat toe** dat een pagina van dezelfde origin ons in een iframe
+zet. Het paneel en `/energy` komen van dezelfde origin, dus een eigen dialoog met
+`<iframe src="/energy">` mag — zonder browser_mod en zonder interne API's.
+
+**En toch doen we het niet.** Wat je krijgt is de hele HA-frontend een tweede
+keer, mét eigen zijbalk en werkbalk, in een venster op een wandtablet: een pagina
+in een pagina, en de zwaarste die HA heeft. Netjes maken vraagt om HA's interne
+`hui-*`-elementen, en dat is dezelfde val als `ha-dialog` (§49.6).
+
+> **Modaal tonen we alleen onze eigen inhoud.**
+
+**Wat daaruit volgt en niet vanzelf spreekt:** een terugknop lost geval 1 *niet*
+op. Wie eenmaal op `/energy` staat, is uit ons paneel weg en heeft niets meer aan
+een knop die hier hangt. De twee gevallen lijken hetzelfde en zijn het niet.
+
+Er blijven dus drie eerlijke mogelijkheden voor die link: geen link, een link die
+strandt, of een iframe. Dit voorstel kiest de eerste — voorwaardelijk.
+
+### 62.3 Twee velden bij Installatie, en één regel
+
+| Veld | Wat het is |
+|---|---|
+| `home_dashboard_path` | waar *terug* heen gaat |
+| `energy_dashboard_path` | waar het verbruik van déze klant staat |
+
+Twee velden en geen "veld per link": ze verschillen niet in soort maar in
+onderwerp. Het eerste is een eigenschap van de navigatie van deze installatie,
+het tweede van wat deze klant heeft.
+
+> **De regel: leeg is geen knop en geen link.**
+
+Geen `/lovelace/0` gokken — dat is precies wat §2.1 verbiedt. En `/energy` als
+stille standaard is subtieler fout: dat pad is niet verzonnen, het is HA's eigen
+adres, maar of *deze* klant daar iets heeft staan weten we niet. Een link naar
+een leeg dashboard is erger dan geen link.
+
+#### En daarom komt er geen kiosk-instelling
+
+Dit is het deel dat expliciet vastgelegd moet worden (Sven, 2026-08-11).
+
+**Een leeg veld betekent "hier mag niet genavigeerd worden".** De installateur die
+een wandtablet oplevert vult niets in en de bewoner krijgt een zin; de installateur
+van een woning mét zijbalk vult het in en de bewoner krijgt een link.
+
+De kiosksituatie wordt dus gecodeerd **door te doen wat de installateur toch al
+doet** — een bestemming invullen of niet — in plaats van door een tweede vraag te
+stellen die hetzelfde nog eens zegt. Een aparte schakelaar *"deze woning heeft
+geen zijbalk"* zou een tweede antwoord zijn op dezelfde vraag, en die twee lopen
+uiteen zodra iemand er één verandert (§60.2, negende variant).
+
+### 62.4 Wat er op het scherm staat bij een leeg energieveld
+
+**De zin blijft, alleen de link verdwijnt.**
+
+Die zin bestaat niet om te navigeren maar om te zeggen *waar het antwoord woont*:
+zonder hem concludeert een klant die kWh zoekt dat het bij ons ontbreekt in plaats
+van dat het ergens anders beter staat (§61.1). Dat doel overleeft het wegvallen
+van de link volledig.
+
+> *"Voor kWh, kosten en wat je zelf verbruikte: het Energie-dashboard van Home
+> Assistant."*
+
+Met een ingevuld veld is de staart een link; zonder is het dezelfde zin als tekst.
+Eén zin, twee weergaven — geen tweede zin, want er is niets anders te zeggen.
+
+**De afweging die daaronder ligt.** Op een tablet waar de bewoner er niet heen
+kan, vertelt die zin over een scherm dat hij niet bereikt. Dat is mild vervelend.
+De omgekeerde fout — de zin weglaten — is erger en structureler: dan ontstaat
+precies het misverstand dat §61 wegnam, en het treft ook elke woning mét zijbalk
+waar de installateur het veld gewoon nog niet had ingevuld.
+
+### 62.5 Waar de terugknop staat
+
+**Linksboven, op dezelfde regel als de tabbalk, met een scheiding ertussen.**
+
+- **niet in de tabbalk**, want het paneel verlaten is geen tabblad;
+- **niet onderaan**, want dan moet een bewoner scrollen om weg te kunnen;
+- **linksboven**, omdat daar op touch een terugaffordantie verwacht wordt.
+
+De tabbalk wikkelt op smalle schermen al naar een tweede regel (§10); de knop
+blijft op de eerste staan.
+
+### 62.6 Hoe de installateur weet dat hij dit moet invullen
+
+Sven's vraag, en het antwoord is deels een nee.
+
+**Niet in de datakwaliteit.** Dat is de fout die dit project vijf keer heeft
+opgeruimd: een eis stellen die een woning niet kan afvinken. Een woning met een
+zijbalk heeft geen terugknop nodig, en er is — met opzet, §62.3 — geen veld dat
+zegt dat deze woning een wandtablet is. De checklist kan dus niet weten of het
+item van toepassing is, en zou het cijfer laten zakken voor een installatie waar
+niets mis mee is.
+
+**Wel op twee plekken waar een installateur toch al kijkt:**
+
+1. **De hulptekst bij het veld**, die het gevolg noemt in plaats van de vorm:
+   *"Zonder dit adres verschijnt er geen terugknop. Op een wandtablet zonder
+   zijbalk kan de bewoner dit paneel dan niet verlaten."*
+2. **Een neutrale regel op Installatie** wanneer het leeg is — geen
+   waarschuwingstoon, want bij de meeste woningen is het geen gebrek:
+   *"Geen terugknop ingesteld. Nodig bij een wandtablet zonder zijbalk."*
+
+En bij de eerste installatie hoort het in de README, onder *Setting up your first
+home*, want dat is waar iemand kijkt die dit voor het eerst doet.
+
+### 62.7 Wat dit voorstel niet doet
+
+- **Geen instelbare lijst van verwijzingen.** Dan wordt het paneel een launcher,
+  en dat vraagt om een beheerscherm dat niemand gevraagd heeft.
+- **Geen iframe**, om de reden van §62.2.
+- **Geen tweede vraag over de kiosk** (§62.3).
