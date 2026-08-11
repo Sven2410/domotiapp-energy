@@ -38,6 +38,7 @@ from .const import (
     ENTITY_KEY_ENERGY_SCORE,
     ENTITY_KEY_GRID_POWER,
     ENTITY_KEY_HOME_CONSUMPTION,
+    ENTITY_KEY_SELF_CONSUMPTION,
     ENTITY_KEY_SOLAR_SURPLUS,
     MAX_ADVICE_ITEMS_IN_ATTRIBUTES,
     MAX_STATE_LENGTH,
@@ -85,6 +86,19 @@ SENSOR_DESCRIPTIONS: tuple[DomotiAppEnergySensorDescription, ...] = (
         # `unknown` rather than 0 when the balance cannot be closed: a zero
         # would claim the house is using nothing (SPEC.md §36.3).
         value_fn=lambda result: result.metrics.home_consumption_w,
+    ),
+    DomotiAppEnergySensorDescription(
+        key=ENTITY_KEY_SELF_CONSUMPTION,
+        native_unit_of_measurement=PERCENTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=0,
+        # **The figure this product is about**, and the only one of ours that
+        # says what the resident did rather than what the house was handed
+        # (SPEC.md §61.5). It is recorded so the customer can graph it himself;
+        # a daily average over it is *not* meaningful, for the reason in §61.3 —
+        # the mean of a ratio is not the ratio of the sums, and it flatters a
+        # home with sun in the morning and consumption in the evening.
+        value_fn=lambda result: result.metrics.self_consumption_percent,
     ),
     DomotiAppEnergySensorDescription(
         key=ENTITY_KEY_SOLAR_SURPLUS,

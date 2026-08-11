@@ -141,10 +141,11 @@ describe('notices and the banner', () => {
     );
 
     const notices = [...panel.shadowRoot.querySelectorAll('.notice')];
-    // Nine since §60: the action section on the Overzicht has one, for the
-    // case where saying "hij is vol" fails. The count is deliberate — it
-    // catches a notice added without anyone deciding it should be there.
-    assert.equal(notices.length, 9);
+    // Tien sinds §61: de bedieningssectie heeft er een (voor als "hij is vol"
+    // mislukt) en het blok over gisteren ook (voor de dag die er nog niet is).
+    // Het getal is met opzet hard — het vangt een notice die erbij komt zonder
+    // dat iemand besloten heeft dat hij er hoort.
+    assert.equal(notices.length, 10);
 
     for (const node of notices.filter(isVisible)) {
       assert.notEqual(
@@ -153,7 +154,10 @@ describe('notices and the banner', () => {
         'a visible notice must carry text, never an icon on its own',
       );
     }
-    assert.equal(notices.filter(isVisible).length, 1);
+    // Twee die iets te zeggen hebben: de waarschuwing uit het advies, en het
+    // blok over gisteren dat meldt dat er nog geen dag geweest is. Dat tweede
+    // is geen storing maar de eerlijke staat van een verse installatie (§61.2).
+    assert.equal(notices.filter(isVisible).length, 2);
   });
 
   it('shows the peak notice again when the risk returns', async () => {

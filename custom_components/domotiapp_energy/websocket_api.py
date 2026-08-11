@@ -83,6 +83,7 @@ from .const import (
     WS_DEVICES_SET_OPERATION,
     WS_DEVICES_SET_READY,
     WS_DEVICES_UPDATE,
+    WS_HISTORY_GET,
     WS_HOME_UPDATE,
     WS_LOGS_CLEAR,
     WS_LOGS_LIST,
@@ -94,6 +95,7 @@ from .const import (
     WS_SOURCES_UPDATE,
 )
 from .coordinator import DomotiAppEnergyData
+from .engine.history import async_yesterday
 from .models import (
     DeviceProfile,
     EnergySource,
@@ -258,6 +260,7 @@ def async_register_commands(hass: HomeAssistant) -> None:
         handle_preferences_update,
         handle_coach_get,
         handle_coach_recalculate,
+        handle_history_get,
         handle_logs_list,
         handle_logs_clear,
     ):
@@ -1023,6 +1026,22 @@ async def handle_devices_set_ready(
         },
     )
     await data.coordinator.async_recalculate()
+
+
+# Open voor elke ingelogde gebruiker, net als `coach/get`: dit zegt wat de coach
+# gisteren zag, en dat is precies wat een bewoner mag vragen. Er wordt niets
+# geschreven, dus er is ook geen `expected_revision` (SPEC.md §61).
+@websocket_api.websocket_command({vol.Required("type"): WS_HISTORY_GET})
+@websocket_api.async_response
+async def handle_history_get(
+    hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Geef gisteren in drie feiten, of een lege dag."""
+    if (data := _async_get_data(hass, connection, msg)) is None:
+        return
+
+    day = await async_yesterday(hass, data.store.config)
+    connection.send_result(msg["id"], day.to_dict())
 
 
 @websocket_api.require_admin

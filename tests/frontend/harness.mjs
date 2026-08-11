@@ -17,11 +17,16 @@
 
 import { JSDOM } from 'jsdom';
 
-import { fakeHass, sampleCoach, sampleConfig } from './fixtures.mjs';
+import {
+  fakeHass,
+  sampleCoach,
+  sampleConfig,
+  sampleHistory,
+} from './fixtures.mjs';
 
 // Re-exported so every existing test keeps importing its fixtures from the
 // harness; the move is an internal one.
-export { fakeHass, sampleCoach, sampleConfig };
+export { fakeHass, sampleCoach, sampleConfig, sampleHistory };
 
 const PANEL_URL = new URL(
   '../../custom_components/domotiapp_energy/frontend/domotiapp-energy-panel.js',

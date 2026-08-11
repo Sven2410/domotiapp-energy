@@ -595,6 +595,36 @@ zijn een bug die geen van beide tests kan zien, want elke test toetst zijn eigen
 maar om te zien welke randgevallen daar al beslecht zijn. Dat is dezelfde beweging als de
 vierde variant vraagt na een hernoeming, nu vooraf in plaats van achteraf.
 
+### Tiende variant: één reeks lezen en een conclusie over het geheel trekken
+
+**Gevonden op 2026-08-11, en het is de zesde variant in de meetkant** — daar zocht ik een
+toestand die de gewenste tak opleverde; hier las ik één meting en concludeerde iets over de
+hele installatie.
+
+Bij het historisch overzicht viel op dat de reeks `solar_surplus` maar zeven uurwaarden had
+voor gisteren. Mijn conclusie: *de instance stond die dag maar zeven uur aan*. Daar schreef ik
+een regel op — de hint "Home Assistant hield gisteren 7 van de 24 uur bij" — met als maat de
+**ruimste** van de drie reeksen.
+
+Bij het narekenen bleek de instance de hele dag te hebben gelopen: `data_quality` had
+vierentwintig uurwaarden, `grid_power` en `solar_surplus` zeven. Er was dus niets mis met de
+recorder; de *netmeting* viel weg. En omdat mijn regel de ruimste reeks nam, zag hij
+vierentwintig en **verborg hij precies het geval waarvoor hij geschreven was**: "hoogste
+netvermogen 800 W" rustte op zeven uur.
+
+**Twee vragen die op elkaar lijken en het niet zijn:**
+
+| Vraag | Antwoord komt uit |
+|---|---|
+| *liep Home Assistant?* | de ruimste reeks |
+| *is dít gemeten?* | de reeks waar het feit zelf op rust |
+
+**De vraag die hem vangt:** *waar gaat deze reeks over, en waar gaat mijn conclusie over?*
+Zodra die twee niet hetzelfde onderwerp hebben, is de conclusie een gok — ook als de meting
+klopt. Praktisch: lees bij een uitspraak over "het systeem" of "de dag" **elke** reeks
+afzonderlijk, en kijk of ze het met elkaar eens zijn. Zijn ze het oneens, dan is dat
+verschil het onderwerp.
+
 ### Een eis die niet van toepassing is, gepresenteerd als een gebrek
 
 **Vijf keer voorgekomen, allemaal in de datakwaliteit**, en elke keer opnieuw ontdekt door

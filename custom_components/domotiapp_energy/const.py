@@ -16,7 +16,7 @@ from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 
 DOMAIN: Final = "domotiapp_energy"
 INTEGRATION_NAME: Final = "DomotiApp Energy"
-VERSION: Final = "0.24.0"
+VERSION: Final = "0.25.0"
 
 MANUFACTURER: Final = "DomotiApp"
 DEVICE_MODEL: Final = "Energy Coach"
@@ -151,6 +151,10 @@ WS_DEVICES_SET_OPERATION: Final = f"{DOMAIN}/devices/set_operation"
 # the resident saying the machine is full, not the installer setting something
 # up. Same treatment as coach/recalculate (SPEC.md §14 and §32.5).
 WS_DEVICES_SET_READY: Final = f"{DOMAIN}/devices/set_ready"
+# Yesterday in three facts, read from what Home Assistant already recorded about
+# our own sensors (SPEC.md §61). No store of our own, and no admin: it says what
+# the coach saw, which is exactly what a resident may ask.
+WS_HISTORY_GET: Final = f"{DOMAIN}/history/get"
 WS_PREFERENCES_GET: Final = f"{DOMAIN}/preferences/get"
 WS_PREFERENCES_UPDATE: Final = f"{DOMAIN}/preferences/update"
 WS_COACH_GET: Final = f"{DOMAIN}/coach/get"
@@ -1065,6 +1069,12 @@ ENTITY_KEY_HOME_CONSUMPTION: Final = "home_consumption"
 # than for the panel: one tile that colours when something needs a person
 # (SPEC.md §45).
 ENTITY_KEY_ATTENTION: Final = "attention"
+# Added in 0.25.0, on the same terms, and for one reason: it is the only figure
+# that says something about what the *resident* did, and without a history of it
+# the product has no history of its own subject (SPEC.md §61.5). Home Assistant
+# keeps the history because of `state_class`; that is the whole point of adding
+# it, and it is why an entity here is a promise that cannot be taken back.
+ENTITY_KEY_SELF_CONSUMPTION: Final = "self_consumption"
 
 ENTITY_KEYS: Final[tuple[str, ...]] = (
     ENTITY_KEY_ENERGY_SCORE,
@@ -1075,6 +1085,7 @@ ENTITY_KEYS: Final[tuple[str, ...]] = (
     ENTITY_KEY_PEAK_RISK,
     ENTITY_KEY_HOME_CONSUMPTION,
     ENTITY_KEY_ATTENTION,
+    ENTITY_KEY_SELF_CONSUMPTION,
 )
 
 # The English entity name each object id is built from, whatever language the
@@ -1095,6 +1106,7 @@ ENTITY_OBJECT_ID_NAMES: Final[dict[str, str]] = {
     ENTITY_KEY_PEAK_RISK: "Peak risk",
     ENTITY_KEY_HOME_CONSUMPTION: "Home consumption",
     ENTITY_KEY_ATTENTION: "Attention",
+    ENTITY_KEY_SELF_CONSUMPTION: "Self consumption",
 }
 
 # Home Assistant rejects a state longer than 255 characters.

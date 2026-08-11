@@ -1,5 +1,53 @@
 # Changelog
 
+## 0.25.0
+
+Het historisch overzicht, eerste helft. SPEC §61.
+
+### Toegevoegd
+
+- **"Hoe het gisteren ging"** op het Overzicht, onder de bediening: hoeveel uur er
+  zonneoverschot was, wat het hoogste netvermogen was en of de installatie de hele dag
+  compleet was. Drie feiten, en dat is een grens en geen richtlijn — een blok dat groeit
+  wordt een dashboard.
+
+  Elk feit zegt met opzet minder dan je zou willen. *"Ongeveer 4 uur zonneoverschot"* zegt
+  niet dat je het gebruikt hebt, en er staat nergens wat het opgeleverd heeft: de coach
+  adviseert, en of het advies is opgevolgd weet niemand.
+
+  Is er nog geen hele dag geweest, dan staat er één zin in plaats van drie lege regels. En
+  elk feit zegt erbij over hoeveel uur het iets weet zodra dat niet de hele dag is: een bron
+  kan stil vallen terwijl de rest doorloopt, en aan het getal zelf is dat niet te zien.
+
+- **"Hoogste in 30 dagen"**, met erbij op hoeveel dagen de woning boven haar
+  waarschuwingsgrens uitkwam. Het enige feit dat over een langere periode meeschaalt zonder
+  scheef te trekken — het is een maximum en een telling, en geen van beide middelt iets weg —
+  en het enige dat Home Assistant zelf niet kan tonen, want zij kent je maximale netvermogen
+  niet.
+
+  Twee getallen omdat een installateur een andere vraag stelt dan "hoe hoog": bij een klant
+  die belt over een gesprongen zekering wil hij weten of de woning er structureel tegenaan
+  zit of dat het één keer gebeurde.
+
+- **Een verwijzing naar het Energie-dashboard**, in het blok zelf. Wie kWh, kosten of zelf
+  verbruikte energie zoekt en hier niets vindt, concludeert dat het ontbreekt — niet dat het
+  ergens anders beter staat.
+
+- **`sensor.domotiapp_energy_self_consumption`** — de negende entiteit, en de enige van onze
+  cijfers die zegt wat de *bewoner* deed. Home Assistant bewaart hem, dus je kunt er zelf een
+  grafiek van maken. Een entiteit is een belofte: hij kan niet meer weg.
+
+### Niet gebouwd, en waarom
+
+- **Geen dagelijkse zelfbenutting.** Het gemiddelde van een verhouding is niet de verhouding
+  van de sommen: een ochtenduur met 200 W opwek waarvan je alles gebruikt telt in zo'n
+  gemiddelde even zwaar als een middaguur met 4 kW waarvan je de helft terugleverde. Dat
+  getal valt structureel te hoog uit voor precies de woning die het meest te winnen heeft.
+  De juiste dagwaarde vraagt om kWh, en die heeft het Energie-dashboard van HA al.
+
+- **Geen verbruiksgrafieken.** Die leest HA rechtstreeks uit je meters; alles wat wij uit
+  vermogensgemiddelden zouden bouwen is daar een slechtere kopie van.
+
 ## 0.24.0
 
 Bediening staat op het Overzicht. SPEC §60.

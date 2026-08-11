@@ -1,6 +1,7 @@
 {
   "domain": "domotiapp_energy",
   "name": "DomotiApp Energy",
+  "after_dependencies": ["recorder"],
   "codeowners": ["@Sven2410"],
   "config_flow": true,
   "dependencies": ["http", "frontend", "panel_custom", "websocket_api"],
@@ -10,5 +11,5 @@
   "issue_tracker": "https://github.com/Sven2410/domotiapp-energy/issues",
   "requirements": [],
   "single_config_entry": true,
-  "version": "0.24.0"
+  "version": "0.25.0"
 }

@@ -20,26 +20,27 @@ is dit de invoer en niet de uitvoer.
 - **Engelse regels staan apart**, onderaan. Een Engelse zin in dit product is
   een fout tenzij zij een identifier is: de UI is Nederlands (CLAUDE.md).
 
-**890 Nederlandse teksten**, waarvan 123 op meer dan één plek. En 11 Engelse regels om na te lopen.
+**907 Nederlandse teksten**, waarvan 126 op meer dan één plek. En 13 Engelse regels om na te lopen.
 
 
 ## `custom_components/domotiapp_energy/const.py`
 
 | Tekst | Waar | Regel |
 |---|---|---|
-| Attention | module | 1097 |
-| Current advice | module | 1094 |
-| Data quality | module | 1091 |
+| Attention | module | 1108 |
+| Current advice | module | 1105 |
+| Data quality | module | 1102 |
 | DomotiApp | module | 21 |
 | DomotiApp Energy ↔ | module | 18 |
 | DomotiApp Energy ↔ | module | 39 |
 | Energy Coach | module | 22 |
-| Grid power | module | 1092 |
-| Home consumption | module | 1096 |
+| Grid power | module | 1103 |
+| Home consumption | module | 1107 |
 | Mijn woning | module | 29 |
-| Peak risk | module | 1095 |
-| Score | module | 1090 |
-| Solar surplus | module | 1093 |
+| Peak risk | module | 1106 |
+| Score | module | 1101 |
+| Self consumption | module | 1109 |
+| Solar surplus | module | 1104 |
 
 ## `custom_components/domotiapp_energy/coordinator.py`
 
@@ -162,10 +163,10 @@ is dit de invoer en niet de uitvoer.
 
 | Tekst | Waar | Regel |
 |---|---|---|
-| DomotiApp Energy is niet geladen. Controleer de integratie in Instellingen. | api | 125 |
-| Er is een onbekende fout opgetreden. ↔ | api | 119 |
-| Er is een onbekende fout opgetreden. ↔ | api | 130 |
-| Je hebt geen rechten voor deze actie. | api | 128 |
+| DomotiApp Energy is niet geladen. Controleer de integratie in Instellingen. | api | 128 |
+| Er is een onbekende fout opgetreden. ↔ | api | 122 |
+| Er is een onbekende fout opgetreden. ↔ | api | 133 |
+| Je hebt geen rechten voor deze actie. | api | 131 |
 
 ## `custom_components/domotiapp_energy/frontend/core/dialog.js`
 
@@ -589,7 +590,7 @@ is dit de invoer en niet de uitvoer.
 
 | Tekst | Waar | Regel |
 |---|---|---|
-| Installatie | installation | 29 |
+| Installatie ↔ | installation | 29 |
 
 ## `custom_components/domotiapp_energy/frontend/tabs/logbook.js`
 
@@ -623,94 +624,110 @@ is dit de invoer en niet de uitvoer.
 
 | Tekst | Waar | Regel |
 |---|---|---|
-| Actief | overview | 444 |
-| Actuele energieprijs ↔ | overview | 223 |
-| Actuele situatie | overview | 190 |
-| Advies ↔ | overview | 253 |
-| Alle gegevens voor een betrouwbaar advies zijn ingevuld. ↔ | overview | 517 |
-| Apparaten die nu draaien | overview | 229 |
-| Datakwaliteit | overview | 160 |
-| De stroomprijs is op dit moment laag, dus er is geen duur verbruik om | overview | 86 |
-| Energiebronnen om je slimme meter of omvormer te koppelen. | overview | 461 |
-| Energiescore | overview | 156 |
-| Er is nog geen cijfer, omdat de installatie nog niet compleet is. | overview | 31 |
-| Er is nu opwek, maar geen apparaat of batterij die verbruik kan | overview | 64 |
-| Er is op dit moment niets te doen. | overview | 290 |
-| Er zijn nog geen energiebronnen gekoppeld. Ga naar het tabblad | overview | 460 |
-| Er zijn op dit moment geen waarschuwingen. | overview | 387 |
-| Fout ↔ | overview | 444 |
-| Geen bruikbare prijsbron | overview | 399 |
-| Geen cijfer | overview | 158 |
-| Het prijsmoment telt niet mee zolang de lage en de hoge prijsdrempel | overview | 112 |
-| Het prijsmoment telt niet mee, want bij een vast tarief is het ene | overview | 109 |
-| Het prijsmoment telt niet mee, want de actuele prijs is op dit moment | overview | 115 |
-| Het prijsmoment telt niet mee, want de stroom is nu goedkoop en er is | overview | 118 |
-| Het tabblad Energiecoach laat zien wat er ontbreekt. | overview | 32 |
-| Het tarief is altijd gelijk en er zijn geen zonnepanelen, dus er is | overview | 45 |
-| Het vermogen van je thuisbatterij kan niet uitgelezen worden. Een | overview | 556 |
-| Je omvormer levert op dit moment geen waarde, dus het | overview | 570 |
-| Je panelen leveren op dit moment niets en de stroomprijs is laag. Er | overview | 71 |
-| Je panelen leveren op dit moment niets, en bij een vast tarief is het | overview | 79 |
-| Je panelen leveren op dit moment, maar terugleveren levert je meer op | overview | 53 |
-| Klaar / vol ↔ | overview | 318 |
-| Klaar / vol ↔ | overview | 333 |
-| Laatste berekening ↔ | overview | 184 |
-| Laden… | overview | 444 |
-| Naamloos apparaat ↔ | overview | 331 |
-| Negatief betekent teruglevering aan het net. | overview | 524 |
-| Netvermogen | overview | 191 |
-| Niet beschikbaar ↔ | overview | 25 |
-| Nog geen advies berekend ↔ | overview | 587 |
-| Nog geen prijs bekend — koppel een prijsbron of vul het vaste leveringstarief in | overview | 400 |
-| Nog niet berekend ↔ | overview | 185 |
-| Nog niet ingesteld | overview | 24 |
-| Op dit moment | overview | 137 |
-| Overzicht | overview | 126 |
-| Percentage van maximum | overview | 216 |
-| Status | overview | 183 |
-| Thuisverbruik | overview | 144 |
-| Toch niet vol ↔ | overview | 333 |
-| Vast leveringstarief, zoals ingevuld bij Woning. | overview | 416 |
-| Vast leveringstarief, zoals ingevuld bij Woning. De gekoppelde prijsbron bepaalt dit bedrag niet, maar neemt het over zodra dit veld leeg is of het contract dynamisch wordt. | overview | 415 |
-| Waarschuwing ↔ | overview | 371 |
-| Waarschuwingen | overview | 258 |
-| Wat je nu kunt doen | overview | 284 |
-| Zelfbenutting | overview | 212 |
-| Zodra er een energiebron gekoppeld is, verschijnt hier het hoofdadvies. ↔ | overview | 590 |
-| Zolang de lage en de hoge prijsdrempel niet zijn ingevuld, is niet te | overview | 38 |
-| Zonnebenutting telt niet mee, want deze woning heeft geen zonnepanelen. ↔ | overview | 96 |
-| Zonnebenutting telt niet mee, want er is geen apparaat of batterij die | overview | 103 |
-| Zonnebenutting telt niet mee, want je panelen leveren op dit moment niets. ↔ | overview | 98 |
-| Zonnebenutting telt niet mee, want zonder netmeting is niet te zien | overview | 100 |
-| Zonnebenutting telt niet mee: terugleveren levert je op dit moment meer | overview | 106 |
-| Zonneoverschot | overview | 199 |
-| Zonneproductie | overview | 195 |
-| batterij die laadt of ontlaadt verschuift wat er van het net | overview | 557 |
-| bepalen of dit een duur moment is. Vul ze in bij Installatie. | overview | 39 |
-| bij Energiebronnen. | overview | 572 |
-| dan de stroom je kost. Zelf verbruiken zou je nu geld kosten, dus er | overview | 54 |
-| datakwaliteit is nog niet compleet. Het tabblad Energiecoach | overview | 515 |
-| de batterij om dit op te lossen. | overview | 560 |
-| dus geen duur verbruik om te vermijden. | overview | 119 |
-| ene moment niet beter dan het andere. Er is nu dus niets te verbeteren. | overview | 80 |
-| geen moment dat beter is dan een ander. Er valt daarom niets te | overview | 46 |
-| hoeveel van je opwek je zelf gebruikt. | overview | 101 |
-| is nu dus geen overschot om te benutten en geen duur verbruik om te | overview | 72 |
-| is voordeliger. | overview | 56 |
-| komt, dus het thuisverbruik is niet te berekenen en het | overview | 558 |
-| laat zien welke. | overview | 516 |
-| moment niet duurder dan het andere. | overview | 110 |
-| niet uit te lezen. | overview | 116 |
-| niet zijn ingevuld. Vul ze in bij Installatie. | overview | 113 |
-| op dan de stroom je kost, dus je opwek zelf gebruiken zou je geld kosten. | overview | 107 |
-| op dit moment | overview | 157 |
-| optimaliseren. Het advies blijft gewoon werken. | overview | 47 |
-| te vermijden. | overview | 87 |
-| thuisverbruik is niet te berekenen. Controleer de zonnebron | overview | 571 |
-| valt aan je opwek niets te benutten. De coach zegt hetzelfde: wachten | overview | 55 |
-| verbruik naar dit moment kan verplaatsen. | overview | 104 |
-| verplaatsen. Er valt daarom niets te benutten dat nu niet al gebeurt. | overview | 65 |
-| zonneoverschot kan te hoog zijn. Koppel de vermogenssensor van | overview | 559 |
+| Actief | overview | 596 |
+| Actuele energieprijs ↔ | overview | 235 |
+| Actuele situatie | overview | 202 |
+| Advies ↔ | overview | 265 |
+| Alle gegevens voor een betrouwbaar advies zijn ingevuld. ↔ | overview | 669 |
+| Apparaten die nu draaien | overview | 241 |
+| Boven de drempel die ook het advies gebruikt. | overview | 416 |
+| Datakwaliteit | overview | 172 |
+| De hele dag compleet | overview | 455 |
+| De stroomprijs is op dit moment laag, dus er is geen duur verbruik om | overview | 98 |
+| Energiebronnen om je slimme meter of omvormer te koppelen. | overview | 613 |
+| Energiescore | overview | 168 |
+| Er is nog geen cijfer, omdat de installatie nog niet compleet is. | overview | 43 |
+| Er is nog geen geschiedenis van gisteren. Vanaf de eerste hele dag | overview | 392 |
+| Er is nu opwek, maar geen apparaat of batterij die verbruik kan | overview | 76 |
+| Er is op dit moment niets te doen. | overview | 302 |
+| Er zijn nog geen energiebronnen gekoppeld. Ga naar het tabblad | overview | 612 |
+| Er zijn op dit moment geen waarschuwingen. | overview | 539 |
+| Fout ↔ | overview | 596 |
+| Geen afname gemeten | overview | 323 |
+| Geen bruikbare prijsbron | overview | 551 |
+| Geen cijfer | overview | 170 |
+| Het prijsmoment telt niet mee zolang de lage en de hoge prijsdrempel | overview | 124 |
+| Het prijsmoment telt niet mee, want bij een vast tarief is het ene | overview | 121 |
+| Het prijsmoment telt niet mee, want de actuele prijs is op dit moment | overview | 127 |
+| Het prijsmoment telt niet mee, want de stroom is nu goedkoop en er is | overview | 130 |
+| Het tabblad Energiecoach laat zien wat er ontbreekt. | overview | 44 |
+| Het tarief is altijd gelijk en er zijn geen zonnepanelen, dus er is | overview | 57 |
+| Het vermogen van je thuisbatterij kan niet uitgelezen worden. Een | overview | 708 |
+| Hoe het gisteren ging | overview | 319 |
+| Hoogste in 30 dagen | overview | 333 |
+| Hoogste netvermogen | overview | 323 |
+| Installatie ↔ | overview | 324 |
+| Je omvormer levert op dit moment geen waarde, dus het | overview | 722 |
+| Je panelen leveren op dit moment niets en de stroomprijs is laag. Er | overview | 83 |
+| Je panelen leveren op dit moment niets, en bij een vast tarief is het | overview | 91 |
+| Je panelen leveren op dit moment, maar terugleveren levert je meer op | overview | 65 |
+| Klaar / vol ↔ | overview | 470 |
+| Klaar / vol ↔ | overview | 485 |
+| Laatste berekening ↔ | overview | 196 |
+| Laden… | overview | 596 |
+| Naamloos apparaat ↔ | overview | 483 |
+| Negatief betekent teruglevering aan het net. | overview | 676 |
+| Netvermogen | overview | 203 |
+| Niet beschikbaar ↔ | overview | 37 |
+| Niet de hele dag compleet | overview | 456 |
+| Niet gemeten ↔ | overview | 321 |
+| Niet gemeten ↔ | overview | 324 |
+| Niet gemeten ↔ | overview | 333 |
+| Nog geen advies berekend ↔ | overview | 739 |
+| Nog geen prijs bekend — koppel een prijsbron of vul het vaste leveringstarief in | overview | 552 |
+| Nog niet berekend ↔ | overview | 197 |
+| Nog niet ingesteld | overview | 36 |
+| Op dit moment | overview | 149 |
+| Overzicht | overview | 138 |
+| Percentage van maximum | overview | 228 |
+| Status | overview | 195 |
+| Thuisverbruik | overview | 156 |
+| Toch niet vol ↔ | overview | 485 |
+| Vast leveringstarief, zoals ingevuld bij Woning. | overview | 568 |
+| Vast leveringstarief, zoals ingevuld bij Woning. De gekoppelde prijsbron bepaalt dit bedrag niet, maar neemt het over zodra dit veld leeg is of het contract dynamisch wordt. | overview | 567 |
+| Voor kWh, kosten en wat je zelf verbruikte: | overview | 340 |
+| Waarschuwing ↔ | overview | 523 |
+| Waarschuwingen | overview | 270 |
+| Wat je nu kunt doen | overview | 296 |
+| Zelfbenutting | overview | 224 |
+| Zodra er een energiebron gekoppeld is, verschijnt hier het hoofdadvies. ↔ | overview | 742 |
+| Zolang de lage en de hoge prijsdrempel niet zijn ingevuld, is niet te | overview | 50 |
+| Zonnebenutting telt niet mee, want deze woning heeft geen zonnepanelen. ↔ | overview | 108 |
+| Zonnebenutting telt niet mee, want er is geen apparaat of batterij die | overview | 115 |
+| Zonnebenutting telt niet mee, want je panelen leveren op dit moment niets. ↔ | overview | 110 |
+| Zonnebenutting telt niet mee, want zonder netmeting is niet te zien | overview | 112 |
+| Zonnebenutting telt niet mee: terugleveren levert je op dit moment meer | overview | 118 |
+| Zonneoverschot ↔ | overview | 211 |
+| Zonneoverschot ↔ | overview | 320 |
+| Zonneproductie | overview | 207 |
+| batterij die laadt of ontlaadt verschuift wat er van het net | overview | 709 |
+| bepalen of dit een duur moment is. Vul ze in bij Installatie. | overview | 51 |
+| bij Energiebronnen. | overview | 724 |
+| dan de stroom je kost. Zelf verbruiken zou je nu geld kosten, dus er | overview | 66 |
+| datakwaliteit is nog niet compleet. Het tabblad Energiecoach | overview | 667 |
+| de batterij om dit op te lossen. | overview | 712 |
+| dus geen duur verbruik om te vermijden. | overview | 131 |
+| ene moment niet beter dan het andere. Er is nu dus niets te verbeteren. | overview | 92 |
+| geen moment dat beter is dan een ander. Er valt daarom niets te | overview | 58 |
+| het Energie-dashboard van Home Assistant | overview | 341 |
+| hoeveel van je opwek je zelf gebruikt. | overview | 113 |
+| is nu dus geen overschot om te benutten en geen duur verbruik om te | overview | 84 |
+| is voordeliger. | overview | 68 |
+| komt, dus het thuisverbruik is niet te berekenen en het | overview | 710 |
+| laat zien welke. | overview | 668 |
+| moment niet duurder dan het andere. | overview | 122 |
+| niet uit te lezen. | overview | 128 |
+| niet zijn ingevuld. Vul ze in bij Installatie. | overview | 125 |
+| op dan de stroom je kost, dus je opwek zelf gebruiken zou je geld kosten. | overview | 119 |
+| op dit moment | overview | 169 |
+| optimaliseren. Het advies blijft gewoon werken. | overview | 59 |
+| staat hier hoe het ging. | overview | 393 |
+| te vermijden. | overview | 99 |
+| thuisverbruik is niet te berekenen. Controleer de zonnebron | overview | 723 |
+| valt aan je opwek niets te benutten. De coach zegt hetzelfde: wachten | overview | 67 |
+| verbruik naar dit moment kan verplaatsen. | overview | 116 |
+| verplaatsen. Er valt daarom niets te benutten dat nu niet al gebeurt. | overview | 77 |
+| zonneoverschot kan te hoog zijn. Koppel de vermogenssensor van | overview | 711 |
 
 ## `custom_components/domotiapp_energy/frontend/tabs/preferences.js`
 
@@ -994,39 +1011,39 @@ is dit de invoer en niet de uitvoer.
 
 | Tekst | Waar | Regel |
 |---|---|---|
-| Apparaat gewijzigd | handle_devices_update | 860 |
-| Apparaat toegevoegd ↔ | handle_devices_create | 822 |
-| Apparaat verwijderd ↔ | handle_devices_delete | 896 |
-| Bediening gewijzigd | handle_devices_set_operation | 969 |
-| De adviesvoorkeuren zijn bijgewerkt. | handle_preferences_update | 663 |
-| De configuratie is inmiddels gewijzigd. De actuele gegevens zijn opnieuw opgehaald. | _send_revision_conflict | 337 |
-| De configuratie kon niet worden opgeslagen. | _async_write | 317 |
-| De energiebron '{...}' is bijgewerkt. | handle_sources_update | 745 |
-| De energiebron '{...}' is toegevoegd. | handle_sources_create | 707 |
-| De energiebron '{...}' is verwijderd. | handle_sources_delete | 781 |
-| De instellingen van '{...}' zijn bijgewerkt. | handle_devices_set_operation | 970 |
-| De woninggegevens zijn bijgewerkt. | handle_home_update | 601 |
-| Deze energiebron ↔ | _apply | 736 |
-| Deze energiebron ↔ | _apply | 771 |
-| Dit apparaat ↔ | _apply | 852 |
-| Dit apparaat ↔ | _apply | 887 |
-| Dit apparaat ↔ | _apply | 933 |
-| Dit apparaat bestaat niet. | handle_devices_set_ready | 1004 |
-| Dit apparaat heeft een onbekend type en is buiten werking gesteld. | _apply | 943 |
-| DomotiApp Energy is niet geladen. | _async_get_data | 283 |
-| Energiebron gewijzigd | handle_sources_update | 744 |
-| Energiebron toegevoegd | handle_sources_create | 706 |
-| Energiebron verwijderd | handle_sources_delete | 780 |
-| Er bestaat al een apparaat met dit ID. | _apply | 812 |
-| Er bestaat al een energiebron met dit ID. | _apply | 696 |
-| Gebruik een datum in de vorm jjjj-mm-dd, of null als deze woning niet saldeert. | _iso_date | 186 |
-| Gebruik een datum in de vorm jjjj-mm-dd, of null. | _iso_date | 190 |
-| Het apparaat '{...}' is bijgewerkt. | handle_devices_update | 861 |
-| Het apparaat '{...}' is toegevoegd. | handle_devices_create | 823 |
-| Het apparaat '{...}' is verwijderd. | handle_devices_delete | 897 |
-| Voorkeuren gewijzigd | handle_preferences_update | 662 |
-| Woninggegevens gewijzigd | handle_home_update | 600 |
-| {...} bestaat niet. | _find | 430 |
+| Apparaat gewijzigd | handle_devices_update | 863 |
+| Apparaat toegevoegd ↔ | handle_devices_create | 825 |
+| Apparaat verwijderd ↔ | handle_devices_delete | 899 |
+| Bediening gewijzigd | handle_devices_set_operation | 972 |
+| De adviesvoorkeuren zijn bijgewerkt. | handle_preferences_update | 666 |
+| De configuratie is inmiddels gewijzigd. De actuele gegevens zijn opnieuw opgehaald. | _send_revision_conflict | 340 |
+| De configuratie kon niet worden opgeslagen. | _async_write | 320 |
+| De energiebron '{...}' is bijgewerkt. | handle_sources_update | 748 |
+| De energiebron '{...}' is toegevoegd. | handle_sources_create | 710 |
+| De energiebron '{...}' is verwijderd. | handle_sources_delete | 784 |
+| De instellingen van '{...}' zijn bijgewerkt. | handle_devices_set_operation | 973 |
+| De woninggegevens zijn bijgewerkt. | handle_home_update | 604 |
+| Deze energiebron ↔ | _apply | 739 |
+| Deze energiebron ↔ | _apply | 774 |
+| Dit apparaat ↔ | _apply | 855 |
+| Dit apparaat ↔ | _apply | 890 |
+| Dit apparaat ↔ | _apply | 936 |
+| Dit apparaat bestaat niet. | handle_devices_set_ready | 1007 |
+| Dit apparaat heeft een onbekend type en is buiten werking gesteld. | _apply | 946 |
+| DomotiApp Energy is niet geladen. | _async_get_data | 286 |
+| Energiebron gewijzigd | handle_sources_update | 747 |
+| Energiebron toegevoegd | handle_sources_create | 709 |
+| Energiebron verwijderd | handle_sources_delete | 783 |
+| Er bestaat al een apparaat met dit ID. | _apply | 815 |
+| Er bestaat al een energiebron met dit ID. | _apply | 699 |
+| Gebruik een datum in de vorm jjjj-mm-dd, of null als deze woning niet saldeert. | _iso_date | 188 |
+| Gebruik een datum in de vorm jjjj-mm-dd, of null. | _iso_date | 192 |
+| Het apparaat '{...}' is bijgewerkt. | handle_devices_update | 864 |
+| Het apparaat '{...}' is toegevoegd. | handle_devices_create | 826 |
+| Het apparaat '{...}' is verwijderd. | handle_devices_delete | 900 |
+| Voorkeuren gewijzigd | handle_preferences_update | 665 |
+| Woninggegevens gewijzigd | handle_home_update | 603 |
+| {...} bestaat niet. | _find | 433 |
 
 
 ## Engelse regels
@@ -1035,6 +1052,8 @@ is dit de invoer en niet de uitvoer.
 |---|---|
 | DomotiApp Energy has been removed. The energy configuration is kept in %s under .storage/, so adding the integration again restores it. Delete that file to start over | `custom_components/domotiapp_energy/__init__.py:145` |
 | Clearing ready flag for %r: %s reports %r | `custom_components/domotiapp_energy/coordinator.py:406` |
+| No recorder: skipping the history | `custom_components/domotiapp_energy/engine/history.py:287` |
+| Could not read the %s statistics | `custom_components/domotiapp_energy/engine/history.py:311` |
 | No alternative coach provider is available in this release | `custom_components/domotiapp_energy/engine/providers.py:250` |
 | Dropping ready flag for %r: %r is not a timestamp | `custom_components/domotiapp_energy/runtime_store.py:83` |
 | Migrating %s from schema %s.%s to %s.%s | `custom_components/domotiapp_energy/storage.py:102` |
@@ -1043,4 +1062,4 @@ is dit de invoer en niet de uitvoer.
 | Energy source %s has unrecognised type %r and is disabled | `custom_components/domotiapp_energy/storage.py:257` |
 | Device profile %s has unrecognised type %r and is disabled | `custom_components/domotiapp_energy/storage.py:276` |
 | Energy source %s could not be read from %s (%s) | `custom_components/domotiapp_energy/storage.py:327` |
-| Could not persist a configuration change | `custom_components/domotiapp_energy/websocket_api.py:313` |
+| Could not persist a configuration change | `custom_components/domotiapp_energy/websocket_api.py:316` |

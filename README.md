@@ -214,7 +214,7 @@ precondition.
 
 ## Generated entity IDs
 
-These eight are fixed. They do **not** change with the language your Home Assistant runs
+These nine are fixed. They do **not** change with the language your Home Assistant runs
 in, so dashboards, automations and long-term statistics built on them keep working:
 
 ```text
@@ -223,6 +223,7 @@ sensor.domotiapp_energy_data_quality
 sensor.domotiapp_energy_grid_power
 sensor.domotiapp_energy_home_consumption
 sensor.domotiapp_energy_solar_surplus
+sensor.domotiapp_energy_self_consumption
 sensor.domotiapp_energy_current_advice
 binary_sensor.domotiapp_energy_peak_risk
 binary_sensor.domotiapp_energy_attention
@@ -363,7 +364,7 @@ script — is allowed.
   later release; in 0.1.0 everything except `monitor_only` behaves as `advice_only`.
 - **No forecasts are used yet.** `price_forecast` and `solar_forecast` can be
   configured, but the engine does not read them.
-- **No history yet, and it will never claim what you saved.** Every calculation looks at
+- **History is three facts about yesterday, and it will never claim what you saved.** Every calculation looks at
   the present moment only. A historical overview is planned, and two things are settled
   about it in advance because they are what people ask first:
 
