@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.26.0
+
+De weg terug op een wandtablet. SPEC §62.
+
+Op een tablet met Fully Kiosk en zonder zijbalk is elke navigatie uit dit paneel
+eenrichtingsverkeer: wie wegklikt, komt niet terug. Dat gold voor de link naar het
+Energie-dashboard uit 0.25.0, en er was sowieso geen weg terug naar het hoofddashboard.
+
+### Toegevoegd
+
+- **Een terugknop linksboven**, naast de tabbalk en er buiten — het paneel verlaten is geen
+  tabblad. Hij verschijnt zodra je bij Woning invult waar het hoofddashboard van deze woning
+  staat.
+
+- **Twee velden onder "Navigatie"** bij Woning: waar *terug* heen gaat, en waar het verbruik
+  van deze klant staat. Ze verschillen per woning, dus ze worden niet geraden.
+
+### Gewijzigd
+
+- **De link naar het Energie-dashboard is voorwaardelijk geworden.** Is er geen adres
+  ingevuld, dan staat de zin er nog steeds — hij bestaat om te zeggen wáár het antwoord
+  woont — maar zonder link. Zo belandt niemand op een wandtablet ergens waar hij niet meer
+  wegkomt, en blijft een klant die kWh zoekt weten waar dat staat.
+
+### Niet gebouwd, en waarom
+
+- **Geen pop-up met het Energie-dashboard erin.** Het kán: Home Assistant staat toe dat een
+  pagina van dezelfde origin haar in een iframe zet. Maar dan draait de hele HA-frontend een
+  tweede keer, mét zijbalk, in een venster op een wandtablet — een pagina in een pagina.
+
+- **Geen kiosk-instelling.** Een leeg adres zegt al "hier mag niet genavigeerd worden". Een
+  tweede vraag zou hetzelfde nog eens stellen, en met de eerste uiteen gaan lopen.
+
+- **Niets in de datakwaliteit.** Een woning met een zijbalk heeft geen terugknop nodig en kan
+  dat item dus nooit afvinken — precies de fout die dit project vijf keer heeft opgeruimd.
+
 ## 0.25.0
 
 Het historisch overzicht, eerste helft. SPEC §61.

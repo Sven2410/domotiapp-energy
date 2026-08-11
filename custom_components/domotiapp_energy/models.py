@@ -577,6 +577,19 @@ class HomeProfile:
     max_grid_power_w: float | None = None
     peak_warning_percent: int = DEFAULT_PEAK_WARNING_PERCENT
     contract_type: str = DEFAULT_CONTRACT_TYPE
+    # Waar het paneel naartoe mag navigeren, per klant (SPEC.md §62).
+    #
+    # **Leeg is geen gebrek maar een uitspraak: hier mag niet genavigeerd
+    # worden.** Op een wandtablet zonder zijbalk is elke navigatie uit dit
+    # paneel eenrichtingsverkeer, en een installateur die daar niets invult
+    # codeert dat door te doen wat hij toch al doet. Daarom is er géén tweede
+    # vraag "heeft deze woning een zijbalk": die zou hetzelfde nog eens stellen
+    # en met de eerste uiteen lopen (§62.3).
+    #
+    # Er wordt niets geraden. `/lovelace/0` zou een gok zijn over de inrichting
+    # van deze woning, en `/energy` een gok over of daar iets staat.
+    home_dashboard_path: str | None = None
+    energy_dashboard_path: str | None = None
     # An all-in amount, like every other price in this model: what the customer
     # pays per imported kWh including energy tax and VAT (SPEC.md §16).
     fixed_import_price_eur_kwh: float | None = None
@@ -621,6 +634,8 @@ class HomeProfile:
             "max_grid_power_w": self.max_grid_power_w,
             "peak_warning_percent": self.peak_warning_percent,
             "contract_type": self.contract_type,
+            "home_dashboard_path": self.home_dashboard_path,
+            "energy_dashboard_path": self.energy_dashboard_path,
             "fixed_import_price_eur_kwh": self.fixed_import_price_eur_kwh,
             "energy_tax_eur_kwh": self.energy_tax_eur_kwh,
             "supplier_markup_eur_kwh": self.supplier_markup_eur_kwh,
@@ -661,6 +676,8 @@ class HomeProfile:
             contract_type=_as_choice(
                 data.get("contract_type"), CONTRACT_TYPES, DEFAULT_CONTRACT_TYPE
             ),
+            home_dashboard_path=_as_optional_str(data.get("home_dashboard_path")),
+            energy_dashboard_path=_as_optional_str(data.get("energy_dashboard_path")),
             fixed_import_price_eur_kwh=_as_optional_float(
                 data.get("fixed_import_price_eur_kwh")
             ),

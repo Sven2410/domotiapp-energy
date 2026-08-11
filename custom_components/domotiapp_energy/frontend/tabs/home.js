@@ -398,6 +398,36 @@ const CONTRACT_SCHEMA = [
   },
 ];
 
+/**
+ * Waar het paneel naartoe mag navigeren (SPEC.md §62).
+ *
+ * **De hulpteksten noemen het gevolg en niet de vorm.** "Dit veld is optioneel"
+ * zegt een installateur niets; "de bewoner kan dit paneel dan niet verlaten"
+ * zegt hem precies wanneer hij het moet invullen — en dat is het enige moment
+ * waarop hij het weet, want er is met opzet geen vraag "is dit een wandtablet".
+ */
+const NAVIGATION_SCHEMA = [
+  {
+    name: 'home_dashboard_path',
+    label: 'Terug naar dashboard',
+    helper:
+      'Het adres van het hoofddashboard van deze woning, bijvoorbeeld ' +
+      '/lovelace/0. Zonder dit adres verschijnt er geen terugknop. Op een ' +
+      'wandtablet zonder zijbalk kan de bewoner dit paneel dan niet verlaten.',
+    selector: { text: {} },
+  },
+  {
+    name: 'energy_dashboard_path',
+    label: 'Energiedashboard',
+    helper:
+      'Waar het verbruik in kWh van deze woning staat, meestal /energy. ' +
+      'Zonder dit adres noemt het Overzicht het dashboard wel, maar zonder ' +
+      'link — zodat niemand op een wandtablet ergens belandt waar hij niet ' +
+      'meer wegkomt.',
+    selector: { text: {} },
+  },
+];
+
 const ADVICE_SCHEMA = [
   {
     name: 'min_solar_surplus_w',
@@ -427,6 +457,7 @@ const EDITED_FIELDS = [
   ...CONNECTION_SCHEMA.map((field) => field.name),
   ...CONTRACT_SCHEMA.map((field) => field.name),
   ...ADVICE_SCHEMA.map((field) => field.name),
+  ...NAVIGATION_SCHEMA.map((field) => field.name),
 ];
 
 /**
@@ -436,7 +467,12 @@ const EDITED_FIELDS = [
  * energy tax has to name it, because the question itself is off screen.
  */
 function labelForField(name) {
-  const field = [...CONNECTION_SCHEMA, ...CONTRACT_SCHEMA, ...ADVICE_SCHEMA].find(
+  const field = [
+    ...CONNECTION_SCHEMA,
+    ...CONTRACT_SCHEMA,
+    ...ADVICE_SCHEMA,
+    ...NAVIGATION_SCHEMA,
+  ].find(
     (entry) => entry.name === name,
   );
   return field?.label ?? null;
@@ -480,6 +516,7 @@ export const homeTab = {
     const connection = card('Woning en aansluiting');
     const contract = card('Contract en prijzen');
     const advice = card('Adviesinstellingen');
+    const navigation = card('Navigatie');
     const control = card('Bedieningsniveau');
 
     /** What is on screen. Never written into config (SPEC.md §22). */
@@ -532,7 +569,12 @@ export const homeTab = {
       };
     }
 
-    const forms = [CONNECTION_SCHEMA, CONTRACT_SCHEMA, ADVICE_SCHEMA].map(
+    const forms = [
+      CONNECTION_SCHEMA,
+      CONTRACT_SCHEMA,
+      ADVICE_SCHEMA,
+      NAVIGATION_SCHEMA,
+    ].map(
       (schema, index) => {
         const names = schema.map((field) => field.name);
         // The contract card asks a different set per contract type, so it is
@@ -546,7 +588,7 @@ export const homeTab = {
             schema,
             changeHandler(conditional ? () => visibleContractNames : () => names),
           ),
-          host: [connection, contract, advice][index],
+          host: [connection, contract, advice, navigation][index],
         };
       },
     );
@@ -556,6 +598,13 @@ export const homeTab = {
 
     const maxPowerNotice = notice('mdi:calculator-variant-outline');
     connection.body.appendChild(maxPowerNotice.element);
+
+    // **Een mededeling, geen gebrek** (SPEC.md §62.6). Bij een woning met een
+    // zijbalk is een terugknop overbodig, dus dit hoort geen waarschuwing te
+    // zijn en het hoort al helemaal niet in de datakwaliteit: die zou een eis
+    // stellen die zo'n woning niet kan afvinken.
+    const navigationNotice = notice('mdi:tablet-dashboard');
+    navigation.body.appendChild(navigationNotice.element);
 
     const inactiveNotice = notice('mdi:archive-outline');
 
@@ -657,6 +706,7 @@ export const homeTab = {
       connection.element,
       contract.element,
       advice.element,
+      navigation.element,
       control.element,
       actions,
     );
@@ -678,6 +728,7 @@ export const homeTab = {
     function applyRoleToForms() {
       forms[0].form.setSchema(applyRole(CONNECTION_SCHEMA, DRAFT, isAdmin));
       forms[2].form.setSchema(applyRole(ADVICE_SCHEMA, DRAFT, isAdmin));
+      forms[3].form.setSchema(applyRole(NAVIGATION_SCHEMA, DRAFT, isAdmin));
       // The contract card builds its own schema per contract type, so it is
       // rebuilt rather than assigned here; clearing the key forces that.
       contractKey = '';
@@ -701,6 +752,7 @@ export const homeTab = {
         setVisible(leaveActions, false);
       }
       updateMaxPowerHint();
+      updateNavigationHint();
       refreshContractFields();
       // After the schema, never before: which fields are rendered decides where
       // each message lands. Switching the contract type re-runs this, so an
@@ -807,6 +859,22 @@ export const homeTab = {
               `hoofdzekering.`
           : `Theoretisch maximum: ${theoretical} W (${phases} × 230 V × ${fuse} A).`,
         { tone: above ? 'warning' : 'info' },
+      );
+    }
+
+    /**
+     * Zeg wanneer er geen weg terug is, zonder er een gebrek van te maken.
+     *
+     * Bij de meeste woningen is dit geen tekortkoming: met een zijbalk is een
+     * terugknop overbodig. Vandaar `info` en geen waarschuwing — en vandaar dat
+     * dit niet in de datakwaliteit staat (SPEC.md §62.6).
+     */
+    function updateNavigationHint() {
+      navigationNotice.set(
+        draft.home_dashboard_path
+          ? ''
+          : 'Geen terugknop ingesteld. Nodig bij een wandtablet zonder zijbalk.',
+        { tone: 'info' },
       );
     }
 

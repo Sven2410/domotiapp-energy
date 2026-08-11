@@ -89,8 +89,9 @@ describe('the form itself', () => {
   it('uses ha-form with a schema, never hand-built inputs', async () => {
     const { tab } = await openHomeTab();
 
-    // Four forms: three editable cards plus the fixed control level.
-    assert.equal(forms(tab).length, 4);
+    // Vijf formulieren: vier bewerkbare kaarten — aansluiting, contract,
+    // advies en navigatie (§62.3) — plus het vaste bedieningsniveau.
+    assert.equal(forms(tab).length, 5);
     for (const form of forms(tab)) {
       assert.ok(Array.isArray(form.schema) && form.schema.length > 0);
     }
@@ -308,7 +309,7 @@ describe('the form itself', () => {
 
   it('offers the other control levels but leaves them disabled', async () => {
     const { tab } = await openHomeTab();
-    const controlForm = forms(tab)[3];
+    const controlForm = forms(tab)[4];
 
     assert.equal(controlForm.data.control_level, 'advice_only');
     assert.equal(controlForm.disabled, true);
@@ -1052,5 +1053,36 @@ describe('why the feed-in amounts do nothing yet', () => {
     change(tab, { net_metering_until: '2020-01-01' }, 1);
 
     assert.ok(!noticeTexts(tab).some((t) => t.includes('salderingsregeling')));
+  });
+});
+
+describe('navigatie uit het paneel (SPEC.md §62)', () => {
+  it('vraagt om twee bestemmingen, met het gevolg in de hulptekst', async () => {
+    // "Dit veld is optioneel" zegt een installateur niets; het gevolg wel — en
+    // dat is het enige moment waarop hij weet dat hij het moet invullen, want
+    // er is met opzet geen vraag "is dit een wandtablet" (§62.3).
+    const { tab } = await openHomeTab();
+    const navigatie = forms(tab)[3];
+    const velden = Object.fromEntries(navigatie.schema.map((f) => [f.name, f]));
+
+    assert.match(velden.home_dashboard_path.helper, /geen terugknop/);
+    assert.match(
+      velden.home_dashboard_path.helper,
+      /kan de bewoner dit paneel dan niet verlaten/,
+    );
+    assert.match(velden.energy_dashboard_path.helper, /zonder link/);
+  });
+
+  it('meldt een ontbrekende terugknop zonder er een gebrek van te maken', async () => {
+    // Bij een woning met een zijbalk is een terugknop overbodig. Dit hoort dus
+    // geen waarschuwing te zijn, en al helemaal niet in de datakwaliteit (§62.6).
+    const { tab } = await openHomeTab();
+
+    const regel = [...tab.querySelectorAll('.notice')]
+      .filter((node) => isVisible(node))
+      .find((node) => node.textContent.includes('Geen terugknop ingesteld'));
+
+    assert.ok(regel, 'de mededeling hoort er te staan');
+    assert.notEqual(regel.dataset.tone, 'warning');
   });
 });
