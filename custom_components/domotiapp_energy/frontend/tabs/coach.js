@@ -18,6 +18,7 @@
 
 import { createApi, describeError } from '../core/api.js';
 import { createDialog } from '../core/dialog.js';
+import { describeReadyFlag } from '../core/devices.js';
 import {
   adviceBlock,
   button,
@@ -287,28 +288,6 @@ export const coachTab = {
     }
 
     /**
-     * Say how long "hij is vol" stays true, in the words somebody would use.
-     *
-     * The same two sentences the appliance row uses, for the same reason
-     * (SPEC.md §32.6): where nothing is linked, expiring is the only way the
-     * flag ever goes out, and that belongs in the sentence at the moment the
-     * button is pressed.
-     */
-    function describeReady(flag) {
-      if (!flag) {
-        return '';
-      }
-      const until = formatMoment(flag.expires_at);
-      if (flag.auto_clears) {
-        return `Staat vol. Dit vervalt ${until}, of eerder zodra hij klaar is.`;
-      }
-      return (
-        `Staat vol. We kunnen niet zien wanneer hij klaar is, dus dit blijft ` +
-        `staan tot ${until}. Zet het eerder uit als er niets meer in zit.`
-      );
-    }
-
-    /**
      * Say the appliance this advice is about has work in it, or take it back.
      *
      * The appliance comes from the advice itself (`related_device_ids`), so
@@ -372,7 +351,7 @@ export const coachTab = {
       const readyState = readyDevice ? readyFlags[readyDevice.id] : null;
       setVisible(readyButton, Boolean(readyDevice));
       readyButton.textContent = readyState ? 'Toch niet vol' : 'Klaar / vol';
-      readyLine.textContent = describeReady(readyState);
+      readyLine.textContent = describeReadyFlag(readyState);
       setVisible(readyLine, Boolean(readyState));
 
       adviceTitle.textContent = primary?.title || 'Nog geen advies berekend';

@@ -140,7 +140,10 @@ describe('notices and the banner', () => {
     );
 
     const notices = [...panel.shadowRoot.querySelectorAll('.notice')];
-    assert.equal(notices.length, 8);
+    // Nine since §60: the action section on the Overzicht has one, for the
+    // case where saying "hij is vol" fails. The count is deliberate — it
+    // catches a notice added without anyone deciding it should be there.
+    assert.equal(notices.length, 9);
 
     for (const node of notices.filter(isVisible)) {
       assert.notEqual(

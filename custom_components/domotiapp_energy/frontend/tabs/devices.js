@@ -39,6 +39,12 @@ import {
 } from '../core/api.js';
 import { createConfirmDialog, createDialog } from '../core/dialog.js';
 import {
+  NEVER_ADVISED_TYPES,
+  flexibleByDefault,
+  isAdvisable,
+  needsReadyFlagByDefault,
+} from '../core/devices.js';
+import {
   button,
   card,
   el,
@@ -90,22 +96,6 @@ const NOISY_BY_DEFAULT = new Set([
   'dryer',
   'dishwasher',
   'pool_pump',
-]);
-
-/** Types that are not flexible unless the installer says otherwise. */
-const INFLEXIBLE_BY_DEFAULT = new Set(['generic_monitor', 'heat_pump']);
-
-/**
- * Types somebody loads by hand, so the coach waits to be told (SPEC.md §32.5).
- *
- * A charger is deliberately absent: it can see through its status entity
- * whether a car is attached, and a flag somebody has to flip while the system
- * can see the answer is the busywork this round removes.
- */
-const NEEDS_READY_FLAG_BY_DEFAULT = new Set([
-  'dishwasher',
-  'washing_machine',
-  'dryer',
 ]);
 
 const PRIORITY_LABELS = {
@@ -231,16 +221,6 @@ function noisyByDefault(deviceType) {
   return NOISY_BY_DEFAULT.has(deviceType);
 }
 
-/** Whether this type is flexible by default (SPEC.md §8). */
-function flexibleByDefault(deviceType) {
-  return !INFLEXIBLE_BY_DEFAULT.has(deviceType);
-}
-
-/** Whether this type waits to be told there is work in it (SPEC.md §32.5). */
-function needsReadyFlagByDefault(deviceType) {
-  return NEEDS_READY_FLAG_BY_DEFAULT.has(deviceType);
-}
-
 /**
  * The fields the data quality checklist actually asks of a device.
  *
@@ -276,35 +256,12 @@ function requiredFields(draft) {
   );
 }
 
-/**
- * Whether the coach can ever say anything about this appliance.
- *
- * The panel's copy of `engine/completeness.py:is_advisable`. Both axes matter:
- * the type decides the default flexibility, the resident's control mode is his
- * own off switch.
+/* Moved to core/devices.js: NEVER_ADVISED_TYPES, INFLEXIBLE_BY_DEFAULT,
+ * NEEDS_READY_FLAG_BY_DEFAULT, flexibleByDefault, needsReadyFlagByDefault and
+ * isAdvisable. The Overzicht asks the same questions to decide whether an
+ * appliance carries an action, and one question may not have two answers
+ * (SPEC.md §60).
  */
-function isAdvisable(draft) {
-  if (NEVER_ADVISED_TYPES.includes(draft.device_type)) {
-    return false;
-  }
-  const flexible =
-    draft.is_flexible === undefined || draft.is_flexible === null
-      ? flexibleByDefault(draft.device_type)
-      : draft.is_flexible;
-  return Boolean(flexible) && draft.control_mode !== 'monitor_only';
-}
-
-/**
- * Types the coach can never address (`const.NEVER_ADVISED_DEVICE_TYPES`).
- *
- * A home battery is flexible — moving energy through time is what it does — so
- * the flag says yes and the appliance became advisable, and the checklist asked
- * it for an energy per cycle. It has none: nobody starts a battery, it follows
- * the surplus by itself. Same defect as the tablet charger of 0.6.1, one type
- * further along, and it needed an axis of its own because calling a battery
- * inflexible would have been untrue (SPEC.md §38.2).
- */
-const NEVER_ADVISED_TYPES = ['home_battery'];
 
 /**
  * Advice concepts: they order, time or silence advice, and do nothing else.
@@ -1226,10 +1183,6 @@ export const devicesTab = {
     // unlinked one from getting an empty line (SPEC.md §37).
     let devicePower = {};
     let powerUnusable = [];
-    // Which appliances a resident has said there is work in, with the moment
-    // each flag expires (SPEC.md §32.5). Live state, so it arrives with the
-    // coach result rather than with the device rows.
-    let readyFlags = {};
     // The lowest running power per appliance id, kept in the coordinator's
     // memory since the last restart (SPEC.md §59.3). Only the appliances that
     // have actually been seen running appear in it.
@@ -1349,29 +1302,18 @@ export const devicesTab = {
       const statusText = el('span');
       status.append(statusIcon, statusText);
 
-      // **One of the two places this button belongs** (SPEC.md §44.6): here,
-      // where a resident is tidying the kitchen and fills the machine at the
-      // end of it. The other is under the advice that asks about it — the same
-      // command, the two moments he thinks of it.
-      const readyButton = button('Klaar / vol');
-      const readyLine = el('p', { class: 'row-meta' });
       const editButton = button('Bewerken');
       const deleteButton = button('Verwijderen');
       deleteButton.classList.add('button-danger');
 
       const row = el('div', { class: 'row-item' }, [
-        el('div', { class: 'row-main' }, [name, meta, power, readyLine, status]),
-        el('div', { class: 'row-buttons' }, [
-          readyButton,
-          editButton,
-          deleteButton,
-        ]),
+        el('div', { class: 'row-main' }, [name, meta, power, status]),
+        el('div', { class: 'row-buttons' }, [editButton, deleteButton]),
       ]);
 
       let current = null;
       onTap(editButton, () => current && openDialog(current, editButton));
       onTap(deleteButton, () => current && askDelete(current, deleteButton));
-      onTap(readyButton, () => current && toggleReady(current));
 
       return {
         element: row,
@@ -1398,14 +1340,6 @@ export const devicesTab = {
               : '';
           power.dataset.tone = refused ? 'warning' : '';
           setVisible(power, hasReading || refused);
-
-          // The flag, and the sentence that goes with it. Only on appliances
-          // that need one: a charger is not asked whether somebody loaded it.
-          const flag = readyFlags[device.id];
-          setVisible(readyButton, Boolean(device.needs_ready_flag));
-          readyButton.textContent = flag ? 'Toch niet vol' : 'Klaar / vol';
-          readyLine.textContent = describeReady(flag);
-          setVisible(readyLine, Boolean(device.needs_ready_flag && flag));
           // A resident opens the same dialog and can change six fields in it,
           // so "Instellen" rather than "Bewerken" or "Bekijken": he is not
           // editing the appliance, and he is not only looking either.
@@ -1482,45 +1416,6 @@ export const devicesTab = {
         return '';
       }
       return ` · laagste meting sinds herstart: ${formatNumber(lowest)} W`;
-    }
-
-    /**
-     * Say how long "hij is vol" stays true, in the words somebody would use.
-     *
-     * **Two whole sentences, and which one you get is not a detail** (SPEC.md
-     * §32.6). With a status or remaining-time entity the flag goes out by
-     * itself when the programme ends and the expiry is a backstop. Without
-     * one, expiring is the *only* way it ever goes out — and the resident has
-     * to know that when he presses the button, not when he wonders why
-     * nothing happened.
-     *
-     * The moment is named either way, because somebody who fills the
-     * dishwasher at ten in the evening needs to know it still counts tomorrow.
-     */
-    function describeReady(flag) {
-      if (!flag) {
-        return '';
-      }
-      const until = formatMoment(flag.expires_at);
-      if (flag.auto_clears) {
-        return `Staat vol. Dit vervalt ${until}, of eerder zodra hij klaar is.`;
-      }
-      return (
-        `Staat vol. We kunnen niet zien wanneer hij klaar is, dus dit blijft ` +
-        `staan tot ${until}. Zet het eerder uit als er niets meer in zit.`
-      );
-    }
-
-    /** Say it, or take it back. The panel state refreshes with the answer. */
-    async function toggleReady(device) {
-      const wasSet = Boolean(readyFlags[device.id]);
-      try {
-        const api = createApi(getHass());
-        await api.setDeviceReady(device.id, !wasSet);
-        state.setLive(await api.getCoach());
-      } catch (error) {
-        listNotice.set(describeError(error), { tone: 'warning' });
-      }
     }
 
     /**
@@ -1971,7 +1866,6 @@ export const devicesTab = {
         applyRoleToTab();
       }
       devicePower = panelState.live?.metrics?.device_power_w || {};
-      readyFlags = panelState.live?.ready_devices || {};
       powerUnusable = panelState.live?.metrics?.device_power_unusable || [];
       deviceLowest = panelState.live?.metrics?.device_power_lowest_w || {};
       rowList.sync(config.devices || []);

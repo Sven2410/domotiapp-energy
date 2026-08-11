@@ -17,8 +17,14 @@
  * numbers from the backend over the WebSocket API.
  */
 
+import { createApi, describeError } from '../core/api.js';
+import {
+  asksSomethingOfTheResident,
+  describeReadyFlag,
+} from '../core/devices.js';
 import {
   adviceBlock,
+  button,
   card,
   displayMetric,
   el,
@@ -29,6 +35,8 @@ import {
   setVisible,
   statRow,
 } from '../core/dom.js';
+import { createRowList } from '../core/rows.js';
+import { onTap } from '../core/tap.js';
 
 const EMPTY_NOT_CONFIGURED = 'Nog niet ingesteld';
 const EMPTY_NOT_AVAILABLE = 'Niet beschikbaar';
@@ -168,7 +176,7 @@ export const overviewTab = {
   label: 'Overzicht',
   icon: 'mdi:view-dashboard-outline',
 
-  create() {
+  create({ getHass, state }) {
     const element = el('div', { class: 'tab-content' });
 
     // --- Headline figures ---------------------------------------------------
@@ -311,10 +319,91 @@ export const overviewTab = {
       noWarnings.element,
     );
 
+    // --- What the resident can do -------------------------------------------
+    //
+    // **Operation lives here and nowhere else** (SPEC.md §60). Apparaten is
+    // where an installer sets a home up; a resident with a full dishwasher
+    // does not go there — he opens this screen. The test that decides it:
+    // *where is somebody standing when they do this?* Setting quiet hours is
+    // done sitting down and thinking; saying "hij is vol" is done in the
+    // kitchen with a phone in one hand.
+    //
+    // One section rather than one per kind of action, deliberately. Otherwise
+    // the control release adds a second place and the resident has to know
+    // which section carries his action — the very problem this solves.
+    const actionCard = card('Wat je nu kunt doen');
+    const actionList = createRowList({
+      // Unreachable while the flag is the only action: a home with no
+      // appliance to operate has no section at all, and one that has them
+      // always has a button to offer. It gets a sentence rather than nothing
+      // for when the control release adds rows that depend on the moment.
+      emptyText: 'Er is op dit moment niets te doen.',
+      createRow: () => createActionRow(),
+    });
+    const actionNotice = notice('mdi:alert-circle-outline');
+    actionCard.body.append(actionList.element, actionNotice.element);
+
     // The "Configuratie" card was removed in 0.4.1. It restated the home name
     // and counted the rows two tabs away, which is not a reading of this
     // moment and cost a screenful on a phone.
-    element.append(scoreCard.element, powerCard.element, adviceCard.element);
+    //
+    // The action card sits directly under the advice, because the occasion and
+    // the thing you do about it belong next to each other on the screen the
+    // resident opens (SPEC.md §60.4). History, when it comes, goes below both:
+    // acting is about now, history is about yesterday.
+    element.append(
+      scoreCard.element,
+      powerCard.element,
+      adviceCard.element,
+      actionCard.element,
+    );
+
+    /** Live flags, refreshed with every calculation. */
+    let readyFlags = {};
+
+    /**
+     * One appliance the resident can do something with, right now.
+     *
+     * Built like every other row in this panel: the fixed DOM once, values
+     * afterwards (SPEC.md §9).
+     */
+    function createActionRow() {
+      const name = el('p', { class: 'row-name' });
+      const meta = el('p', { class: 'row-meta' });
+      const actionButton = button('Klaar / vol');
+      const row = el('div', { class: 'row-item' }, [
+        el('div', { class: 'row-main' }, [name, meta]),
+        el('div', { class: 'row-buttons' }, [actionButton]),
+      ]);
+
+      let current = null;
+      onTap(actionButton, () => current && toggleReady(current));
+
+      return {
+        element: row,
+        update(device) {
+          current = device;
+          name.textContent = device.name || 'Naamloos apparaat';
+          const flag = readyFlags[device.id];
+          actionButton.textContent = flag ? 'Toch niet vol' : 'Klaar / vol';
+          meta.textContent = describeReadyFlag(flag);
+          setVisible(meta, Boolean(flag));
+        },
+      };
+    }
+
+    /** Say it, or take it back. The panel state refreshes with the answer. */
+    async function toggleReady(device) {
+      const wasSet = Boolean(readyFlags[device.id]);
+      try {
+        const api = createApi(getHass());
+        await api.setDeviceReady(device.id, !wasSet);
+        state.setLive(await api.getCoach());
+        actionNotice.set('', { tone: 'warning' });
+      } catch (error) {
+        actionNotice.set(describeError(error), { tone: 'warning' });
+      }
+    }
 
     /** Keyed by advice id, so warnings are added and removed, never rebuilt. */
     const warningBlocks = new Map();
@@ -444,8 +533,17 @@ export const overviewTab = {
       );
     }
 
-    function update(state) {
-      const { config, live, status } = state;
+    function update(panelState) {
+      const { config, live, status } = panelState;
+
+      // **The section exists on grounds of the configuration, its rows follow
+      // the moment** — the rule of SPEC.md §39.3 and §44.4. A home with
+      // nothing to operate gets no section at all, rather than an empty one
+      // announcing an absence it can never fill.
+      readyFlags = live?.ready_devices || {};
+      const operable = (config?.devices ?? []).filter(asksSomethingOfTheResident);
+      setVisible(actionCard.element, operable.length > 0);
+      actionList.sync(operable);
 
       statusRow.set(
         status === 'ready' ? 'Actief' : status === 'loading' ? 'Laden…' : 'Fout',
