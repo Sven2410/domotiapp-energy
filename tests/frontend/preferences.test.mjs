@@ -21,6 +21,7 @@ import {
   sampleConfig,
   settle,
   tabPanels,
+  visibleText,
 } from './harness.mjs';
 
 async function openTab(label, id, hass = fakeHass()) {
@@ -197,8 +198,8 @@ describe('the Logboek tab', () => {
     await settle();
 
     const row = tab.querySelector('.row-item');
-    assert.match(row.textContent, /Bron niet beschikbaar/);
-    assert.match(row.textContent, /De netmeter kon niet worden gelezen/);
+    assert.match(visibleText(row), /Bron niet beschikbaar/);
+    assert.match(visibleText(row), /De netmeter kon niet worden gelezen/);
     // Icon and colour are additions; the meaning is in the word.
     assert.match(row.querySelector('.row-status span').textContent, /Waarschuwing/);
   });

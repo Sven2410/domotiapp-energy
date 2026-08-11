@@ -87,6 +87,44 @@ export function isVisible(element) {
   return !element.classList.contains('is-hidden');
 }
 
+/**
+ * De tekst die een klant werkelijk ziet, zonder de verborgen knopen.
+ *
+ * **`textContent` neemt verborgen knopen mee**, dus `assert.match(tab.textContent,
+ * /…/)` slaagt ook op een zin met nul hoogte. Dat is dezelfde blinde vlek als de
+ * cascadebug van fase 7a: de code klopte met zichzelf en de meting keek langs het
+ * scherm heen. Gevonden bij 0.24.0, toen de bedieningssectie *"Er is op dit moment
+ * niets te doen"* leek te tonen naast een rij die er wél was — het element droeg
+ * `is-hidden` en had hoogte 0.
+ *
+ * Gebruik dit voor **aanwezigheid**. Voor afwezigheid is `textContent` veilig: wat
+ * niet in de tekst staat, staat ook niet op het scherm.
+ *
+ * Verbergen loopt in dit paneel via `is-hidden` (core/dom.js `setVisible`), en het
+ * `hidden`-attribuut gaat er alleen naast mee. Beide worden hier gelezen, zodat een
+ * element dat op één van de twee manieren weg is, ook hier weg is.
+ */
+export function visibleText(root) {
+  if (!root) {
+    return '';
+  }
+  let text = '';
+  for (const node of root.childNodes) {
+    if (node.nodeType === 3) {
+      text += node.textContent;
+      continue;
+    }
+    if (node.nodeType !== 1) {
+      continue;
+    }
+    if (node.classList?.contains('is-hidden') || node.hidden) {
+      continue;
+    }
+    text += visibleText(node);
+  }
+  return text;
+}
+
 /** Every tab button, in the order the panel renders them. */
 export function tabButtons(panel) {
   return [...panel.shadowRoot.querySelectorAll('.tab-button')];

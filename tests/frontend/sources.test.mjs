@@ -21,6 +21,7 @@ import {
   sampleConfig,
   settle,
   tabPanels,
+  visibleText,
 } from './harness.mjs';
 
 /**
@@ -141,7 +142,7 @@ describe('the list of sources', () => {
     const { tab } = await openSourcesTab();
 
     assert.equal(rows(tab).length, 1);
-    assert.match(rows(tab)[0].textContent, /Netmeter/);
+    assert.match(visibleText(rows(tab)[0]), /Netmeter/);
     // Never a bare colour or icon: the meaning is in the text (SPEC.md §23).
     assert.ok(rows(tab)[0].querySelector('.row-status span').textContent.length > 0);
   });
@@ -173,7 +174,7 @@ describe('the list of sources', () => {
     });
     const { tab } = await openSourcesTab(hass);
 
-    assert.match(rows(tab)[0].textContent, /Onbekend brontype/);
+    assert.match(visibleText(rows(tab)[0]), /Onbekend brontype/);
     assert.equal(rows(tab)[0].querySelector('.row-status').dataset.tone, 'error');
   });
 
@@ -195,8 +196,8 @@ describe('the list of sources', () => {
     });
     const { tab } = await openSourcesTab(hass);
 
-    assert.match(rows(tab)[0].textContent, /Aansturing uitgesloten/);
-    assert.match(rows(tab)[0].textContent, /Omvormer van de installateur/);
+    assert.match(visibleText(rows(tab)[0]), /Aansturing uitgesloten/);
+    assert.match(visibleText(rows(tab)[0]), /Omvormer van de installateur/);
   });
 
   it('updates a row in place rather than rebuilding the list', async () => {
@@ -256,9 +257,9 @@ describe('the two forecast types nothing reads', () => {
 
     const row = rows(tab)[0];
 
-    assert.match(row.textContent, /Zonverwachting/);
+    assert.match(visibleText(row), /Zonverwachting/);
     assert.doesNotMatch(row.textContent, /Onbekend brontype/);
-    assert.match(row.textContent, /nog niet in gebruik/);
+    assert.match(visibleText(row), /nog niet in gebruik/);
     // Not a fault: the row is not broken, it is simply not read yet.
     assert.equal(row.querySelector('.row-status').dataset.tone, 'info');
   });
@@ -569,7 +570,7 @@ describe('saving', () => {
       noticeTexts(formDialog(panel)).some((t) => t.includes('niet aan deze bron')),
     );
     // The other change is adopted underneath, so the list is current.
-    assert.match(rows(tab)[0].textContent, /Door iemand anders hernoemd/);
+    assert.match(visibleText(rows(tab)[0]), /Door iemand anders hernoemd/);
   });
 
   it('places a backend validation issue on the field it is about', async () => {
@@ -591,7 +592,7 @@ describe('saving', () => {
     const { panel, tab } = await openSourcesTab(hass);
 
     // Visible on the row without opening anything...
-    assert.match(rows(tab)[0].textContent, /Nog niet compleet/);
+    assert.match(visibleText(rows(tab)[0]), /Nog niet compleet/);
 
     buttonIn(rows(tab)[0], 'Bewerken').click();
     await settle();
@@ -611,7 +612,7 @@ describe('deleting', () => {
     await settle();
 
     assert.equal(isVisible(confirmDialog(panel)), true);
-    assert.match(confirmDialog(panel).textContent, /Weet je zeker/);
+    assert.match(visibleText(confirmDialog(panel)), /Weet je zeker/);
 
     buttonIn(confirmDialog(panel), 'Annuleren').click();
     await settle();
