@@ -6994,8 +6994,7 @@ zevende tabblad — de uitzondering staat gewoon in het blok.
 
 ## 62. Voorstel: navigatie uit het paneel, en de wandtablet
 
-**Status: voorstel, ronde 1** (Sven, 2026-08-11, na §61). Er is nog niets aan
-gebouwd.
+**Status: akkoord bevonden en gebouwd in 0.26.0** (Sven, 2026-08-11, na §61).
 
 > **De regel die het zwaarst weegt, en die iemand later niet stelt als hij "even
 > een linkje" toevoegt:**
