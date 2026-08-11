@@ -1,5 +1,52 @@
 # Changelog
 
+## 0.23.0
+
+De gereed-vlag: de coach adviseert een machine pas te starten als iemand heeft gezegd dat er
+werk in zit. Fase 3 van SPEC §32.
+
+### Toegevoegd
+
+- **"Klaar / vol" op twee plekken** — op Apparaten bij het apparaat, en onder het advies dat
+  erom vraagt. Dat is geen duplicatie maar de twee momenten waarop een bewoner eraan denkt:
+  hij ruimt de keuken op en zet de machine aan het eind vol, of hij leest *"start nu om 07:00
+  te halen"* en denkt "hij is niet vol" (§44.6).
+
+- **Het vervalmoment staat er in woorden bij**, want een bewoner die 's avonds zijn vaatwasser
+  vult moet weten dat de melding morgenochtend nog geldt: *"Staat vol. Dit vervalt morgen om
+  07:00, of eerder zodra hij klaar is."*
+
+  Is er geen status- of resttijdentiteit gekoppeld, dan kan het systeem "klaar" nooit zien, en
+  dat staat er dan meteen bij — op het moment van indrukken, niet wanneer iemand zich afvraagt
+  waarom er niets gebeurde: *"We kunnen niet zien wanneer hij klaar is, dus dit blijft staan
+  tot morgen om 07:00. Zet het eerder uit als er niets meer in zit."*
+
+- **Het veld *Moet gemeld worden dat er werk in zit*** op Apparaten. Standaard aan voor
+  vaatwasser, wasmachine en droger; uit voor de rest, inclusief de laadpaal, die via zijn
+  statuskoppeling zelf kan zien of er een auto hangt.
+
+### Gewijzigd
+
+- **Het urgentie-advies zegt nu wat het weet.** Staat de vlag, dan luidt het *"Start Vaatwasser
+  nu om 07:00 te halen"* als waarschuwing — de zin en de zwaarte die §32.3 altijd al
+  voorschreef. Staat hij niet, dan komt er geen advies: dat is de lege machine waarvoor deze
+  hele ronde bestaat.
+
+  Een apparaat dat geen vlag nodig heeft houdt de voorwaardelijke zin *"als hij om 07:00 klaar
+  moet zijn"*. Voor zo'n apparaat is oprecht onbekend of er werk is, en een onbekend antwoord
+  hoort zijn eigen voorwaarde te noemen in plaats van iets te beweren.
+
+### Niet gebouwd, en waarom
+
+- **Detectie van "klaar" via het vermogen** staat in §32.6 als derde methode en is er niet
+  gekomen. Een vaatwasser die tussen wassen en drogen niets trekt, ziet er hetzelfde uit als
+  een die klaar is — en die fout is stil: de vlag valt weg en de bewoner moet opnieuw drukken
+  zonder te weten waarom.
+
+  De winst zou bovendien klein zijn: de vlag vervalt al aan het einde van het gereed-venster,
+  en een apparaat zonder venster krijgt sowieso geen urgentie-advies. Een status- of
+  resttijdentiteit zegt het wél zeker, en die twee doen het werk.
+
 ## 0.22.0
 
 Het laadminimum hangt aan de auto, niet aan de paal (SPEC §59), en het uurbedrag dat niet te

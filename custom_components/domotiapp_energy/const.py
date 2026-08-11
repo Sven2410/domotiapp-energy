@@ -16,7 +16,7 @@ from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 
 DOMAIN: Final = "domotiapp_energy"
 INTEGRATION_NAME: Final = "DomotiApp Energy"
-VERSION: Final = "0.22.0"
+VERSION: Final = "0.23.0"
 
 MANUFACTURER: Final = "DomotiApp"
 DEVICE_MODEL: Final = "Energy Coach"
@@ -93,6 +93,24 @@ RUNTIME_STORAGE_VERSION: Final = 1
 # ever ran. Twenty-four hours also says something more useful: if nothing has
 # happened for a day, something else is wrong.
 READY_FLAG_MAX_AGE_HOURS: Final = 24
+
+# The states a status entity uses to say a programme has finished (SPEC.md
+# §32.6). Fixed and documented: an entity reporting anything else produces no
+# detection at all, because guessing which word might mean "done" is how a flag
+# clears halfway through a wash.
+READY_DONE_STATES: Final[frozenset[str]] = frozenset(
+    {"off", "idle", "standby", "finished", "complete", "completed"}
+)
+
+# The bindings that can tell us a programme finished, in order of reliability.
+# **Power is deliberately not among them.** A dishwasher between washing and
+# drying draws the same nothing as one that is done, so a threshold there
+# clears the flag halfway — silently, and the resident has to press the button
+# again without knowing why. It buys almost nothing either: the flag already
+# expires at the end of the ready window, and an appliance without a window
+# gets no urgency advice to begin with, so power detection would only ever
+# shorten a flag that was about to expire anyway (SPEC.md §32.6).
+READY_DONE_BINDINGS: Final[tuple[str, ...]] = ("status_entity", "remaining_time_entity")
 
 MAX_LOG_ENTRIES: Final = 200
 # Identical consecutive events within this window bump a counter instead of

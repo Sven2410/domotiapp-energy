@@ -23,6 +23,7 @@ import {
   button,
   card,
   el,
+  formatMoment,
   formatNumber,
   formatTimestamp,
   notice,
@@ -40,7 +41,10 @@ import { onTap } from '../core/tap.js';
 /** The five questions of SPEC.md §8, in the order they are listed there. */
 const QUESTIONS = [
   { key: 'why_advice', label: 'Waarom krijg ik dit advies?' },
-  { key: 'use_device_now', label: 'Kan ik nu het beste een apparaat gebruiken?' },
+  {
+    key: 'use_device_now',
+    label: 'Kan ik nu het beste een apparaat gebruiken?',
+  },
   { key: 'peak_risk', label: 'Is er risico op piekbelasting?' },
   { key: 'missing_data', label: 'Welke gegevens ontbreken nog?' },
   { key: 'score_breakdown', label: 'Hoe is mijn energiescore berekend?' },
@@ -99,9 +103,23 @@ export const coachTab = {
     // both true and answer different questions.
     const savingRateRow = statRow('Geschatte opbrengst per uur');
     const reasonRow = statRow('Reden', { empty: 'Onbekend' });
-    const calculatedRow = statRow('Laatste berekening', { empty: 'Nog niet berekend' });
+    const calculatedRow = statRow('Laatste berekening', {
+      empty: 'Nog niet berekend',
+    });
+
+    // Which appliance the primary advice is about, when that appliance waits
+    // to be told there is work in it, and what its flag currently says.
+    let readyDevice = null;
+    let readyFlags = {};
 
     const recalculateButton = button('Opnieuw berekenen', { primary: true });
+    // **The second of the two places this button belongs** (SPEC.md §44.6).
+    // The other is on Apparaten, where a resident is tidying the kitchen; this
+    // one is the moment he reads "start nu om 07:00 te halen" and thinks "hij
+    // is niet vol". Same command, two occasions — leaving either out means
+    // remembering at the wrong moment where the other one is.
+    const readyButton = button('Klaar / vol');
+    const readyLine = el('p', { class: 'advice-message' });
     const recalculateNotice = notice('mdi:refresh');
 
     mainCard.body.append(
@@ -111,7 +129,8 @@ export const coachTab = {
       savingRateRow.element,
       reasonRow.element,
       calculatedRow.element,
-      el('div', { class: 'actions' }, [recalculateButton]),
+      readyLine,
+      el('div', { class: 'actions' }, [recalculateButton, readyButton]),
       recalculateNotice.element,
     );
 
@@ -136,7 +155,10 @@ export const coachTab = {
     // under it, in the same words the coach answers the question with
     // ("Nog ontbrekend: …", engine/providers.py).
     const missingCard = card('Gegevens voor je advies');
-    const missingLead = el('p', { class: 'advice-message', text: 'Nog ontbrekend:' });
+    const missingLead = el('p', {
+      class: 'advice-message',
+      text: 'Nog ontbrekend:',
+    });
     const missingList = el('ul', { class: 'plain-list' });
     const missingNotice = notice('mdi:check-circle-outline');
     missingCard.body.append(missingLead, missingList, missingNotice.element);
@@ -219,7 +241,10 @@ export const coachTab = {
         // under its key: an identifier in a sentence is worse than a shorter
         // sentence (core/labels.js).
         const readings = Object.entries(item.measurements)
-          .map(([key, value]) => [measurementLabel(key), measurementValue(key, value)])
+          .map(([key, value]) => [
+            measurementLabel(key),
+            measurementValue(key, value),
+          ])
           .filter(([label]) => label !== null)
           .map(([label, value]) => `${label}: ${value}`);
         if (readings.length) {
@@ -273,6 +298,28 @@ export const coachTab = {
       answerDialog.show({ focusReturnsTo: opener });
     }
 
+    /**
+     * Say how long "hij is vol" stays true, in the words somebody would use.
+     *
+     * The same two sentences the appliance row uses, and for the same reason
+     * (SPEC.md §32.6): where nothing is linked, expiring is the *only* way the
+     * flag ever goes out, and the resident has to hear that when he presses
+     * the button rather than when he wonders why nothing happened.
+     */
+    function describeReady(flag) {
+      if (!flag) {
+        return '';
+      }
+      const until = formatMoment(flag.expires_at);
+      if (flag.auto_clears) {
+        return `Staat vol. Dit vervalt ${until}, of eerder zodra hij klaar is.`;
+      }
+      return (
+        `Staat vol. We kunnen niet zien wanneer hij klaar is, dus dit blijft ` +
+        `staan tot ${until}. Zet het eerder uit als er niets meer in zit.`
+      );
+    }
+
     async function recalculate() {
       state.setSaving(true);
       recalculateButton.disabled = true;
@@ -281,7 +328,9 @@ export const coachTab = {
         // Open to every user: a recalculation produces a result, never a
         // configuration change (SPEC.md §14).
         state.setLive(await createApi(getHass()).recalculate());
-        recalculateNotice.set('Het advies is opnieuw berekend.', { tone: 'success' });
+        recalculateNotice.set('Het advies is opnieuw berekend.', {
+          tone: 'success',
+        });
       } catch (error) {
         recalculateNotice.set(describeError(error), { tone: 'warning' });
       } finally {
@@ -289,6 +338,27 @@ export const coachTab = {
         recalculateButton.disabled = false;
       }
     }
+
+    /**
+     * Say the appliance this advice is about has work in it, or take it back.
+     *
+     * The appliance comes from the advice itself (`related_device_ids`), so the
+     * button can never be about something else than the sentence above it.
+     */
+    async function toggleReady() {
+      if (!readyDevice) {
+        return;
+      }
+      const wasSet = Boolean(readyFlags[readyDevice.id]);
+      try {
+        await createApi(getHass()).setDeviceReady(readyDevice.id, !wasSet);
+        state.setLive(await createApi(getHass()).getCoach());
+      } catch (error) {
+        recalculateNotice.set(describeError(error), { tone: 'warning' });
+      }
+    }
+
+    onTap(readyButton, () => toggleReady());
 
     onTap(recalculateButton, () => {
       if (!recalculateButton.disabled) {
@@ -304,6 +374,21 @@ export const coachTab = {
       const prefs = preferences();
 
       const primary = live.primary_advice;
+      // The flag belongs to the appliance this advice is about, and only
+      // appears where that appliance waits to be told there is work in it
+      // (SPEC.md §32.5). Everywhere else it would be a button with no meaning.
+      readyFlags = live.ready_devices || {};
+      const devices = panelState.config?.devices || [];
+      const subject = (primary?.related_device_ids || [])[0];
+      readyDevice =
+        devices.find((row) => row.id === subject && row.needs_ready_flag) ||
+        null;
+      const flag = readyDevice ? readyFlags[readyDevice.id] : null;
+      setVisible(readyButton, Boolean(readyDevice));
+      readyButton.textContent = flag ? 'Toch niet vol' : 'Klaar / vol';
+      readyLine.textContent = describeReady(flag);
+      setVisible(readyLine, Boolean(flag));
+
       adviceTitle.textContent = primary?.title || 'Nog geen advies berekend';
       adviceMessage.textContent =
         primary?.message ||
@@ -360,9 +445,12 @@ export const coachTab = {
 
       // The primary advice is the first of the list, so it is not repeated.
       const rest = (live.advice || []).slice(1);
-      adviceList.sync(rest.map((item, index) => ({ ...item, id: item.id || index })));
+      adviceList.sync(
+        rest.map((item, index) => ({ ...item, id: item.id || index })),
+      );
 
-      const missing = live.missing_data || live.metrics?.data_quality?.missing_items;
+      const missing =
+        live.missing_data || live.metrics?.data_quality?.missing_items;
       renderMissing(
         missing || [],
         live.metrics?.data_quality?.not_applicable_items || [],
@@ -385,7 +473,9 @@ export const coachTab = {
       // What this home is not judged on is named too. A checklist that silently
       // shrank from six items to four would look like it had skipped something,
       // and the customer cannot see the source rows that decided it.
-      const skipped = notApplicable.map(checklistLabel).filter((l) => l !== null);
+      const skipped = notApplicable
+        .map(checklistLabel)
+        .filter((l) => l !== null);
       const skippedSentence = skipped.length
         ? `Niet van toepassing op deze woning, en dus niet meegeteld: ${skipped.join(
             ', ',

@@ -26,6 +26,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import (
     CALLBACK_TYPE,
     Event,
@@ -50,6 +51,7 @@ from .const import (
     LOG_EVENT_SOLAR_SURPLUS_DETECTED,
     PEAK_RISK_RELEASE_MARGIN_PERCENT,
     PRIMARY_ADVICE_MIN_DWELL_SECONDS,
+    READY_DONE_BINDINGS,
     RECALCULATE_DEBOUNCE_SECONDS,
     SAFETY_RECALCULATE_INTERVAL_MINUTES,
     SEVERITY_INFO,
@@ -60,8 +62,13 @@ from .engine.advisor import Advisor, advice_rank
 from .engine.calculator import Calculator
 from .engine.hysteresis import Latch, PrimaryAdviceGate
 from .engine.providers import CoachProvider
-from .models import CoachResult, EnergyMetrics, StoredConfiguration
-from .runtime_store import RuntimeStore
+from .models import CoachResult, EnergyMetrics, ReadyFlag, StoredConfiguration
+from .runtime_store import (
+    RuntimeStore,
+    can_see_finished,
+    expires_at,
+    is_finished_state,
+)
 from .storage import ConfigurationStore
 
 _LOGGER = logging.getLogger(__name__)
@@ -316,6 +323,10 @@ class EnergyCoordinator(DataUpdateCoordinator[CoachResult]):
             snapshot = self._calculator.build_snapshot(config)
             await self._store.async_report_invalid_rows(snapshot.source_failures)
 
+            # Before the advice, because a programme that has just finished
+            # must not produce one more "start nu" (SPEC.md §32.6).
+            await self._async_clear_finished_flags(config)
+
             metrics = self._calculator.derive_metrics(config, snapshot)
             self._apply_hysteresis(config, metrics)
             self._track_lowest_running_power(config, metrics)
@@ -330,6 +341,7 @@ class EnergyCoordinator(DataUpdateCoordinator[CoachResult]):
                 primary_advice=advice[0] if advice else None,
                 advice=advice,
                 metrics=metrics,
+                ready_devices=self._ready_flags(config),
             )
             result = await self._provider.async_generate(result)
 
@@ -360,6 +372,61 @@ class EnergyCoordinator(DataUpdateCoordinator[CoachResult]):
             on_at=minimum,
             off_at=minimum * SOLAR_SURPLUS_RELEASE_FRACTION,
         )
+
+    async def _async_clear_finished_flags(self, config: StoredConfiguration) -> None:
+        """Take the flag off every appliance that has finished (SPEC.md §32.6).
+
+        **Edge-triggered by the reading, not by a timer.** The check is "does
+        this entity say the programme is over", and an appliance that has been
+        idle all along never had a flag to clear — the resident sets it while
+        the machine is off, so a plain "is it off" test would take it straight
+        back off again. What makes that safe here is that the flag is only
+        cleared when the *linked* entity says finished, and until the machine
+        has actually run its status says something else.
+
+        Two of the three methods §32.6 lists, in its order of reliability, and
+        the third is deliberately absent: a power threshold cannot tell a
+        dishwasher between wash and dry from one that is done, and clearing a
+        flag halfway leaves the resident pressing the button again with no idea
+        why. It would buy almost nothing, because the flag already expires at
+        the end of the ready window it belongs to.
+        """
+        for device in config.devices:
+            if self._runtime.set_at(device.id) is None:
+                continue
+            for key in READY_DONE_BINDINGS:
+                entity_id = device.entity_links.get(key)
+                if not entity_id:
+                    continue
+                state = self._hass.states.get(entity_id)
+                if state is None or state.state in (STATE_UNKNOWN, STATE_UNAVAILABLE):
+                    continue
+                if is_finished_state(state.state):
+                    _LOGGER.debug(
+                        "Clearing ready flag for %r: %s reports %r",
+                        device.id,
+                        entity_id,
+                        state.state,
+                    )
+                    await self._runtime.async_set_ready(device.id, False)
+                # The first binding that can answer decides, however it
+                # answered. Falling through to a lesser one would let a
+                # remaining time of 0 overrule a status that says "washing".
+                break
+
+    def _ready_flags(self, config: StoredConfiguration) -> dict[str, ReadyFlag]:
+        """Return what the panel needs to phrase one sentence per flag."""
+        flags: dict[str, ReadyFlag] = {}
+        for device in config.devices:
+            set_at = self._runtime.set_at(device.id)
+            if set_at is None or not self._runtime.is_ready(device):
+                continue
+            flags[device.id] = ReadyFlag(
+                set_at=set_at,
+                expires_at=expires_at(device, set_at),
+                auto_clears=can_see_finished(device),
+            )
+        return flags
 
     def _ready_device_ids(self, config: StoredConfiguration) -> frozenset[str]:
         """Return the appliances a resident has said there is work in.

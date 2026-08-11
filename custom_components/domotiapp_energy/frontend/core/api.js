@@ -103,6 +103,20 @@ export function createApi(hass) {
     clearLogs: (expectedRevision) =>
       call('logs/clear', { expected_revision: expectedRevision }),
 
+    /**
+     * Say that an appliance has work in it, or that it no longer has.
+     *
+     * **No `expected_revision`, and that is not an oversight** (SPEC.md §32.5).
+     * The flag lives in its own store, which has no revision at all — tying a
+     * button a resident presses in the kitchen to a form an installer happens
+     * to have open is exactly what that second store avoids.
+     *
+     * Open to every user, like `recalculate`: this is operation, not
+     * configuration.
+     */
+    setDeviceReady: (deviceId, ready) =>
+      call('devices/set_ready', { device_id: deviceId, ready }),
+
     /** Recalculate now. Open to every user: it changes no configuration. */
     recalculate: () => call('coach/recalculate'),
   };

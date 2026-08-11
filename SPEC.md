@@ -2056,12 +2056,29 @@ In volgorde van betrouwbaarheid; de eerste die kan, wint:
 |---|---|---|
 | 1 | `status_entity` | gaat naar `off`, `idle` of `standby` |
 | 2 | `remaining_time_entity` | bereikt 0 |
-| 3 | `power_entity` | zakt onder een drempel en blijft daar N minuten |
+| ~~3~~ | ~~`power_entity`~~ | **vervallen, zie hieronder** |
 
-Methode 3 is de zwakste: een pauze midden in een programma lijkt erop. Drempel en
-wachttijd zijn vaste constanten, afgeleid van `nominal_power_w`, en de detectie is
-**edge-triggered** — van "draait" naar "klaar" — zodat er niet elke seconde een
-schrijfactie volgt.
+**Methode 3 is niet gebouwd** (besluit Sven, 2026-08-11, bij het bouwen van fase 3).
+
+De aanleiding was zijn vraag: een vaatwasser die tussen wassen en drogen even niets
+trekt, ziet er hetzelfde uit als een vaatwasser die klaar is — welke N kies je, en
+wat gebeurt er als je het mis hebt? Bij het beantwoorden bleek het antwoord niet in
+de keuze van N te zitten:
+
+- **De faalwijze is stil.** Eén vermogenspiek van een display of een smart plug en
+  de vlag valt weg, zonder dat iemand ziet waarom. De bewoner moet opnieuw op de
+  knop drukken en weet niet dat dat nodig is.
+- **En de winst is er bijna niet.** De vlag vervalt al aan het einde van het
+  gereed-venster, en een apparaat zónder venster krijgt sowieso geen urgentie-advies
+  (geen deadline, dus geen laatste start). Vermogensdetectie zou dus alleen een vlag
+  inkorten die toch al op het punt stond te vervallen.
+
+Een zichtbare, zelfcorrigerende fout — advies voor een machine die al gedraaid heeft
+— is goedkoper dan een onzichtbare die de hele functie stilzet. Dus: **zwijgen in
+plaats van gokken**, zoals overal in dit project.
+
+Wat er wél gebeurt bij een apparaat zonder koppeling staat hieronder, en dat is de
+tweede helft van dit besluit.
 
 De statenlijst bij methode 1 is vast en wordt gedocumenteerd. Meldt de entiteit iets
 anders, dan is er geen detectie; er wordt niet geraden welke toestand "klaar" zou kunnen
@@ -2069,6 +2086,16 @@ betekenen.
 
 **Is er geen enkele entiteit gekoppeld, dan wordt er niet gegokt.** Het paneel zegt erbij
 dat we niet kunnen zien wanneer het apparaat klaar is, en de bewoner zet de vlag zelf uit.
+
+**En het zegt dat op het moment dat hij de knop indrukt**, niet pas wanneer hij zich
+afvraagt waarom er niets gebeurde (besluit Sven, 2026-08-11). Daarom draagt het
+antwoord van `set_ready` een `auto_clears` mee, en kiest het paneel tussen twee hele
+zinnen:
+
+> *"Staat vol. Dit vervalt vanavond om 22:00, of eerder zodra hij klaar is."*
+
+> *"Staat vol. We kunnen niet zien wanneer hij klaar is, dus dit blijft staan tot
+> morgen om 07:00. Zet het eerder uit als er niets meer in zit."*
 
 **Wel vervalt de vlag**, en dat is geen aanname over de machine maar een
 houdbaarheidstermijn op de *intentie*: "hij is vol" van vanochtend zegt niets meer over
@@ -4244,6 +4271,24 @@ severity wacht op de vlag die de bewering waarmaakt:
 
 **Fase 3 mag deze regel dus niet alleen aanzetten, hij moet de zin en de severity terugzetten
 naar wat §32.3 voorschrijft.** Dat staat hier zodat het niet vergeten wordt.
+
+**Gedaan in fase 3, met één correctie op de derde rij van die tabel** (besluit Sven,
+2026-08-11). De voorwaarde is niet *"de vlag staat"* maar *"weten we dat er werk is"*,
+en de vlag is één van de antwoorden:
+
+| Situatie | Zin | Severity |
+|---|---|---|
+| vlag-apparaat, vlag staat | *Start {naam} nu om {tijd} te halen.* | `warning` |
+| vlag-apparaat, vlag staat niet | **geen advies** — dit is de lege machine van §32.5 | — |
+| apparaat dat geen vlag nodig heeft | *Start {naam} nu als hij om {tijd} klaar moet zijn.* | `info` |
+
+**Waarom die derde rij er moet zijn.** Letterlijk gelezen — "binnen het venster **en**
+de vlag staat" — zou een laadpaal voorgoed zwijgen: die krijgt `needs_ready_flag`
+per type niet, omdat hij via `status_entity` zelf kan zien of er een auto hangt
+(§32.5). Alleen leest niets die entiteit tot §34. Voor zo'n apparaat is *"is er
+werk"* dus oprecht onbekend, en een onbekend antwoord krijgt de zin die zijn eigen
+voorwaarde noemt — niet stilte en niet een bewering. Dat is precies de regel die
+deze sectie zelf oplegt: de zin mag alleen claimen wat de voorwaarde vaststelt.
 
 ### 43.3 Waarom dit advies niet kan pendelen
 

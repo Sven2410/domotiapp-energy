@@ -39,6 +39,8 @@ from homeassistant.util import dt as dt_util
 
 from .const import (
     MINUTES_PER_DAY,
+    READY_DONE_BINDINGS,
+    READY_DONE_STATES,
     READY_FLAG_MAX_AGE_HOURS,
     RUNTIME_STORAGE_KEY,
     RUNTIME_STORAGE_VERSION,
@@ -139,6 +141,38 @@ class RuntimeStore:
         await self._store.async_save(
             {_KEY_READY: {k: v.isoformat() for k, v in self._ready.items()}}
         )
+
+
+def can_see_finished(device: DeviceProfile) -> bool:
+    """Return whether anything here can tell that this programme has ended.
+
+    A status entity or a remaining-time entity can; a power sensor cannot, and
+    that is a decision rather than an omission (SPEC.md §32.6). Without either
+    of them the flag only ever goes out by expiring, and the resident is told
+    so at the moment he sets it — not when he wonders why nothing happened.
+    """
+    return any(device.entity_links.get(key) for key in READY_DONE_BINDINGS)
+
+
+def is_finished_state(state: str | None) -> bool:
+    """Return whether this reading says the programme is over.
+
+    ``None`` and an unknown word are both "no". An entity that reports
+    something outside the documented list produces no detection at all: there
+    is no safe way to guess which word means done, and a wrong guess clears the
+    flag halfway through a wash (SPEC.md §32.6).
+    """
+    if state is None:
+        return False
+    reading = state.strip().lower()
+    if reading in READY_DONE_STATES:
+        return True
+    # A remaining-time entity says it with a number instead of a word, and zero
+    # is the only value that means it: anything above it is time still to go.
+    try:
+        return float(reading) == 0.0
+    except ValueError:
+        return False
 
 
 def expires_at(device: DeviceProfile, set_at: datetime) -> datetime:

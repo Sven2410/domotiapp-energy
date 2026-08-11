@@ -120,7 +120,10 @@ export function statRow(label, { unit = '', empty = 'Niet beschikbaar' } = {}) {
  * the label steps back into small letterspaced capitals and the figure
  * dominates.
  */
-export function displayMetric(label, { suffix = '', empty = 'Nog niet berekend' } = {}) {
+export function displayMetric(
+  label,
+  { suffix = '', empty = 'Nog niet berekend' } = {},
+) {
   const valueNode = el('span', { class: 'display-value', text: '—' });
   const suffixNode = el('span', { class: 'display-suffix', text: suffix });
   const emptyNode = el('span', { class: 'display-empty', text: empty });
@@ -203,7 +206,10 @@ export function section(title, { open = true } = {}) {
 
   function setOpen(next) {
     toggle.setAttribute('aria-expanded', String(next));
-    chevron.setAttribute('icon', next ? 'mdi:chevron-down' : 'mdi:chevron-right');
+    chevron.setAttribute(
+      'icon',
+      next ? 'mdi:chevron-down' : 'mdi:chevron-right',
+    );
     setVisible(body, next);
   }
 
@@ -291,6 +297,40 @@ export function formatPrice(value) {
 }
 
 /** Format an ISO timestamp as a readable Dutch date and time. */
+/**
+ * Say when a moment is, the way somebody says it out loud.
+ *
+ * *"vanavond om 22:00"* rather than *"11-08-2026, 22:00:00"*, because this
+ * lands in a sentence a resident reads once and has to act on: he fills the
+ * dishwasher at ten in the evening and needs to know the flag still counts
+ * tomorrow morning (SPEC.md §32.6).
+ *
+ * Two horizons, which is all a shelf life of at most a day can produce: later
+ * today, or tomorrow. Anything further would be a moment this flag can never
+ * reach, so there is no branch for it.
+ */
+export function formatMoment(iso) {
+  if (!iso) {
+    return null;
+  }
+  const moment = new Date(iso);
+  if (Number.isNaN(moment.getTime())) {
+    return null;
+  }
+  const time = new Intl.DateTimeFormat('nl-NL', {
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(moment);
+
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const days = Math.floor((moment - startOfToday) / 86400000);
+  if (days >= 1) {
+    return `morgen om ${time}`;
+  }
+  return `vandaag om ${time}`;
+}
+
 export function formatTimestamp(iso) {
   if (!iso) {
     return null;

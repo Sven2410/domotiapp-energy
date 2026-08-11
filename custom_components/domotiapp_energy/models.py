@@ -2098,6 +2098,43 @@ class AdviceItem:
 
 
 @dataclass(slots=True)
+class ReadyFlag:
+    """One appliance a resident has said there is work in (SPEC.md §32.5).
+
+    Three facts, and the panel needs all three for one sentence: when it was
+    said, when it stops being true, and whether anything here can see the
+    programme finish. That last one decides which sentence the resident gets
+    when he presses the button — a flag nobody can clear early should say so
+    then, not when he wonders why nothing happened.
+    """
+
+    set_at: datetime
+    expires_at: datetime
+    # True when a status or remaining-time entity is linked, so "klaar" can be
+    # observed. Power alone is deliberately not enough (SPEC.md §32.6).
+    auto_clears: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return the flag as a JSON-serialisable mapping."""
+        return {
+            "set_at": self.set_at.isoformat(),
+            "expires_at": self.expires_at.isoformat(),
+            "auto_clears": self.auto_clears,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> Self:
+        """Build a flag from a mapping, defaulting the moments to now."""
+        data = _as_mapping(data)
+        now = dt_util.utcnow()
+        return cls(
+            set_at=_as_datetime(data.get("set_at")) or now,
+            expires_at=_as_datetime(data.get("expires_at")) or now,
+            auto_clears=_as_bool(data.get("auto_clears"), False),
+        )
+
+
+@dataclass(slots=True)
 class CoachResult:
     """The complete coach output shown in the panel (SPEC.md §8 and §17).
 
@@ -2112,6 +2149,11 @@ class CoachResult:
     metrics: EnergyMetrics = field(default_factory=EnergyMetrics)
     explanations: dict[str, str] = field(default_factory=dict)
     missing_data: list[str] = field(default_factory=list)
+    # Which appliances a resident has said there is work in, and until when
+    # that stays true (SPEC.md §32.5). Live state rather than configuration, so
+    # it travels with the coach result and not with the device rows: the panel
+    # refreshes this on every calculation, and the flag expires on the clock.
+    ready_devices: dict[str, ReadyFlag] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         """Return the coach result as a JSON-serialisable mapping."""
@@ -2124,6 +2166,10 @@ class CoachResult:
             "metrics": self.metrics.to_dict(),
             "explanations": dict(self.explanations),
             "missing_data": list(self.missing_data),
+            "ready_devices": {
+                device_id: flag.to_dict()
+                for device_id, flag in self.ready_devices.items()
+            },
         }
 
     @classmethod
@@ -2146,4 +2192,9 @@ class CoachResult:
                 if isinstance(key, str) and (text := _as_optional_str(raw)) is not None
             },
             missing_data=_as_str_list(data.get("missing_data")),
+            ready_devices={
+                key: ReadyFlag.from_dict(raw)
+                for key, raw in _as_mapping(data.get("ready_devices")).items()
+                if isinstance(key, str) and isinstance(raw, Mapping)
+            },
         )

@@ -101,7 +101,7 @@ from .models import (
     StoredConfiguration,
     UserPreferences,
 )
-from .runtime_store import expires_at
+from .runtime_store import can_see_finished, expires_at
 from .storage import RevisionConflictError, StorageError
 from .validators import (
     ValidationIssue,
@@ -1015,6 +1015,11 @@ async def handle_devices_set_ready(
             "ready": set_at is not None,
             "set_at": set_at.isoformat() if set_at else None,
             "expires_at": (expires_at(device, set_at).isoformat() if set_at else None),
+            # Whether anything here can see the programme finish. The panel
+            # phrases a different sentence when it cannot, at the moment the
+            # resident presses the button rather than when he wonders why
+            # nothing happened (SPEC.md §32.6).
+            "auto_clears": can_see_finished(device),
         },
     )
     await data.coordinator.async_recalculate()
