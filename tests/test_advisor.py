@@ -2497,7 +2497,7 @@ async def test_the_hourly_amount_says_which_field_stopped_it(
     The situation, and it is the one the split is for: a charger that takes
     whatever is spare, in a home whose fixed tariff has never been entered. The
     total is empty because this appliance has no cycle, the rate is empty
-    because there is no margin — and until 0.21.0 the card showed neither row
+    because there is no margin — and until 0.22.0 the card showed neither row
     and the sentence stayed cheerfully silent about why.
     """
     freezer.move_to(local(14, 0))

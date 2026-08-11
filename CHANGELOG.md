@@ -2,11 +2,16 @@
 
 ## 0.22.0
 
-Het laadminimum hangt aan de auto, niet aan de paal. SPEC §59.
+Het laadminimum hangt aan de auto, niet aan de paal (SPEC §59), en het uurbedrag dat niet te
+berekenen is legt nu uit waarom (SPEC §56.8).
 
-Aanleiding is een meting op echte hardware: 7 A leverde 4765 W, wat 3 × 230 × 7 is. De auto
-laadt dus driefasig en het minimum is ~4140 W — niet de 1380 W die op grond van "eenfasig
-laden" was ingevuld. Een factor drie, en niets in het product kon het zeggen.
+Aanleiding voor het eerste is een meting op echte hardware: 7 A leverde 4765 W, wat 3 × 230 × 7
+is. De auto laadt dus driefasig en het minimum is ~4140 W — niet de 1380 W die op grond van
+"eenfasig laden" was ingevuld. Een factor drie, en niets in het product kon het zeggen.
+
+> **0.21.0 is nooit uitgebracht.** De tag week af van het manifest, de release-workflow
+> weigerde hem, en hij is ingetrokken vóór er een release stond. Alles wat voor die versie
+> geschreven was staat hieronder.
 
 ### Toegevoegd
 
@@ -40,10 +45,6 @@ laden" was ingevuld. Een factor drie, en niets in het product kon het zeggen.
   Er komt geen opgeslagen fasenveld: dat zou een waarde zijn die de motor nooit leest, en het
   zou naast `phases` bij Woning komen te staan, dat dezelfde vraag over het huís beantwoordt.
 
-## 0.21.0
-
-Het uurbedrag dat niet te berekenen is, legt nu uit waarom. SPEC §56.8.
-
 ### Fixed
 
 - **Een laadpaal zonder bedrag per uur zegt nu welk veld de som stopte.** Voor een apparaat
@@ -67,6 +68,12 @@ Het uurbedrag dat niet te berekenen is, legt nu uit waarom. SPEC §56.8.
   per cyclus* en *het nominale vermogen* verwees. Gevonden bij het splitsen hierboven, en het
   is dezelfde fout die deze zinnen juist moeten voorkomen: de installateur laten zoeken naar
   iets dat niet op zijn scherm staat.
+
+  **Dezelfde fout stond op nog twee plekken**, gevonden bij de browsercontrole van deze
+  release: de zin over wat er nog ontbreekt, zowel boven in het dialoogvenster als op de
+  apparaatrij. Het venster zei *"Nog nodig voor een compleet apparaat: nominaal vermogen,
+  energie per cyclus"* terwijl de twee velden eronder anders heetten. Alle drie de plekken
+  vragen nu het apparaattype, net als het formulier zelf.
 
 ## 0.20.0
 

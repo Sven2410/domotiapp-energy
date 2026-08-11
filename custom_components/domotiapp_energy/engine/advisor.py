@@ -477,7 +477,7 @@ def _surplus_message(
     have been: every layer below agreed with itself.
 
     **But an empty rate under that appliance is a missing term again**, and
-    until 0.21.0 nothing said so: the card simply showed neither amount row and
+    until 0.22.0 nothing said so: the card simply showed neither amount row and
     the sentence was as cheerful as ever (SPEC.md §56.8). The two cases have to
     be told apart by the amount that appliance actually carries, which is why
     the rate is an argument here — asking `savings` would answer for the wrong

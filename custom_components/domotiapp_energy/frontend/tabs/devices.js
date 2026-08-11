@@ -407,7 +407,7 @@ function markRequired(field, required) {
  * per cyclus" were missing, neither of which is on his screen.
  *
  * Found in the browser, one layer below the same mistake in the advice
- * sentences that 0.21.0 repaired. Two places naming one field differently is
+ * sentences one layer up repaired. Two places naming one field differently is
  * only ever noticed from the outside, which is what that check is for.
  */
 const REQUIRED_LABELS = {

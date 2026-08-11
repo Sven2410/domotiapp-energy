@@ -6044,7 +6044,7 @@ Drie stappen, elk apart te mergen en elk apart terug te draaien.
 ### 56.8 Het uurbedrag dat niet te berekenen is, legt uit waarom
 
 **Gevonden bij 0.20.0, bewust daar niet opgelost** (besluit Sven, 2026-08-10),
-**gebouwd in 0.21.0**.
+**gebouwd in 0.22.0**.
 
 Een modulerend apparaat waarvan `_solar_savings_rate` `None` teruggeeft — geen
 leesbaar vermogen, of geen `self_consumption_margin_eur_kwh` omdat de
@@ -6392,7 +6392,7 @@ uitbreiding van `_surplus_message` en hoort bij §56, niet bij een tekstronde;
 de energie per cyclus en dat is precies het veld dat een modulerende paal niet
 gebruikt.
 
-**Opgelost in 0.21.0**, langs de splitsing van §56.8.
+**Opgelost in 0.22.0**, langs de splitsing van §56.8.
 
 ## 59. Analyse: het laadminimum hangt aan de auto, niet aan de paal
 
@@ -6548,7 +6548,7 @@ advies uitblijft.
 
 **Alle vier akkoord bevonden door Sven op 2026-08-11, gebouwd in 0.22.0.**
 
-1. **§57.3 bijgewerkt** (0.21.0) — beide gevallen komen voor, alleen de meting
+1. **§57.3 bijgewerkt** — beide gevallen komen voor, alleen de meting
    geeft antwoord, en de terugrekening van fasen uit een meting bij een hogere
    stand staat erbij.
 2. **De hulptekst bij `min_power_w`** zegt nu dat het getal aan de **auto** hangt
