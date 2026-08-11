@@ -25,6 +25,7 @@ import {
   settle,
   tabButtons,
   tabPanels,
+  visibleText,
 } from './harness.mjs';
 
 const ALL_TABS = [
@@ -74,7 +75,7 @@ describe('tab navigation', () => {
       (button) => button.getAttribute('aria-selected') === 'true',
     );
     assert.equal(selected.length, 1);
-    assert.match(selected[0].textContent, /Mijn voorkeuren/);
+    assert.match(visibleText(selected[0]), /Mijn voorkeuren/);
   });
 
   it('builds a tab once and reuses it', async () => {
@@ -185,7 +186,7 @@ describe('notices and the banner', () => {
     const banner = panel.shadowRoot.querySelector('.banner');
 
     assert.ok(isVisible(banner));
-    assert.match(banner.textContent, /niet geladen/);
+    assert.match(visibleText(banner), /niet geladen/);
   });
 });
 
@@ -309,7 +310,7 @@ describe('empty and populated configurations', () => {
       .map((node) => node.textContent);
 
     assert.deepEqual(titles, []);
-    assert.match(panel.shadowRoot.textContent, /Aanvullende gegevens nodig/);
+    assert.match(visibleText(panel.shadowRoot), /Aanvullende gegevens nodig/);
   });
 
   it('says there are no warnings only when nothing is one', async () => {
@@ -330,7 +331,7 @@ describe('empty and populated configurations', () => {
         }),
       }),
     );
-    assert.match(quiet.shadowRoot.textContent, /geen waarschuwingen/);
+    assert.match(visibleText(quiet.shadowRoot), /geen waarschuwingen/);
 
     // And with a warning as the primary, the panel says nothing rather than
     // claiming there are none.

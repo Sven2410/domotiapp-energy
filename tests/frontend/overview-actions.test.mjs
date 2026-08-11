@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { fakeHass, sampleCoach, sampleConfig } from './fixtures.mjs';
-import { clickTab, isVisible, mountPanel, settle, tabPanels } from './harness.mjs';
+import { clickTab, isVisible, mountPanel, settle, tabPanels , visibleText } from './harness.mjs';
 
 async function openOverview(hass = fakeHass()) {
   const panel = await mountPanel(hass);
@@ -105,8 +105,8 @@ describe('wat er in de sectie staat', () => {
     );
     const section = card(tab, 'Wat je nu kunt doen');
 
-    assert.match(section.textContent, /Vaatwasser/);
-    assert.match(section.textContent, /Klaar \/ vol/);
+    assert.match(visibleText(section), /Vaatwasser/);
+    assert.match(visibleText(section), /Klaar \/ vol/);
   });
 
   it('zegt hoelang het geldt zodra de vlag staat', async () => {
@@ -118,9 +118,9 @@ describe('wat er in de sectie staat', () => {
     );
     const section = card(tab, 'Wat je nu kunt doen');
 
-    assert.match(section.textContent, /Staat vol\./);
-    assert.match(section.textContent, /We kunnen niet zien wanneer hij klaar is/);
-    assert.match(section.textContent, /Toch niet vol/);
+    assert.match(visibleText(section), /Staat vol\./);
+    assert.match(visibleText(section), /We kunnen niet zien wanneer hij klaar is/);
+    assert.match(visibleText(section), /Toch niet vol/);
   });
 
   it('stuurt het commando zonder revision', async () => {

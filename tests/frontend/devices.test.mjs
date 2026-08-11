@@ -20,6 +20,7 @@ import {
   sampleConfig,
   settle,
   tabPanels,
+  visibleText,
 } from './harness.mjs';
 
 async function openDevicesTab(hass = fakeHass()) {
@@ -197,8 +198,8 @@ describe('the list of devices', () => {
     });
     const { tab } = await openDevicesTab(hass);
 
-    assert.match(rows(tab)[0].textContent, /Aansturing uitgesloten/);
-    assert.match(rows(tab)[0].textContent, /Medische apparatuur in de woning/);
+    assert.match(visibleText(rows(tab)[0]), /Aansturing uitgesloten/);
+    assert.match(visibleText(rows(tab)[0]), /Medische apparatuur in de woning/);
   });
 
   it('marks a half-filled device as not complete, naming what is missing', async () => {
@@ -219,12 +220,12 @@ describe('the list of devices', () => {
 
     // Savable, but never silently counted as finished: the row says which
     // field is missing and that this device does not count towards the score.
-    assert.match(rows(tab)[0].textContent, /Nog niet compleet/);
-    assert.match(rows(tab)[0].textContent, /energie per cyclus/);
-    assert.match(rows(tab)[0].textContent, /Telt niet mee voor de datakwaliteit/);
+    assert.match(visibleText(rows(tab)[0]), /Nog niet compleet/);
+    assert.match(visibleText(rows(tab)[0]), /energie per cyclus/);
+    assert.match(visibleText(rows(tab)[0]), /Telt niet mee voor de datakwaliteit/);
     assert.equal(rows(tab)[0].querySelector('.row-status').dataset.tone, 'warning');
     // One missing field reads as one, not as a list of one.
-    assert.match(rows(tab)[0].textContent, /energie per cyclus ontbreekt/);
+    assert.match(visibleText(rows(tab)[0]), /energie per cyclus ontbreekt/);
   });
 
   it('does not call a missing time window incomplete', async () => {
@@ -248,7 +249,7 @@ describe('the list of devices', () => {
 
     assert.doesNotMatch(rows(tab)[0].textContent, /vroegste start/);
     assert.doesNotMatch(rows(tab)[0].textContent, /laatste eindtijd/);
-    assert.match(rows(tab)[0].textContent, /Compleet/);
+    assert.match(visibleText(rows(tab)[0]), /Compleet/);
   });
 
   it('keeps the agreement about control readable on an incomplete device', async () => {
@@ -266,8 +267,8 @@ describe('the list of devices', () => {
     const { tab } = await openDevicesTab(hass);
 
     // Both truths at once: what is unfinished and what was agreed.
-    assert.match(rows(tab)[0].textContent, /Nog niet compleet/);
-    assert.match(rows(tab)[0].textContent, /Medische apparatuur in de woning/);
+    assert.match(visibleText(rows(tab)[0]), /Nog niet compleet/);
+    assert.match(visibleText(rows(tab)[0]), /Medische apparatuur in de woning/);
   });
 });
 
@@ -648,7 +649,7 @@ describe('saving a device', () => {
     });
     const { panel, tab } = await openDevicesTab(hass);
 
-    assert.match(rows(tab)[0].textContent, /Nog niet compleet/);
+    assert.match(visibleText(rows(tab)[0]), /Nog niet compleet/);
 
     buttonIn(rows(tab)[0], 'Bewerken').click();
     await settle();
@@ -702,7 +703,7 @@ describe('unsaved changes in the device dialog', () => {
     // A notice under a 23-field form can sit below the fold; a dialog cannot.
     assert.equal(isVisible(formDialog(panel)), true);
     assert.equal(isVisible(confirmDialog(panel)), true);
-    assert.match(confirmDialog(panel).textContent, /verwerpen/i);
+    assert.match(visibleText(confirmDialog(panel)), /verwerpen/i);
   });
 
   it('goes back to the form with the edit intact', async () => {
@@ -1631,7 +1632,7 @@ describe('the live power per appliance', () => {
       }),
     );
 
-    assert.match(tab.textContent, /Nu: 1\.150 W/);
+    assert.match(visibleText(tab), /Nu: 1\.150 W/);
   });
 
   it('gives an unlinked appliance no line at all', async () => {
@@ -1661,7 +1662,7 @@ describe('the live power per appliance', () => {
       }),
     );
 
-    assert.match(tab.textContent, /laagste meting sinds herstart: 4\.140 W/);
+    assert.match(visibleText(tab), /laagste meting sinds herstart: 4\.140 W/);
   });
 
   it('says since when, because that is the whole truth about the figure', async () => {
@@ -1679,7 +1680,7 @@ describe('the live power per appliance', () => {
       }),
     );
 
-    assert.match(tab.textContent, /sinds herstart/);
+    assert.match(visibleText(tab), /sinds herstart/);
   });
 
   it('keeps it off an appliance that runs at one power or not at all', async () => {
@@ -1694,7 +1695,7 @@ describe('the live power per appliance', () => {
       }),
     );
 
-    assert.match(tab.textContent, /Nu: 1\.150 W/);
+    assert.match(visibleText(tab), /Nu: 1\.150 W/);
     assert.doesNotMatch(tab.textContent, /laagste meting/);
   });
 
@@ -1715,7 +1716,7 @@ describe('the live power per appliance', () => {
       }),
     );
 
-    assert.match(tab.textContent, /maximaal laadvermogen, energie per laadsessie/);
+    assert.match(visibleText(tab), /maximaal laadvermogen, energie per laadsessie/);
   });
 
   it('says nothing about an appliance that has never been seen running', async () => {

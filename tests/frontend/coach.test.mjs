@@ -20,6 +20,7 @@ import {
   sampleConfig,
   settle,
   tabPanels,
+  visibleText,
 } from './harness.mjs';
 
 /** A coach result with every question answered. */
@@ -74,8 +75,8 @@ describe('the primary advice', () => {
   it('shows what the backend said, with its reason', async () => {
     const { tab } = await openCoachTab();
 
-    assert.match(tab.textContent, /Aanvullende gegevens nodig/);
-    assert.match(tab.textContent, /Vul de ontbrekende energiegegevens aan/);
+    assert.match(visibleText(tab), /Aanvullende gegevens nodig/);
+    assert.match(visibleText(tab), /Vul de ontbrekende energiegegevens aan/);
     // The reason is a machine identifier, and this row used to print it: a
     // customer read "missing_required_data" where a sentence belonged.
     assert.equal(rowFor(tab, 'Reden').value, 'Er ontbreken gegevens');
@@ -317,10 +318,10 @@ describe('the further advice', () => {
 
     const rows = [...tab.querySelectorAll('.row-item')];
     assert.equal(rows.length, 1);
-    assert.match(rows[0].textContent, /Zonneoverschot beschikbaar/);
+    assert.match(visibleText(rows[0]), /Zonneoverschot beschikbaar/);
     // Measurement and saving, in readable Dutch.
-    assert.match(rows[0].textContent, /zonneoverschot in W: 1\.500/);
-    assert.match(rows[0].textContent, /geschatte besparing € 0,36/);
+    assert.match(visibleText(rows[0]), /zonneoverschot in W: 1\.500/);
+    assert.match(visibleText(rows[0]), /geschatte besparing € 0,36/);
     assert.doesNotMatch(rows[0].textContent, /etrouwbaarheid/);
   });
 
@@ -369,7 +370,7 @@ describe('the question selector', () => {
       dialog.querySelector('.dialog-title').textContent,
       'Is er risico op piekbelasting?',
     );
-    assert.match(dialog.textContent, /De woning gebruikt 87% van het maximum/);
+    assert.match(visibleText(dialog), /De woning gebruikt 87% van het maximum/);
   });
 
   it('answers only with what the backend produced', async () => {
@@ -377,14 +378,14 @@ describe('the question selector', () => {
 
     buttonIn(tab, 'Waarom krijg ik dit advies?').click();
     await settle();
-    assert.match(answerDialog(panel).textContent, /Omdat de netbelasting hoog is/);
+    assert.match(visibleText(answerDialog(panel)), /Omdat de netbelasting hoog is/);
 
     answerDialog(panel).querySelector('.dialog-close').click();
     buttonIn(tab, 'Is er risico op piekbelasting?').click();
     await settle();
 
     const dialog = answerDialog(panel);
-    assert.match(dialog.textContent, /De woning gebruikt 87% van het maximum/);
+    assert.match(visibleText(dialog), /De woning gebruikt 87% van het maximum/);
     assert.ok(!dialog.textContent.includes('Omdat de netbelasting hoog is'));
   });
 
@@ -410,7 +411,7 @@ describe('the question selector', () => {
     await settle();
 
     // The frontend draws no conclusions of its own (SPEC.md §8 and §17).
-    assert.match(answerDialog(panel).textContent, /nog niet beantwoord/);
+    assert.match(visibleText(answerDialog(panel)), /nog niet beantwoord/);
   });
 });
 
@@ -488,7 +489,7 @@ describe('missing data and recalculating', () => {
     buttonIn(tab, 'Opnieuw berekenen').click();
     await settle();
 
-    assert.match(tab.textContent, /Geen actie nodig/);
+    assert.match(visibleText(tab), /Geen actie nodig/);
     assert.ok(noticeTexts(tab).some((t) => t.includes('opnieuw berekend')));
   });
 

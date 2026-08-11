@@ -6773,3 +6773,124 @@ aanleiding"* bedoelt.
   hem legitiem kan doen.
 - **De teller *Apparaten die nu draaien* blijft een feit** op `Actuele situatie`. Dat
   is geen handeling.
+
+## 61. Voorstel: het historisch overzicht
+
+**Status: voorstel, ronde 1** (Sven, 2026-08-11, na §60). Er is nog niets aan
+gebouwd, en er staat één beslissing in die aan hem is.
+
+### 61.1 De vraag die het beantwoordt, en de vraag die het weigert
+
+Een klant die "historie" hoort, verwacht meestal twee dingen: *hoeveel heb ik
+verbruikt* en *hoeveel heeft dit opgeleverd*. Dit voorstel beantwoordt geen van
+beide, en dat is de belangrijkste keuze erin.
+
+**Verbruik is er al, en beter.** Home Assistant heeft een eigen Energie-dashboard
+dat kWh in, uit, opgewekt en zelf verbruikt toont, rechtstreeks uit de meters van
+de klant. Wat wij zouden bouwen is een slechtere kopie van iets dat hij al heeft,
+gemaakt uit vermogensgemiddelden in plaats van uit energie.
+
+**Opbrengst kunnen we niet meten.** De coach adviseert; hij stuurt niet aan
+(tot §44), en niets weet of de bewoner het advies opvolgde. *"Je hebt deze week
+€ 12 bespaard"* zou een getal zijn dat wij verzinnen — precies wat dit project
+nergens doet. Ook ná de aansturingsrelease blijft dat waar: besparing vraagt om
+een tegenfeitelijke wereld waarin je het niet gedaan had, en die is er niet.
+
+> **Wat alleen wij weten: wat de coach zag, wat hij zei, en wat er daarna
+> gebeurde.** Dat is het historisch overzicht.
+
+Vier dingen die daaronder vallen, en die het Energie-dashboard niet kan tonen:
+
+1. **wat de coach adviseerde**, en wanneer;
+2. **wat de bewoner deed** — de gereed-vlag, en straks de aansturing;
+3. **hoe de energiescore liep** — onze eigen indicator;
+4. **of de installatie gezond was** — datakwaliteit, bronnen die wegvielen.
+
+### 61.2 Geen nieuwe opslag, en waarschijnlijk geen nieuwe entiteit
+
+**Home Assistant bewaart onze eigen sensoren al.** Vijf van de acht entiteiten
+hebben `state_class: measurement`, dus de recorder houdt er statistieken van bij,
+en het paneel kan die opvragen over dezelfde geauthenticeerde verbinding waar het
+alles over doet. Er komt dus **geen derde store** en er wordt niets afgeleids
+weggeschreven (CLAUDE.md regel 9).
+
+Het logboek dat we al hebben levert de gebeurtenissen: piekrisico, zonneoverschot,
+bronnen die wegvielen, configuratiewijzigingen.
+
+**Twee dingen die geverifieerd moeten worden vóór er iets op gebouwd wordt**, en
+allebei zijn het aannames over Home Assistant en niet over ons:
+
+| Aanname | Waarom het uitmaakt |
+|---|---|
+| de recorder bewaart uurstatistieken langer dan de ruwe states (standaard 10 dagen) | zonder dat is "de afgelopen weken" bij de meeste klanten leeg |
+| het paneel mag `recorder/statistics_during_period` aanroepen | anders is er alleen ruwe historie, en die verdwijnt met de purge |
+
+Lees dat in de bron van Home Assistant, niet in de documentatie — dat is de regel
+die dit project al twee keer heeft behoed voor een verkeerde aanname.
+
+### 61.3 De valkuil die dit ontwerp bijna insloop
+
+**Het gemiddelde van een verhouding is niet de verhouding van de sommen.**
+
+Zelfbenutting is een percentage: *zelf gebruikte opwek ÷ totale opwek*. De
+verleiding is om er een daggemiddelde van te tonen. Dat getal is fout, en het is
+fout in een richting die niemand opmerkt: een uur met 200 W opwek waarvan je alles
+gebruikt telt in het gemiddelde even zwaar als een middaguur met 4 kW waarvan je de
+helft terugleverde. Een woning met zon in de ochtend en verbruik in de avond scoort
+daardoor structureel te hoog.
+
+De juiste dagwaarde vraagt om **energie**, dus om sommen van kWh — en die hebben we
+niet, want onze sensoren meten vermogen. Het Energie-dashboard heeft ze wel.
+
+**Gevolg:** dit overzicht toont géén dagelijkse zelfbenutting. Dat is een getal dat
+alleen goed te maken is met gegevens die HA al beter presenteert.
+
+### 61.4 Wat er dan wel staat
+
+Op het **Overzicht**, onder de bedieningssectie (§60.4), één blok met ten hoogste
+drie feiten over gisteren. Elk feit moet los verdedigbaar zijn:
+
+| Feit | Waar het vandaan komt | Wat het níét beweert |
+|---|---|---|
+| *"4,5 uur zonneoverschot"* | uren waarin het gemiddelde overschot boven `min_solar_surplus_w` lag | niet dat je het gebruikt hebt |
+| *"3 keer advies"* | het logboek | niet dat je het opvolgde |
+| *"installatie compleet"* | datakwaliteit | niet dat het advies goed was |
+
+**Ten hoogste drie, en dat is een grens en geen richtlijn.** Een blok dat groeit
+wordt een dashboard, en dan zijn we alsnog bezig het Energie-dashboard na te
+bouwen.
+
+Het **Logboek** wordt de diepte. Dat tabblad bestaat al en is nu een technische
+lijst; het wordt een tijdlijn per dag, in de woorden van de klant. Geen zevende
+tabblad: de tabbalk loopt op een telefoon al over twee regels.
+
+### 61.5 De beslissing die aan Sven is
+
+**Moet zelfbenutting een eigen entiteit worden?**
+
+Het is het getal waar dit product over gaat — de energiescore is erop gebouwd —
+en het is het enige van de vier dat iets zegt over wat de *bewoner* deed. Maar het
+wordt nergens vastgelegd, dus er is geen geschiedenis van.
+
+| | Wel een entiteit | Niet |
+|---|---|---|
+| Winst | de klant kan er zelf een grafiek van maken, en wij later ook | geen achtste entiteit om te onderhouden |
+| Kosten | historie begint pas bij installatie; het paneel moet dat zeggen in plaats van een lege grafiek te tekenen | de belangrijkste uitkomst blijft onzichtbaar in de tijd |
+| Risico | het uitnodigt tot precies de daggemiddelden van §61.3 | — |
+
+**Toevoegen is niet brekend** (rule 11 gaat over het *wijzigen* van bestaande
+ID's), maar het is wel een belofte: een entiteit die klanten in dashboards zetten
+kan daarna niet meer weg.
+
+Mijn advies: **wel toevoegen, en het daggemiddelde er niet op bouwen.** Dan heeft
+de klant het getal in HA's eigen grafieken — waar hij zelf kan zien wat het doet —
+en houdt ons blok zich bij de drie feiten die los verdedigbaar zijn.
+
+### 61.6 Wat dit voorstel niet doet
+
+- **Geen prognose.** Vooruitkijken is een eigen onderwerp (§32.8) en heeft niets
+  met historie te maken.
+- **Geen export.** Een CSV-knop is een aparte vraag, en pas zinvol als iemand hem
+  vraagt.
+- **Geen bewaartermijn van onszelf.** Wat HA bewaart, bewaart HA; wij tonen wat er
+  is en zeggen het wanneer er minder is.
