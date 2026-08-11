@@ -67,6 +67,7 @@ from .const import (
     VALIDATION_CAPABILITY_MISSING,
     VALIDATION_CONTROL_FORBIDDEN,
     VALIDATION_INVALID_CHOICE,
+    VALIDATION_INVALID_PATH,
     VALIDATION_INVALID_TIME_WINDOW,
     VALIDATION_OUT_OF_RANGE,
     VALIDATION_REQUIRED,
@@ -292,6 +293,37 @@ class ValidationIssue:
         }
 
 
+def _validate_dashboard_paths(home: HomeProfile) -> list[ValidationIssue]:
+    """Weiger een bestemming waar het paneel niet heen kan (SPEC.md §62.3).
+
+    Een pad binnen deze Home Assistant, dus beginnend met een schuine streep.
+    Een volledige URL is niet zomaar fout maar wel een ander soort bestemming:
+    hij verlaat deze installatie, en dan is de weg terug helemaal weg.
+
+    **De waarde blijft staan en wordt gemeld** — dezelfde keuze als bij elke
+    andere tekst die iemand heeft ingetypt (§53). Weggooien zou betekenen dat de
+    installateur zijn eigen invoer kwijt is zonder te weten waarom, en "leeg"
+    betekent hier iets anders dan "fout": leeg is een besluit, fout is een typo.
+    """
+    issues: list[ValidationIssue] = []
+    velden = (
+        ("home_dashboard_path", home.home_dashboard_path),
+        ("energy_dashboard_path", home.energy_dashboard_path),
+    )
+    for naam, waarde in velden:
+        if waarde is None or waarde.startswith("/"):
+            continue
+        issues.append(
+            ValidationIssue(
+                naam,
+                VALIDATION_INVALID_PATH,
+                "Gebruik een adres binnen deze Home Assistant, beginnend met "
+                "een schuine streep — bijvoorbeeld /lovelace/0.",
+            )
+        )
+    return issues
+
+
 def validate_home_profile(home: HomeProfile) -> list[ValidationIssue]:
     """Return everything wrong with the home profile (SPEC.md §8 "Woning")."""
     issues: list[ValidationIssue] = []
@@ -318,6 +350,7 @@ def validate_home_profile(home: HomeProfile) -> list[ValidationIssue]:
         )
 
     issues.extend(_validate_max_grid_power(home))
+    issues.extend(_validate_dashboard_paths(home))
 
     if not (
         MIN_PEAK_WARNING_PERCENT

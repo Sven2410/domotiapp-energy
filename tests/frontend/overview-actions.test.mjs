@@ -271,11 +271,12 @@ describe('hoe het gisteren ging', () => {
   it('wijst naar het Energie-dashboard voor "hoeveel"', async () => {
     // Zonder deze regel zoekt een klant kWh en kosten hier, en concludeert hij
     // dat het ontbreekt (§61.1). Ook op de eerste dag, dus zonder geschiedenis.
+    //
+    // Of het een link is hangt sinds §62 af van wat de installateur invulde;
+    // de zin staat er hoe dan ook.
     const { tab } = await openOverview();
-    const kaart = historyCard(tab);
 
-    assert.match(visibleText(kaart), /Energie-dashboard van Home Assistant/);
-    assert.equal(kaart.querySelector('a')?.getAttribute('href'), '/energy');
+    assert.match(visibleText(historyCard(tab)), /Energie-dashboard van Home Assistant/);
   });
 
   it('belooft nergens wat het opgeleverd heeft', async () => {
@@ -295,5 +296,37 @@ describe('hoe het gisteren ging', () => {
     const tekst = visibleText(historyCard(tab));
 
     assert.doesNotMatch(tekst, /bespaar|opgeleverd|€/i);
+  });
+});
+
+describe('navigatie uit het paneel (SPEC.md §62)', () => {
+  function huis(overrides = {}) {
+    return sampleConfig({
+      home: { ...sampleConfig().home, ...overrides },
+    });
+  }
+
+  it('maakt er een link van zodra de installateur een adres invulde', async () => {
+    const { tab } = await openOverview(
+      fakeHass({ config: huis({ energy_dashboard_path: '/energie-thuis' }) }),
+    );
+    const kaart = card(tab, 'Hoe het gisteren ging');
+
+    assert.equal(kaart.querySelector('a')?.getAttribute('href'), '/energie-thuis');
+    assert.match(visibleText(kaart), /het Energie-dashboard van Home Assistant/);
+  });
+
+  it('houdt de zin en laat de link weg als er niets is ingevuld', async () => {
+    // **De zin bestaat om te zeggen wáár het antwoord woont** (§62.4), niet om
+    // te navigeren. Zonder adres zou een link naar een leeg dashboard kunnen
+    // sturen, of een bewoner op een wandtablet achterlaten waar hij vastzit.
+    const { tab } = await openOverview();
+    const kaart = card(tab, 'Hoe het gisteren ging');
+
+    assert.match(visibleText(kaart), /het Energie-dashboard van Home Assistant/);
+    assert.equal(
+      [...kaart.querySelectorAll('a')].filter((a) => isVisible(a)).length,
+      0,
+    );
   });
 });

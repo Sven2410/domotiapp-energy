@@ -30,7 +30,7 @@ import { logbookTab } from './tabs/logbook.js';
 import { overviewTab } from './tabs/overview.js';
 import { preferencesTab } from './tabs/preferences.js';
 
-const VERSION = '0.25.0';
+const VERSION = '0.26.0';
 
 /**
  * Tab order as SPEC.md §33.6 lists it.
@@ -171,13 +171,42 @@ const STYLES = `
 
   /* --- Tab bar: hairline and text, no boxed-in buttons ------------------- */
 
+  /* De terugknop en de tabbalk delen een regel, met de knop links (SPEC.md
+     §62.5). De tabbalk wikkelt op smalle schermen naar een tweede regel; de
+     knop blijft daarbij op de eerste staan, want hij is de weg naar buiten en
+     niet een van de bestemmingen binnen. */
+  .tab-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    max-width: 760px;
+    margin: 0 auto var(--domotiapp-space-section);
+    border-bottom: 1px solid var(--divider-color);
+  }
+  .back-button {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 44px;
+    padding: 0 12px 0 0;
+    margin-right: 4px;
+    border: none;
+    border-right: 1px solid var(--divider-color);
+    background: none;
+    color: var(--secondary-text-color);
+    font: inherit;
+    cursor: pointer;
+    flex: 0 0 auto;
+  }
+  .back-button:hover {
+    color: var(--primary-text-color);
+  }
   .tabs {
     display: flex;
     flex-wrap: wrap;
     gap: 4px 24px;
-    max-width: 760px;
-    margin: 0 auto var(--domotiapp-space-section);
-    border-bottom: 1px solid var(--divider-color);
+    flex: 1 1 auto;
+    border-bottom: none;
   }
   .tab-button {
     display: flex;
@@ -680,6 +709,12 @@ const STYLES = `
      * looking for the one his installer named over the phone, and the labels
      * alone would have saved the same width at that cost.
      */
+    .tab-row {
+      gap: 8px;
+    }
+    .back-button span {
+      display: none;
+    }
     .tabs {
       gap: 0 10px;
       margin-bottom: var(--domotiapp-space-row);
@@ -843,6 +878,31 @@ class DomotiAppEnergyPanel extends HTMLElement {
     }
   }
 
+  /**
+   * Verlaat het paneel naar het dashboard van deze klant.
+   *
+   * Via de router van Home Assistant en niet met `location.href`, zodat de
+   * frontend niet opnieuw geladen wordt — op een wandtablet is dat het verschil
+   * tussen een sprong en een seconde wachten.
+   *
+   * Het onbeantwoorde deel van §22 telt hier ook: een tabblad met onopgeslagen
+   * wijzigingen mag eerst iets vragen, en pas daarna gaan we weg.
+   */
+  _goBack() {
+    if (!this._backPath) {
+      return;
+    }
+    const leave = () => {
+      history.pushState(null, '', this._backPath);
+      window.dispatchEvent(new CustomEvent('location-changed'));
+    };
+    const active = this._tabs.get(this._activeTab);
+    if (active?.canLeave && !active.canLeave(leave)) {
+      return;
+    }
+    leave();
+  }
+
   // --- Building -------------------------------------------------------------
 
   _buildDOM() {
@@ -858,6 +918,27 @@ class DomotiAppEnergyPanel extends HTMLElement {
     setVisible(this._banner, false);
     this._bannerText = el('span');
     this._banner.appendChild(this._bannerText);
+
+    // **De weg terug, en hij staat buiten de tabbalk** (SPEC.md §62.5). Het
+    // paneel verlaten is geen tabblad, dus het hoort niet tussen de tabbladen;
+    // onderaan zou betekenen dat een bewoner moet scrollen om weg te kunnen.
+    // Linksboven is waar een terugaffordantie op touch verwacht wordt.
+    //
+    // Hij verschijnt alleen wanneer de installateur een bestemming heeft
+    // ingevuld. Leeg betekent "hier mag niet genavigeerd worden" — op een
+    // woning met een zijbalk is de knop overbodig, en `/lovelace/0` gokken zou
+    // een uitspraak zijn over een inrichting die wij niet kennen (§62.3).
+    this._backButton = el('button', {
+      class: 'back-button',
+      type: 'button',
+      attrs: { 'aria-label': 'Terug naar het dashboard' },
+    });
+    this._backButton.append(
+      el('ha-icon', { attrs: { icon: 'mdi:arrow-left', 'aria-hidden': 'true' } }),
+      el('span', { text: 'Dashboard' }),
+    );
+    setVisible(this._backButton, false);
+    onTap(this._backButton, () => this._goBack());
 
     this._tabBar = el('nav', {
       class: 'tabs',
@@ -890,7 +971,7 @@ class DomotiAppEnergyPanel extends HTMLElement {
 
     this._layout = el('div', { class: 'layout' }, [
       this._banner,
-      this._tabBar,
+      el('div', { class: 'tab-row' }, [this._backButton, this._tabBar]),
       this._tabHost,
     ]);
 
@@ -984,6 +1065,11 @@ class DomotiAppEnergyPanel extends HTMLElement {
         .get(tab.id)
         .setAttribute('aria-selected', String(tab.id === this._activeTab));
     }
+
+    // De knop volgt de configuratie: een ingevuld adres is de toestemming om
+    // te navigeren, en tegelijk de bestemming (SPEC.md §62.3).
+    this._backPath = state.config?.home?.home_dashboard_path || null;
+    setVisible(this._backButton, Boolean(this._backPath));
 
     const active = this._ensureTab(this._activeTab);
     for (const [id, instance] of this._tabs) {
