@@ -29,6 +29,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import (
     CALLBACK_TYPE,
+    CoreState,
     Event,
     EventStateChangedData,
     HomeAssistant,
@@ -39,6 +40,7 @@ from homeassistant.helpers.event import (
     async_track_state_change_event,
     async_track_time_interval,
 )
+from homeassistant.helpers.start import async_at_started
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
@@ -206,6 +208,14 @@ class EnergyCoordinator(DataUpdateCoordinator[CoachResult]):
         entry.async_on_unload(
             self._store.add_change_listener(self._handle_configuration_change)
         )
+        # **De eerste echte meting, zodra alles er is** (SPEC.md §63). De
+        # berekening bij het opzetten blijft staan — anders hebben onze
+        # entiteiten uren geen waarde bij een HA die traag start — maar zij
+        # leest een wereld die nog niet af is. `async_at_started` vuurt
+        # onmiddellijk wanneer HA al draait, dus een herlaadbeurt van de
+        # integratie kost hooguit één extra berekening; de debouncer vangt de
+        # samenloop met de eerste.
+        entry.async_on_unload(async_at_started(self.hass, self._handle_started))
         entry.async_on_unload(
             async_track_time_interval(
                 self.hass,
@@ -268,6 +278,16 @@ class EnergyCoordinator(DataUpdateCoordinator[CoachResult]):
         _LOGGER.debug("Linked entity %s changed", event.data["entity_id"])
         await self.async_request_refresh()
 
+    async def _handle_started(self, _hass: HomeAssistant) -> None:
+        """Herbereken zodra Home Assistant klaar is met opstarten.
+
+        Dit is het moment waarop de bronnen van een klant bestaan. De uitkomst
+        van de berekening tijdens het opzetten is per definitie voorlopig: zij
+        leest wat er op dat moment toevallig al geregistreerd was.
+        """
+        _LOGGER.debug("Home Assistant has started: recalculating")
+        await self.async_request_refresh()
+
     async def _handle_safety_interval(self, _now: object) -> None:
         """Recalculate periodically, so a stale reading cannot go unnoticed.
 
@@ -321,7 +341,29 @@ class EnergyCoordinator(DataUpdateCoordinator[CoachResult]):
             # moment the quarantined rows become functionally relevant — the
             # engine is about to skip them.
             snapshot = self._calculator.build_snapshot(config)
-            await self._store.async_report_invalid_rows(snapshot.source_failures)
+            # **Niet melden zolang Home Assistant nog opstart** (SPEC.md §63).
+            #
+            # Wij worden opgezet zodra onze eigen afhankelijkheden klaar zijn,
+            # en dat kan ruim vóór de integraties die de bronnen leveren: HA
+            # zet ze parallel op. Op dat moment bestaan `sensor.solaredge_…` en
+            # zijn buren nog niet, dus alle bronnen falen tegelijk — feitelijk
+            # juist en praktisch onzin, want een seconde later bestaan ze wel.
+            #
+            # Een klant kreeg zo bij elke update drie waarschuwingen die niets
+            # betekenden, en dat is erger dan ruis: het leert hem
+            # waarschuwingen negeren (dezelfde afweging als §43.2).
+            #
+            # Een leesfout is dus pas een uitspraak over de installatie zodra
+            # de installatie er helemaal is. Tot dan alleen naar het debuglog,
+            # waar hij een ontwikkelaar wel iets zegt.
+            if self.hass.state is CoreState.running:
+                await self._store.async_report_invalid_rows(snapshot.source_failures)
+            elif snapshot.source_failures:
+                _LOGGER.debug(
+                    "Not reporting %s source failures yet: Home Assistant is %s",
+                    len(snapshot.source_failures),
+                    self.hass.state,
+                )
 
             # Before the advice, because a programme that has just finished
             # must not produce one more "start nu" (SPEC.md §32.6).

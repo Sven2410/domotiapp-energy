@@ -21,8 +21,8 @@ from unittest.mock import patch
 import pytest
 from freezegun.api import FrozenDateTimeFactory
 from homeassistant.config_entries import ConfigEntryState
-from homeassistant.const import STATE_UNAVAILABLE
-from homeassistant.core import HomeAssistant
+from homeassistant.const import EVENT_HOMEASSISTANT_STARTED, STATE_UNAVAILABLE
+from homeassistant.core import CoreState, HomeAssistant
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import (
     MockConfigEntry,
@@ -979,3 +979,95 @@ async def test_the_observation_never_reaches_the_storage(
     stored = hass_storage[STORAGE_KEY]["data"]
     assert "device_power_lowest_w" not in str(stored)
     assert entry.runtime_data.store.config.revision == revision
+
+
+# --- Opstarten (SPEC.md §63) ------------------------------------------------
+
+
+async def test_a_source_that_does_not_exist_yet_is_not_reported(
+    hass: HomeAssistant, hass_storage: dict[str, Any]
+) -> None:
+    """De race die elke klant bij elke update trof.
+
+    Wij worden opgezet zodra onze eigen afhankelijkheden klaar zijn, en Home
+    Assistant zet integraties parallel op — dus de bronnen van een klant kunnen
+    er nog niet zijn. Alle drie tegelijk falen is dan feitelijk juist en
+    praktisch onzin: een seconde later bestaan ze wel.
+
+    Drie waarschuwingen bij elke herstart leren een klant waarschuwingen
+    negeren, en dat kost meer dan de melding oplevert (dezelfde afweging als
+    §43.2).
+    """
+    hass.set_state(CoreState.starting)
+    # De entiteit bestaat met opzet niet: dat is precies de toestand tijdens
+    # het opstarten.
+    entry = await _setup(
+        hass,
+        hass_storage,
+        StoredConfiguration(home=HomeProfile(), sources=[_grid_source()]),
+    )
+
+    logs = entry.runtime_data.store.config.logs
+    assert not [
+        entry for entry in logs if entry.event_type == LOG_EVENT_SOURCE_UNAVAILABLE
+    ]
+
+
+async def test_the_same_source_is_reported_once_home_assistant_has_started(
+    hass: HomeAssistant, hass_storage: dict[str, Any]
+) -> None:
+    """De andere helft: zwijgen tijdens het opstarten is geen zwijgen.
+
+    Zodra de installatie er helemaal is, is een bron die niet gelezen kan
+    worden wél een uitspraak over die installatie — en dan hoort zij in het
+    logboek, zoals altijd.
+    """
+    hass.set_state(CoreState.starting)
+    entry = await _setup(
+        hass,
+        hass_storage,
+        StoredConfiguration(home=HomeProfile(), sources=[_grid_source()]),
+    )
+
+    hass.set_state(CoreState.running)
+    hass.bus.async_fire(EVENT_HOMEASSISTANT_STARTED)
+    await hass.async_block_till_done()
+    await _flush_debouncer(hass)
+
+    logs = entry.runtime_data.store.config.logs
+    assert [entry for entry in logs if entry.event_type == LOG_EVENT_SOURCE_UNAVAILABLE]
+
+
+async def test_the_start_signal_recalculates_by_itself(
+    hass: HomeAssistant, hass_storage: dict[str, Any]
+) -> None:
+    """**Het punt van de hele reparatie** (SPEC.md §63), en zonder hulp.
+
+    De state-listener vangt het gewone geval al: verschijnt een bron later, dan
+    is dat een statuswijziging en herberekenen we. Maar dan hangt het herstel af
+    van de vraag óf er nog iets verandert — en een prijsbron die per uur schrijft
+    verandert een uur lang niet. Tot dan zou de klant een oordeel over zijn
+    installatie krijgen dat op een halve wereld rust.
+
+    Deze test verandert daarom met opzet **niets** aan de entiteiten: alleen het
+    startsignaal van Home Assistant, en dat moet op zichzelf genoeg zijn.
+    """
+    hass.set_state(CoreState.starting)
+    hass.states.async_set(GRID_ENTITY, "1150", {"unit_of_measurement": UNIT_W})
+    entry = await _setup(
+        hass,
+        hass_storage,
+        StoredConfiguration(
+            home=HomeProfile(main_fuse_a=25, max_grid_power_w=5750.0),
+            sources=[_grid_source()],
+        ),
+    )
+    coordinator = entry.runtime_data.coordinator
+    eerste = coordinator.data.generated_at
+
+    hass.set_state(CoreState.running)
+    hass.bus.async_fire(EVENT_HOMEASSISTANT_STARTED)
+    await hass.async_block_till_done()
+    await _flush_debouncer(hass)
+
+    assert coordinator.data.generated_at > eerste
