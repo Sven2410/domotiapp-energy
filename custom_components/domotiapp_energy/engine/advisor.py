@@ -119,19 +119,34 @@ class _Context:
     # sees the same answer, and so the date is evaluated in the Home Assistant
     # timezone like every other time decision (SPEC.md §16).
     net_metering: bool
+    # The appliances a resident has said there is work in, already filtered for
+    # expiry by the runtime store (SPEC.md §32.5). An id in here is a *known*
+    # yes; an id absent from it is only a no for an appliance that needs a flag
+    # at all — see :func:`_advise_deadline`.
+    #
+    # Passed in rather than read here, because a flag is neither configuration
+    # nor a measurement: it lives in its own store, and this engine stays a
+    # pure function of what it is handed.
+    ready_device_ids: frozenset[str] = frozenset()
 
 
 class Advisor:
     """Produces the advice list for one set of metrics."""
 
     def generate(
-        self, config: StoredConfiguration, metrics: EnergyMetrics
+        self,
+        config: StoredConfiguration,
+        metrics: EnergyMetrics,
+        ready_device_ids: frozenset[str] = frozenset(),
     ) -> list[AdviceItem]:
         """Return the advice for this moment, most important first.
 
         The list is already filtered and truncated: advice below the savings
         threshold is dropped, and no more than ``max_advice_count`` items come
         back. The first item is the primary advice.
+
+        ``ready_device_ids`` defaults to empty, which is the truthful answer for
+        a caller that has no runtime store: nobody has said anything is loaded.
         """
         now = dt_util.now()
         context = _Context(
@@ -141,6 +156,7 @@ class Advisor:
             weekday=now.weekday(),
             quiet_hours=_in_quiet_hours(config, now.hour, now.minute),
             net_metering=config.home.is_net_metering_active(now.date()),
+            ready_device_ids=ready_device_ids,
         )
 
         advice = [
@@ -731,15 +747,24 @@ def _advise_deadline(context: _Context) -> list[AdviceItem]:
     moment the deadline actually becomes unreachable rather than at the moment
     it formally expires.
 
-    **The phrasing is conditional and the severity is info, both deliberately
-    against the table in §32.3.** That table specifies "Start [naam] nu om
-    [tijd] te halen" as a warning, and it is right — once phase 3 knows there is
-    work to do. Phase 2 has no such signal: `needs_ready_flag` is the next
-    phase, so this rule cannot tell a full dishwasher from an empty one. A
-    nightly warning claiming urgency about an empty machine is the kind of
-    message that teaches people to ignore warnings, so the sentence states the
-    condition it actually knows — *if* you want it finished by then — and the
-    severity waits for the flag that makes the claim true.
+    **Two sentences and two severities, and which one you get depends on
+    whether anything here knows there is work to do** (SPEC.md §43.2, undone in
+    phase 3 as that section demanded).
+
+    Phase 2 had no such signal at all, so every deadline got the conditional
+    sentence and `info`: a nightly warning claiming urgency about a machine
+    that may be empty is what teaches people to ignore warnings. The ready flag
+    is that signal for the three appliances somebody loads by hand, and where
+    it is set the sentence may finally claim what §32.3 wrote down.
+
+    **An appliance that needs no flag keeps the phase-2 wording**, and that is
+    the reading of §43.2 that survives contact with a charger. Taken literally
+    — "within the window *and* the flag is set" — an `ev_charger` would fall
+    silent forever, because its flag defaults to false by type on the grounds
+    that it can see a car for itself (§32.5). It cannot see it yet: nothing
+    reads `status_entity` until §34. Until then "is there work" is genuinely
+    unknown for those appliances, and an unknown answer gets the sentence that
+    states its own condition rather than silence or a claim.
     """
     now = context.now_minutes
     lead = URGENCY_LEAD_MINUTES
@@ -762,15 +787,20 @@ def _advise_deadline(context: _Context) -> list[AdviceItem]:
         if not is_within_window(now, (latest - lead) % MINUTES_PER_DAY, latest):
             continue
 
+        has_work = device.id in context.ready_device_ids
+        # **Silence, not a softer sentence, when the flag says there is nothing
+        # to do.** For an appliance that needs a flag the answer is known and it
+        # is "no": the resident has not said it is loaded. Urging him to start
+        # an empty dishwasher is the advice §32.5 exists to prevent.
+        if device.needs_ready_flag and not has_work:
+            continue
+
         items.append(
             AdviceItem(
                 id=f"{REASON_DEADLINE_APPROACHING}:{device.id}",
                 title="Bijna te laat om op tijd klaar te zijn",
-                message=(
-                    f"Start {device.name} nu als hij om {device.ready_before} "
-                    f"klaar moet zijn."
-                ),
-                severity=SEVERITY_INFO,
+                message=_deadline_message(device, has_work),
+                severity=SEVERITY_WARNING if has_work else SEVERITY_INFO,
                 reason_code=REASON_DEADLINE_APPROACHING,
                 confidence=CONFIDENCE_HIGH,
                 related_device_ids=[device.id],
@@ -781,6 +811,20 @@ def _advise_deadline(context: _Context) -> list[AdviceItem]:
         )
 
     return items
+
+
+def _deadline_message(device: DeviceProfile, has_work: bool) -> str:
+    """Say to start now, claiming only what is known (SPEC.md §43.2).
+
+    Two whole sentences, never one with a clause switched on and off (§26). The
+    difference between them is not emphasis but evidence: with the flag set
+    somebody has said there is work in this machine, so "om 07:00 te halen" is
+    a fact about a run that is going to happen. Without it, the deadline is
+    real and the run is a supposition, and the sentence says so.
+    """
+    if has_work:
+        return f"Start {device.name} nu om {device.ready_before} te halen."
+    return f"Start {device.name} nu als hij om {device.ready_before} klaar moet zijn."
 
 
 def _advise_price(context: _Context) -> list[AdviceItem]:

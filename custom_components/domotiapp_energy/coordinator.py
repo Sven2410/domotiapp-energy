@@ -61,6 +61,7 @@ from .engine.calculator import Calculator
 from .engine.hysteresis import Latch, PrimaryAdviceGate
 from .engine.providers import CoachProvider
 from .models import CoachResult, EnergyMetrics, StoredConfiguration
+from .runtime_store import RuntimeStore
 from .storage import ConfigurationStore
 
 _LOGGER = logging.getLogger(__name__)
@@ -82,6 +83,10 @@ class DomotiAppEnergyData:
     """
 
     store: ConfigurationStore
+    # The ready flags, in their own store because they are state and not
+    # configuration: they clear themselves, and a write there would raise the
+    # revision under an open form (SPEC.md §32.5).
+    runtime: RuntimeStore
     coordinator: EnergyCoordinator
 
 
@@ -131,6 +136,7 @@ class EnergyCoordinator(DataUpdateCoordinator[CoachResult]):
         hass: HomeAssistant,
         entry: ConfigEntry,
         store: ConfigurationStore,
+        runtime: RuntimeStore,
         provider: CoachProvider,
     ) -> None:
         """Set up the coordinator without subscribing to anything yet."""
@@ -149,6 +155,7 @@ class EnergyCoordinator(DataUpdateCoordinator[CoachResult]):
         )
         self._entry = entry
         self._store = store
+        self._runtime = runtime
         self._calculator = Calculator(hass)
         self._advisor = Advisor()
         self._provider = provider
@@ -277,6 +284,17 @@ class EnergyCoordinator(DataUpdateCoordinator[CoachResult]):
         self._surplus_latch.reset()
         self._advice_gate.reset()
         self.async_rebuild_state_listener()
+        # A flag whose appliance was deleted can never be cleared by the
+        # resident and never expires anywhere anyone can see, so it would sit
+        # in the file forever. Scheduled rather than awaited: this callback runs
+        # while the configuration store holds its write lock.
+        self._entry.async_create_background_task(
+            self.hass,
+            self._runtime.async_forget(
+                {device.id for device in self._store.config.devices}
+            ),
+            name=f"{DOMAIN} forget ready flags of deleted appliances",
+        )
         self._entry.async_create_background_task(
             self.hass,
             self.async_request_refresh(),
@@ -302,7 +320,9 @@ class EnergyCoordinator(DataUpdateCoordinator[CoachResult]):
             self._apply_hysteresis(config, metrics)
             self._track_lowest_running_power(config, metrics)
 
-            advice = self._advisor.generate(config, metrics)
+            advice = self._advisor.generate(
+                config, metrics, self._ready_device_ids(config)
+            )
             advice = self._advice_gate.choose(
                 advice, now=dt_util.utcnow(), rank_of=advice_rank
             )
@@ -339,6 +359,19 @@ class EnergyCoordinator(DataUpdateCoordinator[CoachResult]):
             metrics.solar_surplus_w,
             on_at=minimum,
             off_at=minimum * SOLAR_SURPLUS_RELEASE_FRACTION,
+        )
+
+    def _ready_device_ids(self, config: StoredConfiguration) -> frozenset[str]:
+        """Return the appliances a resident has said there is work in.
+
+        Expiry is asked here, at the moment the advice is made, rather than
+        cleared by a timer somewhere: a flag stops meaning anything at a
+        moment, not when something happens to run (SPEC.md §32.6). That also
+        makes a restart harmless — a flag set yesterday evening is simply no
+        longer true this evening, whether or not Home Assistant was up.
+        """
+        return frozenset(
+            device.id for device in config.devices if self._runtime.is_ready(device)
         )
 
     def _track_lowest_running_power(

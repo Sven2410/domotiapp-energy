@@ -21,8 +21,11 @@ from custom_components.domotiapp_energy.const import (
     CONTRACT_TYPE_FIXED,
     CONTROL_MONITOR_ONLY,
     DEVICE_TYPE_DISHWASHER,
+    DEVICE_TYPE_DRYER,
     DEVICE_TYPE_EV_CHARGER,
     DEVICE_TYPE_GENERIC_MONITOR,
+    DEVICE_TYPE_HEAT_PUMP,
+    DEVICE_TYPE_WASHING_MACHINE,
     EXPLANATION_KEYS,
     MEASUREMENT_MINUTES_LEFT,
     MEASUREMENT_PRICE,
@@ -2024,6 +2027,14 @@ def _deadline_home(**device_overrides: Any) -> StoredConfiguration:
     return config
 
 
+# **The other half of every situation below** (SPEC.md §32.5). A dishwasher
+# needs a ready flag by type, so "there is a deadline" and "there is anything in
+# it" are two different facts and the tests have to state both. Passing this
+# says the resident has said it is loaded; leaving it out describes an empty
+# machine, and those tests assert silence on purpose.
+LOADED = frozenset({"d1"})
+
+
 async def test_the_urgency_advice_fires_inside_its_window(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
@@ -2031,12 +2042,10 @@ async def test_the_urgency_advice_fires_inside_its_window(
     freezer.move_to(local(3, 45))
     config = _deadline_home()
 
-    advice = Advisor().generate(config, _metrics(config))
+    advice = Advisor().generate(config, _metrics(config), LOADED)
 
     assert advice[0].reason_code == REASON_DEADLINE_APPROACHING
-    assert advice[0].message == (
-        "Start Vaatwasser nu als hij om 07:00 klaar moet zijn."
-    )
+    assert advice[0].message == "Start Vaatwasser nu om 07:00 te halen."
     # Fifteen minutes left before starting later makes 07:00 impossible.
     assert advice[0].measurements[MEASUREMENT_MINUTES_LEFT] == 15
 
@@ -2049,7 +2058,7 @@ async def test_the_urgency_advice_is_silent_before_its_window(
     config = _deadline_home()
 
     assert REASON_DEADLINE_APPROACHING not in _codes(
-        Advisor().generate(config, _metrics(config))
+        Advisor().generate(config, _metrics(config), LOADED)
     )
 
 
@@ -2067,7 +2076,7 @@ async def test_the_urgency_advice_stops_once_the_deadline_is_unreachable(
     config = _deadline_home()
 
     assert REASON_DEADLINE_APPROACHING not in _codes(
-        Advisor().generate(config, _metrics(config))
+        Advisor().generate(config, _metrics(config), LOADED)
     )
 
 
@@ -2079,7 +2088,7 @@ async def test_the_urgency_advice_stays_silent_after_the_deadline(
     config = _deadline_home()
 
     assert REASON_DEADLINE_APPROACHING not in _codes(
-        Advisor().generate(config, _metrics(config))
+        Advisor().generate(config, _metrics(config), LOADED)
     )
 
 
@@ -2091,7 +2100,7 @@ async def test_no_duration_means_no_deadline_advice(
     config = _deadline_home(duration_minutes=None)
 
     assert REASON_DEADLINE_APPROACHING not in _codes(
-        Advisor().generate(config, _metrics(config))
+        Advisor().generate(config, _metrics(config), LOADED)
     )
 
 
@@ -2107,7 +2116,7 @@ async def test_the_urgency_window_may_cross_midnight(
     config = _deadline_home(ready_before="01:00")
 
     assert REASON_DEADLINE_APPROACHING in _codes(
-        Advisor().generate(config, _metrics(config))
+        Advisor().generate(config, _metrics(config), LOADED)
     )
 
 
@@ -2119,7 +2128,7 @@ async def test_the_deadline_outranks_the_sun(
     config = _deadline_home()
     metrics = _metrics(config, solar_surplus_w=1500.0)
 
-    advice = Advisor().generate(config, metrics)
+    advice = Advisor().generate(config, metrics, LOADED)
 
     assert advice[0].reason_code == REASON_DEADLINE_APPROACHING
 
@@ -2137,7 +2146,7 @@ async def test_one_appliance_gets_one_advice(
     config = _deadline_home()
     metrics = _metrics(config, solar_surplus_w=1500.0)
 
-    codes = _codes(Advisor().generate(config, metrics))
+    codes = _codes(Advisor().generate(config, metrics, LOADED))
 
     assert codes.count(REASON_DEADLINE_APPROACHING) == 1
     assert REASON_SOLAR_SURPLUS_AVAILABLE not in codes
@@ -2153,7 +2162,7 @@ async def test_advice_about_the_house_is_never_deduplicated(
     config.home.low_price_threshold_eur_kwh = 0.15
     metrics = _metrics(config, current_price_eur_kwh=0.10)
 
-    codes = _codes(Advisor().generate(config, metrics))
+    codes = _codes(Advisor().generate(config, metrics, LOADED))
 
     assert REASON_DEADLINE_APPROACHING in codes
     assert REASON_LOW_ENERGY_PRICE in codes
@@ -2605,3 +2614,81 @@ async def test_a_charger_is_sent_to_the_energy_field_its_form_shows(
 
     assert "energie per laadsessie" in item.message
     assert "cyclus" not in item.message
+
+
+# --- The ready flag (SPEC.md §32.5, §43.2) ----------------------------------
+
+
+async def test_an_empty_dishwasher_is_never_urged_to_start(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """The advice §32.5 exists to prevent.
+
+    03:45 is inside the urgency window and the deadline is real, but nobody has
+    said there is anything in the machine. Urging a resident out of bed for an
+    empty dishwasher is exactly the advice that costs more trust than it earns.
+    """
+    freezer.move_to(local(3, 45))
+    config = _deadline_home()
+
+    assert REASON_DEADLINE_APPROACHING not in _codes(
+        Advisor().generate(config, _metrics(config))
+    )
+
+
+async def test_a_loaded_dishwasher_gets_the_sentence_that_claims_it(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """SPEC.md §43.2, undone: with the flag the claim is finally true.
+
+    Phase 2 said *"als hij om 07:00 klaar moet zijn"* at `info`, because it
+    could not tell a full machine from an empty one. The flag is that signal,
+    so the sentence may state the deadline and the severity may be a warning.
+    """
+    freezer.move_to(local(3, 45))
+    config = _deadline_home()
+
+    advice = Advisor().generate(config, _metrics(config), LOADED)
+
+    assert advice[0].message == "Start Vaatwasser nu om 07:00 te halen."
+    assert advice[0].severity == SEVERITY_WARNING
+
+
+async def test_an_appliance_without_a_flag_keeps_the_conditional_sentence(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """The reading of §43.2 that survives contact with a charger.
+
+    Taken literally — "within the window *and* the flag is set" — a charger
+    would fall silent forever: its flag is false by type because it can see a
+    car for itself (§32.5), and nothing reads `status_entity` until §34. So for
+    an appliance that needs no flag the answer is genuinely unknown, and the
+    sentence goes on stating its own condition rather than claiming or hiding.
+    """
+    freezer.move_to(local(3, 45))
+    config = _deadline_home(device_type=DEVICE_TYPE_EV_CHARGER, name="Laadpaal")
+    charger = config.devices[0]
+
+    advice = Advisor().generate(config, _metrics(config))
+
+    assert charger.needs_ready_flag is False
+    assert advice[0].message == "Start Laadpaal nu als hij om 07:00 klaar moet zijn."
+    assert advice[0].severity == SEVERITY_INFO
+
+
+async def test_the_flag_is_what_the_type_says_it_is(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """Three appliances are loaded by hand; the rest are not (SPEC.md §32.5)."""
+    assert _device(device_type=DEVICE_TYPE_DISHWASHER).needs_ready_flag is True
+    assert _device(device_type=DEVICE_TYPE_WASHING_MACHINE).needs_ready_flag is True
+    assert _device(device_type=DEVICE_TYPE_DRYER).needs_ready_flag is True
+    assert _device(device_type=DEVICE_TYPE_EV_CHARGER).needs_ready_flag is False
+    assert _device(device_type=DEVICE_TYPE_HEAT_PUMP).needs_ready_flag is False
+    # And an installer may still switch it on where it is genuinely needed.
+    assert (
+        _device(
+            device_type=DEVICE_TYPE_EV_CHARGER, needs_ready_flag=True
+        ).needs_ready_flag
+        is True
+    )

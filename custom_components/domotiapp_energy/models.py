@@ -80,6 +80,7 @@ from .const import (
     MINUTES_PER_DAY,
     MINUTES_PER_HOUR,
     MODULATING_BY_DEFAULT_DEVICE_TYPES,
+    NEEDS_READY_FLAG_BY_DEFAULT_DEVICE_TYPES,
     NOISY_BY_DEFAULT_DEVICE_TYPES,
     NOMINAL_VOLTAGE_PER_PHASE,
     PERCENT_MAX,
@@ -986,6 +987,11 @@ class DeviceProfile:
     # A property of the hardware with a sensible default per type, like the two
     # above it: an Easee modulates, an older charger may not.
     can_modulate: bool = TYPE_DEFAULT
+    # Whether somebody has to say "there is work in it" before this appliance
+    # can be urged to start (SPEC.md §32.5). True by type for the three that
+    # are loaded by hand; false for everything else, including a charger, which
+    # can see for itself whether a car is attached.
+    needs_ready_flag: bool = TYPE_DEFAULT
     # The least it can draw and still do anything. **No default, ever**: six
     # amps is the standard floor for a charger, but that is 1380 W on one phase
     # and 4140 W on three, so it follows the connection and not the type.
@@ -1008,6 +1014,10 @@ class DeviceProfile:
             self.is_noisy = self.device_type in NOISY_BY_DEFAULT_DEVICE_TYPES
         if self.can_modulate is TYPE_DEFAULT:
             self.can_modulate = self.device_type in MODULATING_BY_DEFAULT_DEVICE_TYPES
+        if self.needs_ready_flag is TYPE_DEFAULT:
+            self.needs_ready_flag = (
+                self.device_type in NEEDS_READY_FLAG_BY_DEFAULT_DEVICE_TYPES
+            )
         if self.is_flexible is TYPE_DEFAULT:
             self.is_flexible = (
                 self.device_type not in INFLEXIBLE_BY_DEFAULT_DEVICE_TYPES
@@ -1040,6 +1050,7 @@ class DeviceProfile:
             "is_noisy": self.is_noisy,
             "is_flexible": self.is_flexible,
             "can_modulate": self.can_modulate,
+            "needs_ready_flag": self.needs_ready_flag,
             "min_power_w": self.min_power_w,
             "capabilities": list(self.capabilities),
             "control_forbidden": self.control_forbidden,
@@ -1098,6 +1109,7 @@ class DeviceProfile:
             is_noisy=_as_bool(data.get("is_noisy"), TYPE_DEFAULT),
             is_flexible=_as_bool(data.get("is_flexible"), TYPE_DEFAULT),
             can_modulate=_as_bool(data.get("can_modulate"), TYPE_DEFAULT),
+            needs_ready_flag=_as_bool(data.get("needs_ready_flag"), TYPE_DEFAULT),
             min_power_w=_as_optional_float(data.get("min_power_w"), minimum=0.0),
             capabilities=_as_capabilities(data.get("capabilities")),
             control_forbidden=_as_bool(data.get("control_forbidden"), False),

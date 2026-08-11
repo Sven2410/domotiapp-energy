@@ -20,84 +20,86 @@ is dit de invoer en niet de uitvoer.
 - **Engelse regels staan apart**, onderaan. Een Engelse zin in dit product is
   een fout tenzij zij een identifier is: de UI is Nederlands (CLAUDE.md).
 
-**874 Nederlandse teksten**, waarvan 119 op meer dan één plek. En 9 Engelse regels om na te lopen.
+**877 Nederlandse teksten**, waarvan 119 op meer dan één plek. En 10 Engelse regels om na te lopen.
 
 
 ## `custom_components/domotiapp_energy/const.py`
 
 | Tekst | Waar | Regel |
 |---|---|---|
-| Attention | module | 1027 |
-| Current advice | module | 1024 |
-| Data quality | module | 1021 |
+| Attention | module | 1079 |
+| Current advice | module | 1076 |
+| Data quality | module | 1073 |
 | DomotiApp | module | 21 |
 | DomotiApp Energy ↔ | module | 18 |
 | DomotiApp Energy ↔ | module | 39 |
 | Energy Coach | module | 22 |
-| Grid power | module | 1022 |
-| Home consumption | module | 1026 |
+| Grid power | module | 1074 |
+| Home consumption | module | 1078 |
 | Mijn woning | module | 29 |
-| Peak risk | module | 1025 |
-| Score | module | 1020 |
-| Solar surplus | module | 1023 |
+| Peak risk | module | 1077 |
+| Score | module | 1072 |
+| Solar surplus | module | 1075 |
 
 ## `custom_components/domotiapp_energy/coordinator.py`
 
 | Tekst | Waar | Regel |
 |---|---|---|
-| Advies opnieuw berekend | async_recalculate | 243 |
-| De woning {...} {...}% van het ingestelde maximale netvermogen. Dat ligt op of boven de waarschuwingsgrens van {...}%. | _async_log_findings | 427 |
-| Er is {...} W zonneoverschot beschikbaar. | _async_log_findings | 446 |
-| Het energieadvies is opnieuw berekend. | async_recalculate | 244 |
-| Linked entity %s changed | _handle_tracked_state_event | 254 |
-| No linked entities to watch | async_rebuild_state_listener | 217 |
-| Piekbelasting gesignaleerd | _async_log_findings | 426 |
-| Watching %s linked entities | async_rebuild_state_listener | 220 |
-| Zonneoverschot beschikbaar ↔ | _async_log_findings | 445 |
-| levert terug met ↔ | _async_log_findings | 423 |
-| {...} recalculate after configuration change | _handle_configuration_change | 283 |
-| {...} safety recalculation | async_start | 200 |
+| Advies opnieuw berekend | async_recalculate | 250 |
+| De woning {...} {...}% van het ingestelde maximale netvermogen. Dat ligt op of boven de waarschuwingsgrens van {...}%. | _async_log_findings | 460 |
+| Er is {...} W zonneoverschot beschikbaar. | _async_log_findings | 479 |
+| Het energieadvies is opnieuw berekend. | async_recalculate | 251 |
+| Linked entity %s changed | _handle_tracked_state_event | 261 |
+| No linked entities to watch | async_rebuild_state_listener | 224 |
+| Piekbelasting gesignaleerd | _async_log_findings | 459 |
+| Watching %s linked entities | async_rebuild_state_listener | 227 |
+| Zonneoverschot beschikbaar ↔ | _async_log_findings | 478 |
+| levert terug met ↔ | _async_log_findings | 456 |
+| {...} forget ready flags of deleted appliances | _handle_configuration_change | 296 |
+| {...} recalculate after configuration change | _handle_configuration_change | 301 |
+| {...} safety recalculation | async_start | 207 |
 
 ## `custom_components/domotiapp_energy/engine/advisor.py`
 
 | Tekst | Waar | Regel |
 |---|---|---|
-| Aanvullende gegevens nodig | _advise_missing_data | 211 |
-| Bijna te laat om op tijd klaar te zijn | _advise_deadline | 768 |
-| De actuele energieprijs is relatief hoog. Stel flexibel energiegebruik indien mogelijk uit. | _advise_price | 832 |
-| De actuele energieprijs is relatief laag. Flexibele apparaten kunnen nu voordeliger worden gebruikt. | _advise_price | 814 |
-| De actuele energiesituatie vraagt momenteel niet om een aanpassing. | _neutral_advice | 850 |
-| De teruglevering ligt dicht bij de ingestelde maximale woningbelasting. Schakel indien mogelijk juist extra verbruikers in om de belasting te verlagen. Let op: terugleveren levert je op dit moment meer op dan zelf verbruiken, dus dit kost je geld. | _advise_peak_risk | 257 |
-| De teruglevering ligt dicht bij de ingestelde maximale woningbelasting. Schakel indien mogelijk juist extra verbruikers in om het overschot zelf te benutten. | _advise_peak_risk | 251 |
-| Dit is een gunstig moment om {...} te gebruiken. ↔ | _surplus_message | 487 |
-| Dit is een gunstig moment om {...} te gebruiken. ↔ | _modulating_surplus_message | 553 |
-| Er is momenteel zonneoverschot beschikbaar, maar {...} mag tussen {...} en {...} niet draaien. Dat is bij de installatie zo ingesteld en staat los van je stille uren. Na {...} kan het weer. | _no_run_message | 435 |
-| Er is momenteel zonneoverschot beschikbaar. ↔ | _surplus_message | 486 |
-| Er is momenteel zonneoverschot beschikbaar. ↔ | _modulating_surplus_message | 552 |
-| Er is momenteel zonneoverschot beschikbaar. {...} maakt geluid en het zijn stille uren tot {...}. Wacht daarmee tot na {...}, of pas de stille uren aan bij Mijn voorkeuren. | _quiet_hours_message | 411 |
-| Geen actie nodig | _neutral_advice | 849 |
-| Het actuele netvermogen ligt dicht bij de ingestelde maximale woningbelasting. Stel extra grootverbruikers indien mogelijk uit. | _advise_peak_risk | 280 |
-| Hoeveel dit oplevert is niet te berekenen zolang de terugleverkosten niet zijn ingevuld — vul ze in bij Woning, of zet ze op 0 als deze aansluiting ze niet betaalt. | _why_no_margin | 711 |
-| Hoeveel dit oplevert is niet te berekenen zolang de terugleverprijsbron geen bruikbare waarde geeft. Controleer die bij Energiebronnen. | _why_no_margin | 700 |
-| Hoeveel dit oplevert is niet te berekenen zolang er geen actuele prijs is. Controleer de prijsbron bij Energiebronnen. | _why_no_margin | 685 |
-| Hoeveel dit oplevert is niet te berekenen zonder de energie per cyclus van {...} — vul die in bij Apparaten. | _why_no_amount | 622 |
-| Hoeveel dit oplevert is niet te berekenen zonder de energie per laadsessie van {...} — vul die in bij Apparaten. | _why_no_amount | 618 |
-| Hoeveel dit oplevert is niet te berekenen zonder de terugleververgoeding — vul die in bij Woning, of koppel een terugleverprijsbron. | _why_no_margin | 705 |
-| Hoeveel dit oplevert is niet te berekenen zonder het vaste leveringstarief — vul dat in bij Woning. | _why_no_margin | 689 |
-| Hoeveel dit per uur oplevert is niet te berekenen zonder het maximale laadvermogen van {...} — vul dat in bij Apparaten. | _why_no_rate | 652 |
-| Hoeveel dit per uur oplevert is niet te berekenen zonder het nominale vermogen van {...} — vul dat in bij Apparaten. | _why_no_rate | 657 |
-| Hoge energieprijs | _advise_price | 830 |
-| Lage energieprijs | _advise_price | 812 |
-| Netbelasting hoog | _advise_peak_risk | 278 |
-| Start {...} nu als hij om {...} klaar moet zijn. | _advise_deadline | 770 |
-| Teruglevering hoog | _advise_peak_risk | 266 |
-| Vul de ontbrekende energiegegevens aan om een betrouwbaar advies te ontvangen. | _advise_missing_data | 213 |
-| Zonneoverschot beschikbaar ↔ | _advise_solar_surplus | 366 |
-| Zonneoverschot, maar dit apparaat mag nu niet draaien | _advise_solar_surplus | 335 |
-| Zonneoverschot, maar het zijn stille uren | _advise_solar_surplus | 350 |
-| {...} Zelf verbruiken levert nu echter minder op dan terugleveren: {...} nu gebruiken kost naar schatting {...} ten opzichte van het overschot terugleveren. Wachten tot de terugleververgoeding lager ligt is voordeliger. | _surplus_message | 504 |
-| {...} {...} Het levert op dit moment niets extra op, maar het kost ook niets. | _surplus_message | 522 |
-| {...} {...} Zolang de salderingsregeling geldt levert dit geen extra besparing op, maar het overschot zelf gebruiken blijft de meest efficiënte keuze. | _surplus_message | 515 |
+| Aanvullende gegevens nodig | _advise_missing_data | 227 |
+| Bijna te laat om op tijd klaar te zijn | _advise_deadline | 801 |
+| De actuele energieprijs is relatief hoog. Stel flexibel energiegebruik indien mogelijk uit. | _advise_price | 876 |
+| De actuele energieprijs is relatief laag. Flexibele apparaten kunnen nu voordeliger worden gebruikt. | _advise_price | 858 |
+| De actuele energiesituatie vraagt momenteel niet om een aanpassing. | _neutral_advice | 894 |
+| De teruglevering ligt dicht bij de ingestelde maximale woningbelasting. Schakel indien mogelijk juist extra verbruikers in om de belasting te verlagen. Let op: terugleveren levert je op dit moment meer op dan zelf verbruiken, dus dit kost je geld. | _advise_peak_risk | 273 |
+| De teruglevering ligt dicht bij de ingestelde maximale woningbelasting. Schakel indien mogelijk juist extra verbruikers in om het overschot zelf te benutten. | _advise_peak_risk | 267 |
+| Dit is een gunstig moment om {...} te gebruiken. ↔ | _surplus_message | 503 |
+| Dit is een gunstig moment om {...} te gebruiken. ↔ | _modulating_surplus_message | 569 |
+| Er is momenteel zonneoverschot beschikbaar, maar {...} mag tussen {...} en {...} niet draaien. Dat is bij de installatie zo ingesteld en staat los van je stille uren. Na {...} kan het weer. | _no_run_message | 451 |
+| Er is momenteel zonneoverschot beschikbaar. ↔ | _surplus_message | 502 |
+| Er is momenteel zonneoverschot beschikbaar. ↔ | _modulating_surplus_message | 568 |
+| Er is momenteel zonneoverschot beschikbaar. {...} maakt geluid en het zijn stille uren tot {...}. Wacht daarmee tot na {...}, of pas de stille uren aan bij Mijn voorkeuren. | _quiet_hours_message | 427 |
+| Geen actie nodig | _neutral_advice | 893 |
+| Het actuele netvermogen ligt dicht bij de ingestelde maximale woningbelasting. Stel extra grootverbruikers indien mogelijk uit. | _advise_peak_risk | 296 |
+| Hoeveel dit oplevert is niet te berekenen zolang de terugleverkosten niet zijn ingevuld — vul ze in bij Woning, of zet ze op 0 als deze aansluiting ze niet betaalt. | _why_no_margin | 727 |
+| Hoeveel dit oplevert is niet te berekenen zolang de terugleverprijsbron geen bruikbare waarde geeft. Controleer die bij Energiebronnen. | _why_no_margin | 716 |
+| Hoeveel dit oplevert is niet te berekenen zolang er geen actuele prijs is. Controleer de prijsbron bij Energiebronnen. | _why_no_margin | 701 |
+| Hoeveel dit oplevert is niet te berekenen zonder de energie per cyclus van {...} — vul die in bij Apparaten. | _why_no_amount | 638 |
+| Hoeveel dit oplevert is niet te berekenen zonder de energie per laadsessie van {...} — vul die in bij Apparaten. | _why_no_amount | 634 |
+| Hoeveel dit oplevert is niet te berekenen zonder de terugleververgoeding — vul die in bij Woning, of koppel een terugleverprijsbron. | _why_no_margin | 721 |
+| Hoeveel dit oplevert is niet te berekenen zonder het vaste leveringstarief — vul dat in bij Woning. | _why_no_margin | 705 |
+| Hoeveel dit per uur oplevert is niet te berekenen zonder het maximale laadvermogen van {...} — vul dat in bij Apparaten. | _why_no_rate | 668 |
+| Hoeveel dit per uur oplevert is niet te berekenen zonder het nominale vermogen van {...} — vul dat in bij Apparaten. | _why_no_rate | 673 |
+| Hoge energieprijs | _advise_price | 874 |
+| Lage energieprijs | _advise_price | 856 |
+| Netbelasting hoog | _advise_peak_risk | 294 |
+| Start {...} nu als hij om {...} klaar moet zijn. | _deadline_message | 827 |
+| Start {...} nu om {...} te halen. | _deadline_message | 826 |
+| Teruglevering hoog | _advise_peak_risk | 282 |
+| Vul de ontbrekende energiegegevens aan om een betrouwbaar advies te ontvangen. | _advise_missing_data | 229 |
+| Zonneoverschot beschikbaar ↔ | _advise_solar_surplus | 382 |
+| Zonneoverschot, maar dit apparaat mag nu niet draaien | _advise_solar_surplus | 351 |
+| Zonneoverschot, maar het zijn stille uren | _advise_solar_surplus | 366 |
+| {...} Zelf verbruiken levert nu echter minder op dan terugleveren: {...} nu gebruiken kost naar schatting {...} ten opzichte van het overschot terugleveren. Wachten tot de terugleververgoeding lager ligt is voordeliger. | _surplus_message | 520 |
+| {...} {...} Het levert op dit moment niets extra op, maar het kost ook niets. | _surplus_message | 538 |
+| {...} {...} Zolang de salderingsregeling geldt levert dit geen extra besparing op, maar het overschot zelf gebruiken blijft de meest efficiënte keuze. | _surplus_message | 531 |
 
 ## `custom_components/domotiapp_energy/engine/calculator.py`
 
@@ -979,50 +981,52 @@ is dit de invoer en niet de uitvoer.
 
 | Tekst | Waar | Regel |
 |---|---|---|
-| Apparaat gewijzigd | handle_devices_update | 857 |
-| Apparaat toegevoegd ↔ | handle_devices_create | 819 |
-| Apparaat verwijderd ↔ | handle_devices_delete | 893 |
-| Bediening gewijzigd | handle_devices_set_operation | 966 |
-| De adviesvoorkeuren zijn bijgewerkt. | handle_preferences_update | 660 |
-| De configuratie is inmiddels gewijzigd. De actuele gegevens zijn opnieuw opgehaald. | _send_revision_conflict | 334 |
-| De configuratie kon niet worden opgeslagen. | _async_write | 314 |
-| De energiebron '{...}' is bijgewerkt. | handle_sources_update | 742 |
-| De energiebron '{...}' is toegevoegd. | handle_sources_create | 704 |
-| De energiebron '{...}' is verwijderd. | handle_sources_delete | 778 |
-| De instellingen van '{...}' zijn bijgewerkt. | handle_devices_set_operation | 967 |
-| De woninggegevens zijn bijgewerkt. | handle_home_update | 598 |
-| Deze energiebron ↔ | _apply | 733 |
-| Deze energiebron ↔ | _apply | 768 |
-| Dit apparaat ↔ | _apply | 849 |
-| Dit apparaat ↔ | _apply | 884 |
-| Dit apparaat ↔ | _apply | 930 |
-| Dit apparaat heeft een onbekend type en is buiten werking gesteld. | _apply | 940 |
-| DomotiApp Energy is niet geladen. | _async_get_data | 280 |
-| Energiebron gewijzigd | handle_sources_update | 741 |
-| Energiebron toegevoegd | handle_sources_create | 703 |
-| Energiebron verwijderd | handle_sources_delete | 777 |
-| Er bestaat al een apparaat met dit ID. | _apply | 809 |
-| Er bestaat al een energiebron met dit ID. | _apply | 693 |
-| Gebruik een datum in de vorm jjjj-mm-dd, of null als deze woning niet saldeert. | _iso_date | 184 |
-| Gebruik een datum in de vorm jjjj-mm-dd, of null. | _iso_date | 188 |
-| Het apparaat '{...}' is bijgewerkt. | handle_devices_update | 858 |
-| Het apparaat '{...}' is toegevoegd. | handle_devices_create | 820 |
-| Het apparaat '{...}' is verwijderd. | handle_devices_delete | 894 |
-| Voorkeuren gewijzigd | handle_preferences_update | 659 |
-| Woninggegevens gewijzigd | handle_home_update | 597 |
-| {...} bestaat niet. | _find | 427 |
+| Apparaat gewijzigd | handle_devices_update | 860 |
+| Apparaat toegevoegd ↔ | handle_devices_create | 822 |
+| Apparaat verwijderd ↔ | handle_devices_delete | 896 |
+| Bediening gewijzigd | handle_devices_set_operation | 969 |
+| De adviesvoorkeuren zijn bijgewerkt. | handle_preferences_update | 663 |
+| De configuratie is inmiddels gewijzigd. De actuele gegevens zijn opnieuw opgehaald. | _send_revision_conflict | 337 |
+| De configuratie kon niet worden opgeslagen. | _async_write | 317 |
+| De energiebron '{...}' is bijgewerkt. | handle_sources_update | 745 |
+| De energiebron '{...}' is toegevoegd. | handle_sources_create | 707 |
+| De energiebron '{...}' is verwijderd. | handle_sources_delete | 781 |
+| De instellingen van '{...}' zijn bijgewerkt. | handle_devices_set_operation | 970 |
+| De woninggegevens zijn bijgewerkt. | handle_home_update | 601 |
+| Deze energiebron ↔ | _apply | 736 |
+| Deze energiebron ↔ | _apply | 771 |
+| Dit apparaat ↔ | _apply | 852 |
+| Dit apparaat ↔ | _apply | 887 |
+| Dit apparaat ↔ | _apply | 933 |
+| Dit apparaat bestaat niet. | handle_devices_set_ready | 1004 |
+| Dit apparaat heeft een onbekend type en is buiten werking gesteld. | _apply | 943 |
+| DomotiApp Energy is niet geladen. | _async_get_data | 283 |
+| Energiebron gewijzigd | handle_sources_update | 744 |
+| Energiebron toegevoegd | handle_sources_create | 706 |
+| Energiebron verwijderd | handle_sources_delete | 780 |
+| Er bestaat al een apparaat met dit ID. | _apply | 812 |
+| Er bestaat al een energiebron met dit ID. | _apply | 696 |
+| Gebruik een datum in de vorm jjjj-mm-dd, of null als deze woning niet saldeert. | _iso_date | 186 |
+| Gebruik een datum in de vorm jjjj-mm-dd, of null. | _iso_date | 190 |
+| Het apparaat '{...}' is bijgewerkt. | handle_devices_update | 861 |
+| Het apparaat '{...}' is toegevoegd. | handle_devices_create | 823 |
+| Het apparaat '{...}' is verwijderd. | handle_devices_delete | 897 |
+| Voorkeuren gewijzigd | handle_preferences_update | 662 |
+| Woninggegevens gewijzigd | handle_home_update | 600 |
+| {...} bestaat niet. | _find | 430 |
 
 
 ## Engelse regels
 
 | Tekst | Waar |
 |---|---|
-| DomotiApp Energy has been removed. The energy configuration is kept in %s under .storage/, so adding the integration again restores it. Delete that file to start over | `custom_components/domotiapp_energy/__init__.py:134` |
+| DomotiApp Energy has been removed. The energy configuration is kept in %s under .storage/, so adding the integration again restores it. Delete that file to start over | `custom_components/domotiapp_energy/__init__.py:145` |
 | No alternative coach provider is available in this release | `custom_components/domotiapp_energy/engine/providers.py:250` |
+| Dropping ready flag for %r: %r is not a timestamp | `custom_components/domotiapp_energy/runtime_store.py:81` |
 | Migrating %s from schema %s.%s to %s.%s | `custom_components/domotiapp_energy/storage.py:102` |
 | Configuration accessed before it was loaded | `custom_components/domotiapp_energy/storage.py:149` |
 | Could not read %s, continuing with a default configuration | `custom_components/domotiapp_energy/storage.py:197` |
 | Energy source %s has unrecognised type %r and is disabled | `custom_components/domotiapp_energy/storage.py:257` |
 | Device profile %s has unrecognised type %r and is disabled | `custom_components/domotiapp_energy/storage.py:276` |
 | Energy source %s could not be read from %s (%s) | `custom_components/domotiapp_energy/storage.py:327` |
-| Could not persist a configuration change | `custom_components/domotiapp_energy/websocket_api.py:310` |
+| Could not persist a configuration change | `custom_components/domotiapp_energy/websocket_api.py:313` |

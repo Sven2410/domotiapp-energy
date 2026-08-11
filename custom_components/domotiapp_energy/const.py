@@ -67,6 +67,33 @@ STORAGE_VERSION: Final = 1
 STORAGE_MINOR_VERSION: Final = 1
 SCHEMA_VERSION: Final = 1
 
+# A second store, for state that is not configuration (SPEC.md §32.5).
+#
+# **The reason is hard.** The ready flag goes out by itself the moment a
+# programme finishes. In the configuration that would be a write nobody asked
+# for, and every write there raises the revision — after which the
+# `expected_revision` of an open form expires and a valid save is refused
+# (§13). A dishwasher that runs twice a day would do that twice a day. That is
+# exactly the defect round A opened the forms on.
+#
+# So this store has **no revision** and falls outside `expected_revision`. It
+# is written straight through: two to four writes per appliance per day are
+# negligible and do not need the deferred flush the logbook required.
+RUNTIME_STORAGE_KEY: Final = f"{DOMAIN}.runtime"
+RUNTIME_STORAGE_VERSION: Final = 1
+
+# How long "he is full" stays true without anything happening (SPEC.md §32.6).
+#
+# Not a claim about the machine but a shelf life on the *intention*: this
+# morning's "it is full" says nothing about tomorrow. Without it a forgotten
+# flag feeds the urgency advice forever.
+#
+# **Not midnight**, which is precisely wrong for a home that fills the
+# dishwasher late in the evening — the flag would expire before the machine
+# ever ran. Twenty-four hours also says something more useful: if nothing has
+# happened for a day, something else is wrong.
+READY_FLAG_MAX_AGE_HOURS: Final = 24
+
 MAX_LOG_ENTRIES: Final = 200
 # Identical consecutive events within this window bump a counter instead of
 # adding a new log line (anti-spam rule, SPEC.md §8 "Logboek").
@@ -102,6 +129,10 @@ WS_DEVICES_CREATE: Final = f"{DOMAIN}/devices/create"
 WS_DEVICES_UPDATE: Final = f"{DOMAIN}/devices/update"
 WS_DEVICES_DELETE: Final = f"{DOMAIN}/devices/delete"
 WS_DEVICES_SET_OPERATION: Final = f"{DOMAIN}/devices/set_operation"
+# Operation, not configuration, and therefore **not** require_admin: this is
+# the resident saying the machine is full, not the installer setting something
+# up. Same treatment as coach/recalculate (SPEC.md §14 and §32.5).
+WS_DEVICES_SET_READY: Final = f"{DOMAIN}/devices/set_ready"
 WS_PREFERENCES_GET: Final = f"{DOMAIN}/preferences/get"
 WS_PREFERENCES_UPDATE: Final = f"{DOMAIN}/preferences/update"
 WS_COACH_GET: Final = f"{DOMAIN}/coach/get"
@@ -544,6 +575,27 @@ INFLEXIBLE_BY_DEFAULT_DEVICE_TYPES: Final[frozenset[str]] = frozenset(
     {
         DEVICE_TYPE_GENERIC_MONITOR,
         DEVICE_TYPE_HEAT_PUMP,
+    }
+)
+
+# Device types that default to needs_ready_flag = true (SPEC.md §32.5).
+#
+# A dishwasher starts when the door closes, and nothing here knows whether
+# there is anything in it. Without that signal the coach eventually advises
+# running an empty machine — advice a resident finds absurd, and that costs
+# more trust than no advice at all.
+#
+# **A charger is deliberately not in this set.** It reports through its status
+# entity whether a car is attached, and a flag somebody has to flip by hand
+# while the system can see the answer is exactly the busywork this round is
+# trying to remove. For a charger without a status link that is a pity; the fix
+# is a link, not a button. It stays a *type* default, so an installer can
+# switch it on where it is genuinely needed.
+NEEDS_READY_FLAG_BY_DEFAULT_DEVICE_TYPES: Final[frozenset[str]] = frozenset(
+    {
+        DEVICE_TYPE_DISHWASHER,
+        DEVICE_TYPE_WASHING_MACHINE,
+        DEVICE_TYPE_DRYER,
     }
 )
 

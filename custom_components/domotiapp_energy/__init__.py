@@ -39,6 +39,7 @@ from .coordinator import (
 from .engine.providers import RuleBasedCoachProvider
 from .models import StoredConfiguration
 from .panel import async_register_panel, async_remove_panel
+from .runtime_store import RuntimeStore
 from .storage import ConfigurationStore
 from .websocket_api import async_register_commands
 
@@ -73,8 +74,18 @@ async def async_setup_entry(
     await store.async_load()
     await _async_sync_home_name(store, entry)
 
-    coordinator = EnergyCoordinator(hass, entry, store, RuleBasedCoachProvider())
-    entry.runtime_data = DomotiAppEnergyData(store=store, coordinator=coordinator)
+    # The ready flags, in their own store and read before the first
+    # calculation: a flag set last night still decides tonight's advice, so
+    # loading it late would produce one silent cycle after every restart.
+    runtime = RuntimeStore(hass)
+    await runtime.async_load()
+
+    coordinator = EnergyCoordinator(
+        hass, entry, store, runtime, RuleBasedCoachProvider()
+    )
+    entry.runtime_data = DomotiAppEnergyData(
+        store=store, runtime=runtime, coordinator=coordinator
+    )
 
     coordinator.async_start()
     await coordinator.async_config_entry_first_refresh()

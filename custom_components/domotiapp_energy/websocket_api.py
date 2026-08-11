@@ -81,6 +81,7 @@ from .const import (
     WS_DEVICES_DELETE,
     WS_DEVICES_LIST,
     WS_DEVICES_SET_OPERATION,
+    WS_DEVICES_SET_READY,
     WS_DEVICES_UPDATE,
     WS_HOME_UPDATE,
     WS_LOGS_CLEAR,
@@ -100,6 +101,7 @@ from .models import (
     StoredConfiguration,
     UserPreferences,
 )
+from .runtime_store import expires_at
 from .storage import RevisionConflictError, StorageError
 from .validators import (
     ValidationIssue,
@@ -251,6 +253,7 @@ def async_register_commands(hass: HomeAssistant) -> None:
         handle_devices_update,
         handle_devices_delete,
         handle_devices_set_operation,
+        handle_devices_set_ready,
         handle_preferences_get,
         handle_preferences_update,
         handle_coach_get,
@@ -968,6 +971,53 @@ async def handle_devices_set_operation(
         subject=device.id,
     )
     _send_write_result(connection, msg, revision, device.to_dict(), data.store.config)
+
+
+# **Not require_admin, and not carrying a revision either** (SPEC.md §32.5).
+#
+# Two things separate this from every write above it. It is the resident saying
+# his machine is full, which is operation and not configuration — the same
+# reasoning that leaves `coach/recalculate` open. And the flag lives in the
+# runtime store, which has no revision at all: demanding an
+# `expected_revision` here would tie a button a resident presses in the kitchen
+# to a form an installer happens to have open.
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): WS_DEVICES_SET_READY,
+        vol.Required("device_id"): str,
+        vol.Required("ready"): bool,
+    }
+)
+@websocket_api.async_response
+async def handle_devices_set_ready(
+    hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Say that an appliance has work in it, or that it no longer has."""
+    if (data := _async_get_data(hass, connection, msg)) is None:
+        return
+
+    device_id = msg["device_id"]
+    device = next(
+        (row for row in data.store.config.devices if row.id == device_id), None
+    )
+    if device is None:
+        connection.send_error(msg["id"], ERR_NOT_FOUND, "Dit apparaat bestaat niet.")
+        return
+
+    set_at = await data.runtime.async_set_ready(device_id, msg["ready"])
+    # The expiry travels back with the answer, because the panel promises to
+    # name it (SPEC.md §32.6): a resident should not be surprised by a flag
+    # that quietly stopped counting.
+    connection.send_result(
+        msg["id"],
+        {
+            "device_id": device_id,
+            "ready": set_at is not None,
+            "set_at": set_at.isoformat() if set_at else None,
+            "expires_at": (expires_at(device, set_at).isoformat() if set_at else None),
+        },
+    )
+    await data.coordinator.async_recalculate()
 
 
 @websocket_api.require_admin
