@@ -6102,8 +6102,12 @@ tak verderop.
 
 **Waarom het nu geen blokkade is:** onder de salderingsregeling kán de marge niet
 negatief worden — daar blijft alleen de vermeden terugleverkost over, en die is nul
-of positief. Dit is dus een probleem vanaf 2027, en alleen voor een woning met een
-modulerend apparaat.
+of positief.
+
+**En waarom het niet vergeten mag worden:** het wordt bereikbaar zodra de saldering
+vervalt. Vanaf dat moment is een terugleververgoeding boven de importprijs een
+gewone contractvorm, en dan zegt het paneel *"dit is een gunstig moment"* boven een
+bedrag dat de klant geld kost. Dit hoort dus in de tekstronde, niet erna.
 
 **Wat het nodig heeft:** een eigen hele zin met het tarief per uur, niet de
 per-cyclus-zin met een andere eenheid erin (§26 en §56.4: de twee bedragen mogen
@@ -6516,10 +6520,20 @@ De drie vormen die overwogen zijn, en waarom geen van drie het draagt:
    per keer, en dit product maakt geen klusjes die het niet kan afdwingen. Het is
    bovendien de vorm die het dichtst bij aansturing komt.
 
-**Wat wél kan zonder het model te verbouwen:** de waarneming uit §59.3 maakt de
-grens zíchtbaar in plaats van stil. Bij twee auto's toont de rij simpelweg het
-laagste gemeten vermogen van beide, en dat is een eerlijk antwoord op de vraag
-die eronder ligt.
+**Wat wél kan zonder het model te verbouwen, en dit is de vorm die hier gekozen
+is** (besluit Sven, 2026-08-11):
+
+> **De waarneming maakt de grens zichtbaar in plaats van stil.**
+
+Dat is precies wat er bij de laadtoestand ook gekozen is: het model stopt, en op
+de plek waar het stopt staat een feit in plaats van niets. Bij twee auto's toont
+de rij simpelweg het laagste gemeten vermogen van beide — een eerlijk antwoord op
+de vraag die eronder ligt, en het maakt zichtbaar dát er twee zijn, want het
+gemeten minimum ligt dan onder wat er is ingevuld.
+
+Een grens die je kunt zien is iets anders dan een grens die zwijgt. Het model
+draagt de tweede auto niet, maar de bewoner hoeft niet meer te raden waaróm zijn
+advies uitblijft.
 
 ### 59.6 Gedrag zonder meting, en bij afwijking
 
@@ -6530,18 +6544,33 @@ die eronder ligt.
   voor het advies; de meting staat ernaast als feit. Dat is dezelfde keuze als
   §53: corrigeren is aan de mens, melden is aan het product.
 
-### 59.7 Wat ik zou bouwen, in volgorde
+### 59.7 Wat er gebouwd is
 
-1. **§57.3 bijwerken** — gedaan in 0.21.0: beide gevallen komen voor, alleen de
-   meting geeft antwoord, en de terugrekening van fasen uit een meting bij een
-   hogere stand staat erbij.
-2. **De hulptekst bij `min_power_w`** — nu zegt hij *"1380 W op één fase en 4140
-   W op drie"* zonder te zeggen dat het aan de **auto** hangt en niet aan de
-   paal, en zonder te zeggen dat meten de enige route is. Dat is één tekst en
-   het is de goedkoopste helft van de winst.
-3. **De voorrekening in het formulier** (§59.4) — geen opgeslagen veld.
-4. **Het laagst gemeten laadvermogen op de apparaatrij** (§59.3) — de enige
-   echte gedragswijziging, en de enige die de stille fout zichtbaar maakt.
+**Alle vier akkoord bevonden door Sven op 2026-08-11, gebouwd in 0.22.0.**
 
-Punt 2 en 3 zijn tekst en formulier; punt 4 raakt de coordinator en verdient
-zijn eigen ronde met browserverificatie.
+1. **§57.3 bijgewerkt** (0.21.0) — beide gevallen komen voor, alleen de meting
+   geeft antwoord, en de terugrekening van fasen uit een meting bij een hogere
+   stand staat erbij.
+2. **De hulptekst bij `min_power_w`** zegt nu dat het getal aan de **auto** hangt
+   en niet aan de paal, dat allebei de gevallen voorkomen, en dat meten met de
+   auto aan de paal de enige route is. Geen van beide getallen wordt aangeprezen
+   als het waarschijnlijke.
+3. **De voorrekening** leest de ingevulde waarde terug in ampère: *"4140 W is
+   ongeveer 18,0 A op één fase, of 6,0 A op drie fasen."* Ampère is het getal dat
+   een paal toont, dus dit is meteen de controle — 18 A op één fase is geen stand
+   die een paal heeft. **Geen opgeslagen fasenveld** (§59.4).
+4. **Het laagst gemeten vermogen op de apparaatrij**, voor apparaten met *Kan op
+   deelvermogen draaien* aan: *"Nu: 0 W · laagste meting sinds herstart: 4140 W"*.
+
+#### Drie keuzes in punt 4 die niet vanzelf spreken
+
+- **"Draaien" is `DEVICE_RUNNING_MIN_POWER_W`**, dezelfde drempel waarmee het
+  Overzicht apparaten telt. Een eigen drempel hier zou een tweede antwoord zijn
+  op *"staat dit ding aan"*, en die twee lopen uiteen.
+- **De waarneming hoort bij de sensor waar zij vandaan komt.** Koppelt de
+  installateur een andere vermogensentiteit, dan begint de meting opnieuw;
+  anders zou de ene sensor de meting van de andere dragen.
+- **"Sinds herstart" staat in de zin**, want dat is de hele waarheid over dit
+  getal: het leeft in het geheugen van de coordinator en gaat nooit naar de
+  opslag (CLAUDE.md regel 9). Zonder die woorden leest het als *"het laagste dat
+  deze paal kan"* — een uitspraak over de hardware die dit product niet mag doen.

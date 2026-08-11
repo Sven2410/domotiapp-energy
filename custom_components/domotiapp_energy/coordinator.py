@@ -42,6 +42,8 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    DEVICE_LINK_POWER,
+    DEVICE_RUNNING_MIN_POWER_W,
     DOMAIN,
     LOG_EVENT_ADVICE_RECALCULATED,
     LOG_EVENT_PEAK_RISK_DETECTED,
@@ -163,6 +165,17 @@ class EnergyCoordinator(DataUpdateCoordinator[CoachResult]):
         self._advice_gate = PrimaryAdviceGate(
             minimum_seconds=PRIMARY_ADVICE_MIN_DWELL_SECONDS
         )
+        # The lowest running power seen per appliance, with the entity it was
+        # seen on (SPEC.md §59.3). Memory only, by the same rule as the latches
+        # above — derived state never goes back to the store — so it starts
+        # empty after a restart and the panel says so.
+        #
+        # **Not reset by a configuration change**, and that is the difference
+        # with the latches: they hold an answer against a threshold somebody
+        # just edited, while this holds a measurement, which no edit can make
+        # untrue. The one edit that does invalidate it is a different power
+        # entity, and that is why the entity travels with the figure.
+        self._lowest_running_power: dict[str, tuple[str, float]] = {}
 
     @callback
     def async_start(self) -> None:
@@ -287,6 +300,7 @@ class EnergyCoordinator(DataUpdateCoordinator[CoachResult]):
 
             metrics = self._calculator.derive_metrics(config, snapshot)
             self._apply_hysteresis(config, metrics)
+            self._track_lowest_running_power(config, metrics)
 
             advice = self._advisor.generate(config, metrics)
             advice = self._advice_gate.choose(
@@ -326,6 +340,71 @@ class EnergyCoordinator(DataUpdateCoordinator[CoachResult]):
             on_at=minimum,
             off_at=minimum * SOLAR_SURPLUS_RELEASE_FRACTION,
         )
+
+    def _track_lowest_running_power(
+        self, config: StoredConfiguration, metrics: EnergyMetrics
+    ) -> None:
+        """Remember the lowest power each appliance has been seen running at.
+
+        **The only figure that can show an entered `min_power_w` is too high**
+        (SPEC.md §59.3). That number describes the car rather than the charger,
+        so nobody can reason it out — Sven filled in 1380 W for a car that turned
+        out to charge on three phases, and nothing in the product could say so.
+
+        The reverse of the derivation that was considered and rejected: dividing
+        power by current would give the number of phases, but only if the current
+        sensor reports per phase rather than the sum, and nothing in the value
+        says which it is. That assumption fails silently in the harmful
+        direction. This comparison needs no second entity at all.
+
+        It catches exactly one of the two mistakes, and it is the invisible one:
+
+        - **too high** — the advice never comes, and silence looks like "no
+          surplus". A charging power below the entered minimum proves it.
+        - **too low** — the charger draws *more* than the minimum, which is
+          indistinguishable from a car charging harder on purpose. Not caught,
+          and no measurement can.
+
+        Running is `DEVICE_RUNNING_MIN_POWER_W`, the same floor the overview
+        counts appliances by. A second threshold here would be a second answer
+        to "is this thing on" (SPEC.md §59.3), and the two would drift.
+
+        **The assumption this rests on, per SPEC.md §47:** the linked sensor
+        measures what the appliance draws, and reports near zero when it is
+        idle. That holds for a charger's own charging-power sensor, which is the
+        one §57.3 sends the installer to; a sensor that also carries the box's
+        standby will show that standby here. Which is why this figure is only
+        ever *shown*, never compared against and never used in a sum.
+        """
+        remembered: dict[str, tuple[str, float]] = {}
+        for device in config.devices:
+            entity_id = device.entity_links.get(DEVICE_LINK_POWER)
+            if not entity_id:
+                continue
+
+            seen = self._lowest_running_power.get(device.id)
+            # A different entity is a different measurement. Carrying the old
+            # figure over would attribute one sensor's reading to another, and
+            # nothing downstream could tell. Deleting an appliance and its
+            # observation together is the same rule one step further.
+            if seen is not None and seen[0] != entity_id:
+                seen = None
+
+            power = metrics.device_power_w.get(device.id)
+            if (
+                power is not None
+                and power >= DEVICE_RUNNING_MIN_POWER_W
+                and (seen is None or power < seen[1])
+            ):
+                seen = (entity_id, power)
+
+            if seen is not None:
+                remembered[device.id] = seen
+
+        self._lowest_running_power = remembered
+        metrics.device_power_lowest_w = {
+            device_id: power for device_id, (_entity, power) in remembered.items()
+        }
 
     async def _async_log_findings(
         self, config: StoredConfiguration, metrics: EnergyMetrics

@@ -1,5 +1,45 @@
 # Changelog
 
+## 0.22.0
+
+Het laadminimum hangt aan de auto, niet aan de paal. SPEC §59.
+
+Aanleiding is een meting op echte hardware: 7 A leverde 4765 W, wat 3 × 230 × 7 is. De auto
+laadt dus driefasig en het minimum is ~4140 W — niet de 1380 W die op grond van "eenfasig
+laden" was ingevuld. Een factor drie, en niets in het product kon het zeggen.
+
+### Toegevoegd
+
+- **Het laagst gemeten vermogen staat op de apparaatrij**, voor apparaten met *Kan op
+  deelvermogen draaien* aan: *"Nu: 0 W · laagste meting sinds herstart: 4140 W"*. Dat is het
+  enige getal dat kan laten zien dat een ingevuld minimum te hoog staat — en dat is precies
+  de helft van die fout die je niet kunt zien, want te hoog betekent dat het advies wegblijft
+  en stilte lijkt op "geen overschot".
+
+  Het gebruikt de vermogenssensor die er al is. De omgekeerde route — het aantal fasen
+  uitrekenen uit vermogen en stroom — is bewust afgewezen: dat werkt alleen als de
+  stroomsensor per fase meldt in plaats van de som, en niets in de waarde verraadt welke van
+  de twee het is. Die aanname faalt stil in de schadelijke richting.
+
+  *"Sinds herstart"* staat er niet voor niets bij: de waarneming leeft in het geheugen en gaat
+  nooit naar de opslag. Zonder die woorden zou het lezen als *"het laagste dat deze paal kan"*,
+  en dat is een uitspraak over de hardware die dit product niet kan doen.
+
+### Gewijzigd
+
+- **De hulptekst bij *Minimaal vermogen* zegt nu waar het getal vandaan komt.** Hij noemde
+  1380 W en 4140 W zonder erbij te zeggen dat de keuze tussen die twee aan de **auto** hangt
+  en niet aan de paal — en SPEC §57.3 ging een stap verder door eenfasig het waarschijnlijke
+  geval te noemen. Beide getallen staan er nog, geen van beide wordt aangeprezen, en er staat
+  bij dat meten met de auto aan de paal de enige manier is om het zeker te weten.
+
+- **Het formulier rekent de ingevulde waarde terug naar ampère:** *"4140 W is ongeveer 18,0 A
+  op één fase, of 6,0 A op drie fasen."* Ampère is het getal dat een laadpaal toont, dus dit
+  is meteen de controle — 18 A op één fase is geen stand die een paal heeft.
+
+  Er komt geen opgeslagen fasenveld: dat zou een waarde zijn die de motor nooit leest, en het
+  zou naast `phases` bij Woning komen te staan, dat dezelfde vraag over het huís beantwoordt.
+
 ## 0.21.0
 
 Het uurbedrag dat niet te berekenen is, legt nu uit waarom. SPEC §56.8.

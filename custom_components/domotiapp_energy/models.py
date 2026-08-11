@@ -1830,6 +1830,18 @@ class EnergyMetrics:
     # Appliances whose linked power entity could not be used (SPEC.md §57).
     # Refusing in silence made a wrong link look like no link at all.
     device_power_unusable: list[str] = field(default_factory=list)
+    # The lowest power at which each appliance has been seen *running* since
+    # Home Assistant last started, for the ones that link a power entity
+    # (SPEC.md §59.3). A measurement and nothing else: it is never compared,
+    # never corrected against and never written to storage — the coordinator
+    # keeps it in memory, because derived state does not go back to the store.
+    #
+    # It exists for `min_power_w`, which describes the *car* and not the
+    # charger, so nobody can reason it out. This is the only figure in the
+    # product that can show an entered minimum is too high, which is the half
+    # of that mistake that is otherwise invisible: too high means the advice
+    # simply never comes, and silence looks like "no surplus".
+    device_power_lowest_w: dict[str, float] = field(default_factory=dict)
     reason_codes: list[str] = field(default_factory=list)
 
     @property
@@ -1900,6 +1912,7 @@ class EnergyMetrics:
             "component_unavailable_reasons": dict(self.component_unavailable_reasons),
             "device_power_w": dict(self.device_power_w),
             "device_power_unusable": list(self.device_power_unusable),
+            "device_power_lowest_w": dict(self.device_power_lowest_w),
             "running_device_count": self.running_device_count,
             "score_unavailable_reason": self.score_unavailable_reason,
             "reason_codes": list(self.reason_codes),
@@ -1958,6 +1971,7 @@ class EnergyMetrics:
             ),
             device_power_w=_as_number_mapping(data.get("device_power_w")),
             device_power_unusable=_as_str_list(data.get("device_power_unusable")),
+            device_power_lowest_w=_as_number_mapping(data.get("device_power_lowest_w")),
             score_unavailable_reason=_as_choice(
                 data.get("score_unavailable_reason"), SCORE_UNAVAILABLE_REASONS, None
             ),

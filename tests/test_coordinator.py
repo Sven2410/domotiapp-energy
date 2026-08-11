@@ -785,3 +785,194 @@ async def test_a_configuration_change_clears_the_held_answers(
 
     # 4100 W is 82% of the maximum, which is under the new warning level.
     assert coordinator.data.metrics.peak_risk is False
+
+
+# --- The lowest running power (SPEC.md §59.3) -------------------------------
+
+CHARGER_ENTITY = "sensor.laadpaal_vermogen"
+
+
+def _charger(entity_id: str = CHARGER_ENTITY) -> DeviceProfile:
+    """Return a modulating charger with a power sensor linked.
+
+    `min_power_w` is 4140 W on purpose: three phases at six ampere, which is
+    what Sven's Transit Connect turned out to need after the 1380 W he had
+    entered proved to describe a car that charges on one phase (SPEC.md §59).
+    The observation these tests are about exists to show that kind of mistake.
+    """
+    return DeviceProfile.from_dict(
+        {
+            "id": "laadpaal",
+            "name": "Laadpaal",
+            "device_type": "ev_charger",
+            "nominal_power_w": 9660.0,
+            "can_modulate": True,
+            "min_power_w": 4140.0,
+            # A binding is read from a top-level key, not from a nested
+            # `entity_links` mapping — `from_dict` builds that mapping itself.
+            "power_entity": entity_id,
+        }
+    )
+
+
+async def _charging(
+    hass: HomeAssistant, coordinator: Any, watts: str, entity_id: str = CHARGER_ENTITY
+) -> None:
+    """Report a charging power and let the coordinator see it."""
+    hass.states.async_set(entity_id, watts, {"unit_of_measurement": UNIT_W})
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+
+
+async def test_the_lowest_running_power_is_remembered(
+    hass: HomeAssistant, hass_storage: dict[str, Any]
+) -> None:
+    """The one figure that can show an entered minimum is too high.
+
+    It is the only half of that mistake anything can catch: too high means the
+    advice never comes, and silence looks like "no surplus" (SPEC.md §59.3).
+    """
+    home = HomeProfile(main_fuse_a=25, max_grid_power_w=5750.0)
+    hass.states.async_set(GRID_ENTITY, "500")
+    hass.states.async_set(CHARGER_ENTITY, "4765", {"unit_of_measurement": UNIT_W})
+    entry = await _setup(
+        hass,
+        hass_storage,
+        StoredConfiguration(home=home, sources=[_grid_source()], devices=[_charger()]),
+    )
+    coordinator = entry.runtime_data.coordinator
+
+    assert coordinator.data.metrics.device_power_lowest_w == {"laadpaal": 4765.0}
+
+    # The same car charging slower, and then faster again: the lowest holds.
+    await _charging(hass, coordinator, "1380")
+    await _charging(hass, coordinator, "4765")
+
+    assert coordinator.data.metrics.device_power_lowest_w == {"laadpaal": 1380.0}
+
+
+async def test_standby_is_not_a_measurement_of_charging(
+    hass: HomeAssistant, hass_storage: dict[str, Any]
+) -> None:
+    """Running is the floor the overview already counts by.
+
+    A charger idling at a few watts would otherwise set the lowest to those few
+    watts, and the row would suggest an installer enter a minimum no car can
+    charge at. `DEVICE_RUNNING_MIN_POWER_W` is asked rather than a second
+    threshold invented here — two answers to "is this thing on" would drift.
+    """
+    home = HomeProfile(main_fuse_a=25, max_grid_power_w=5750.0)
+    hass.states.async_set(GRID_ENTITY, "500")
+    hass.states.async_set(CHARGER_ENTITY, "4140", {"unit_of_measurement": UNIT_W})
+    entry = await _setup(
+        hass,
+        hass_storage,
+        StoredConfiguration(home=home, sources=[_grid_source()], devices=[_charger()]),
+    )
+    coordinator = entry.runtime_data.coordinator
+
+    await _charging(hass, coordinator, "4")
+    await _charging(hass, coordinator, "0")
+
+    assert coordinator.data.metrics.device_power_lowest_w == {"laadpaal": 4140.0}
+
+
+async def test_an_appliance_that_has_never_run_reports_nothing(
+    hass: HomeAssistant, hass_storage: dict[str, Any]
+) -> None:
+    """Absent, not zero: nothing has been observed yet, which is not a fault."""
+    home = HomeProfile(main_fuse_a=25, max_grid_power_w=5750.0)
+    hass.states.async_set(GRID_ENTITY, "500")
+    hass.states.async_set(CHARGER_ENTITY, "0", {"unit_of_measurement": UNIT_W})
+    entry = await _setup(
+        hass,
+        hass_storage,
+        StoredConfiguration(home=home, sources=[_grid_source()], devices=[_charger()]),
+    )
+
+    assert entry.runtime_data.coordinator.data.metrics.device_power_lowest_w == {}
+
+
+async def test_a_different_power_entity_starts_a_new_observation(
+    hass: HomeAssistant, hass_storage: dict[str, Any]
+) -> None:
+    """A figure belongs to the sensor it was read from.
+
+    Relinking is how an installer fixes a wrong pick (SPEC.md §57), and keeping
+    the old minimum would attribute one sensor's reading to another — a mix-up
+    nothing downstream could detect.
+    """
+    home = HomeProfile(main_fuse_a=25, max_grid_power_w=5750.0)
+    hass.states.async_set(GRID_ENTITY, "500")
+    hass.states.async_set(CHARGER_ENTITY, "1380", {"unit_of_measurement": UNIT_W})
+    hass.states.async_set(
+        "sensor.easee_laadvermogen", "4140", {"unit_of_measurement": UNIT_W}
+    )
+    entry = await _setup(
+        hass,
+        hass_storage,
+        StoredConfiguration(home=home, sources=[_grid_source()], devices=[_charger()]),
+    )
+    coordinator = entry.runtime_data.coordinator
+    assert coordinator.data.metrics.device_power_lowest_w == {"laadpaal": 1380.0}
+
+    def _relink(config: StoredConfiguration) -> None:
+        config.devices[0].entity_links["power_entity"] = "sensor.easee_laadvermogen"
+
+    await entry.runtime_data.store.async_update(_relink)
+    await hass.async_block_till_done()
+    await _flush_debouncer(hass)
+
+    assert coordinator.data.metrics.device_power_lowest_w == {"laadpaal": 4140.0}
+
+
+async def test_a_deleted_appliance_takes_its_observation_with_it(
+    hass: HomeAssistant, hass_storage: dict[str, Any]
+) -> None:
+    """Memory only, and no longer than the appliance it describes."""
+    home = HomeProfile(main_fuse_a=25, max_grid_power_w=5750.0)
+    hass.states.async_set(GRID_ENTITY, "500")
+    hass.states.async_set(CHARGER_ENTITY, "4140", {"unit_of_measurement": UNIT_W})
+    entry = await _setup(
+        hass,
+        hass_storage,
+        StoredConfiguration(home=home, sources=[_grid_source()], devices=[_charger()]),
+    )
+    coordinator = entry.runtime_data.coordinator
+    assert coordinator.data.metrics.device_power_lowest_w == {"laadpaal": 4140.0}
+
+    def _remove(config: StoredConfiguration) -> None:
+        config.devices.clear()
+
+    await entry.runtime_data.store.async_update(_remove)
+    await hass.async_block_till_done()
+    await _flush_debouncer(hass)
+
+    assert coordinator.data.metrics.device_power_lowest_w == {}
+
+
+async def test_the_observation_never_reaches_the_storage(
+    hass: HomeAssistant, hass_storage: dict[str, Any]
+) -> None:
+    """Derived state stays in memory (CLAUDE.md rule 9).
+
+    Writing it back would raise the revision from a measurement, which is what
+    that rule exists to prevent: an installer's open form would be refused
+    because a charger reported a watt less than a second ago.
+    """
+    home = HomeProfile(main_fuse_a=25, max_grid_power_w=5750.0)
+    hass.states.async_set(GRID_ENTITY, "500")
+    hass.states.async_set(CHARGER_ENTITY, "4140", {"unit_of_measurement": UNIT_W})
+    entry = await _setup(
+        hass,
+        hass_storage,
+        StoredConfiguration(home=home, sources=[_grid_source()], devices=[_charger()]),
+    )
+    coordinator = entry.runtime_data.coordinator
+    revision = entry.runtime_data.store.config.revision
+
+    await _charging(hass, coordinator, "1380")
+
+    stored = hass_storage[STORAGE_KEY]["data"]
+    assert "device_power_lowest_w" not in str(stored)
+    assert entry.runtime_data.store.config.revision == revision
