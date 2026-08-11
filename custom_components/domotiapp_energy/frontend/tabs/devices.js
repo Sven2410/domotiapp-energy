@@ -398,11 +398,34 @@ function markRequired(field, required) {
   return { ...field, required: true };
 }
 
-/** The Dutch name of a field, for the sentence about what is still missing. */
+/**
+ * The Dutch name of a field, for the sentence about what is still missing.
+ *
+ * **Two names per field, because the form has two** (SPEC.md §59). A charger is
+ * asked for *Maximaal laadvermogen* and *Energie per laadsessie* — a car has no
+ * cycle — and this row told its installer that "nominaal vermogen" and "energie
+ * per cyclus" were missing, neither of which is on his screen.
+ *
+ * Found in the browser, one layer below the same mistake in the advice
+ * sentences one layer up repaired. Two places naming one field differently is
+ * only ever noticed from the outside, which is what that check is for.
+ */
 const REQUIRED_LABELS = {
   nominal_power_w: 'nominaal vermogen',
   energy_per_cycle_kwh: 'energie per cyclus',
 };
+
+const CHARGER_REQUIRED_LABELS = {
+  nominal_power_w: 'maximaal laadvermogen',
+  energy_per_cycle_kwh: 'energie per laadsessie',
+};
+
+/** What to call this field on a row of this type. */
+function requiredLabel(name, device) {
+  const labels =
+    device.device_type === 'ev_charger' ? CHARGER_REQUIRED_LABELS : REQUIRED_LABELS;
+  return labels[name];
+}
 
 /** Which of the checklist's fields this draft has not filled in yet. */
 function missingRequired(draft) {
@@ -689,6 +712,59 @@ function windowFields(draft) {
   ];
 }
 
+/** Volts per phase, for the ampere hint under the minimum power. */
+const VOLTAGE_PER_PHASE = 230;
+
+/** The lowest current a charger will hand a car; below it, nothing charges. */
+const CHARGER_MIN_CURRENT_A = 6;
+
+/**
+ * What to say under *Minimaal vermogen*, and it is more than a unit.
+ *
+ * **The number describes the car, not the charger** (SPEC.md §59). Six ampere
+ * is the floor below which no car charges, but whether that is 1380 W or 4140 W
+ * depends on how many phases the car takes — and nothing about the installation
+ * shows it. The old helper listed both figures without saying that, which reads
+ * as "pick the likely one"; §57.3 went one worse and called single-phase the
+ * common case. Sven filled in 1380 on that basis and measured 4140.
+ *
+ * So the text says where the answer comes from — a measurement with the car
+ * plugged in — and the sum below turns whatever was entered back into ampere,
+ * because ampere is the number a charger actually shows. 4140 W reads back as
+ * "18,0 A op één fase, of 6,0 A op drie fasen", and only one of those is a
+ * setting a charger has.
+ *
+ * **No stored phase field**, deliberately: it would be a value the engine never
+ * reads, and it would sit next to `HomeProfile.phases`, which answers the same
+ * sounding question about the house instead of the car.
+ */
+function minPowerHelper(draft) {
+  const charger = draft.device_type === 'ev_charger';
+  const single = CHARGER_MIN_CURRENT_A * VOLTAGE_PER_PHASE;
+  const three = single * 3;
+
+  const opening = charger
+    ? `Het minste waarmee de paal nog laadt. Dit hangt af van de auto en niet ` +
+      `van de paal: onder ${CHARGER_MIN_CURRENT_A} ampère laadt geen enkele ` +
+      `auto, en dat is ongeveer ${single} W voor een auto die op één fase laadt ` +
+      `en ${three} W voor een auto die op drie fasen laadt. Allebei komen ze ` +
+      `voor, en aan de installatie is het niet te zien — meet het met de auto ` +
+      `aan de paal.`
+    : 'Het minste waarmee het apparaat nog iets doet.';
+
+  const entered = Number(draft.min_power_w);
+  if (!entered || entered <= 0) {
+    return `${opening} Zonder dit getal wordt het apparaat op zijn volle vermogen beoordeeld.`;
+  }
+
+  const perPhase = entered / VOLTAGE_PER_PHASE;
+  return (
+    `${opening} ${formatNumber(entered)} W is ongeveer ` +
+    `${formatNumber(perPhase, { decimals: 1 })} A op één fase, of ` +
+    `${formatNumber(perPhase / 3, { decimals: 1 })} A op drie fasen.`
+  );
+}
+
 /** The two flags that follow from the type unless someone says otherwise. */
 function behaviourFields(draft) {
   return [
@@ -715,11 +791,7 @@ function behaviourFields(draft) {
     {
       name: 'min_power_w',
       label: 'Minimaal vermogen',
-      helper:
-        'Het minste waarmee het apparaat nog iets doet. Een laadpaal laadt ' +
-        'niet onder 6 ampère: dat is ongeveer 1380 W op één fase en 4140 W op ' +
-        'drie. Zonder dit getal wordt het apparaat op zijn volle vermogen ' +
-        'beoordeeld.',
+      helper: minPowerHelper(draft),
       selector: { number: { min: 0, step: 10, unit_of_measurement: 'W' } },
     },
     {
@@ -1118,6 +1190,10 @@ export const devicesTab = {
     // unlinked one from getting an empty line (SPEC.md §37).
     let devicePower = {};
     let powerUnusable = [];
+    // The lowest running power per appliance id, kept in the coordinator's
+    // memory since the last restart (SPEC.md §59.3). Only the appliances that
+    // have actually been seen running appear in it.
+    let deviceLowest = {};
 
     const rowList = createRowList({
       emptyText:
@@ -1261,7 +1337,7 @@ export const devicesTab = {
           // exactly like an appliance nobody had linked anything to.
           const refused = !hasReading && powerUnusable.includes(device.id);
           power.textContent = hasReading
-            ? `Nu: ${formatNumber(watts)} W`
+            ? `Nu: ${formatNumber(watts)} W${describeLowest(device)}`
             : refused
               ? 'De gekoppelde vermogenssensor is niet te gebruiken: hij moet ' +
                 'in W of kW meten en een waarde melden.'
@@ -1319,6 +1395,31 @@ export const devicesTab = {
       parts.push(PRIORITY_LABELS[device.priority] || device.priority);
       parts.push(CONTROL_MODE_LABELS[device.control_mode] || device.control_mode);
       return parts.join(' · ');
+    }
+
+    /**
+     * The lowest power this appliance has been seen running at, if it matters.
+     *
+     * **Only where somebody has to fill in a minimum** — an appliance with
+     * *Kan op deelvermogen draaien* switched on. Everywhere else it is a true
+     * fact that answers no question, and a row that reports everything reports
+     * nothing (SPEC.md §59.3).
+     *
+     * *Sinds herstart* is in the sentence because it is the whole truth about
+     * this figure: it lives in the coordinator's memory and never in storage,
+     * so a restart starts the observation over. Leaving that out would let it
+     * read as "the lowest this charger can do", which is precisely the claim
+     * this product must not make on the customer's behalf.
+     */
+    function describeLowest(device) {
+      if (!device.can_modulate) {
+        return '';
+      }
+      const lowest = deviceLowest[device.id];
+      if (typeof lowest !== 'number') {
+        return '';
+      }
+      return ` · laagste meting sinds herstart: ${formatNumber(lowest)} W`;
     }
 
     /**
@@ -1381,7 +1482,7 @@ export const devicesTab = {
           tone: 'warning',
           text:
             `Nog niet compleet: ${missing
-              .map((name) => REQUIRED_LABELS[name])
+              .map((name) => requiredLabel(name, device))
               .join(', ')} ${missing.length > 1 ? 'ontbreken' : 'ontbreekt'}. ` +
             'Telt niet mee voor de datakwaliteit.' +
             agreement,
@@ -1455,7 +1556,7 @@ export const devicesTab = {
       requiredNotice.set(
         missing.length
           ? 'Nog nodig voor een compleet apparaat: ' +
-              `${missing.map((name) => REQUIRED_LABELS[name]).join(', ')}. ` +
+              `${missing.map((name) => requiredLabel(name, draft)).join(', ')}. ` +
               'Opslaan mag ook zonder — het apparaat telt dan alleen nog niet ' +
               'mee voor de datakwaliteit.'
           : 'Dit apparaat is compleet: alles wat de datakwaliteit vraagt is ingevuld.',
@@ -1770,6 +1871,7 @@ export const devicesTab = {
       }
       devicePower = panelState.live?.metrics?.device_power_w || {};
       powerUnusable = panelState.live?.metrics?.device_power_unusable || [];
+      deviceLowest = panelState.live?.metrics?.device_power_lowest_w || {};
       rowList.sync(config.devices || []);
       for (const { form } of forms) {
         form.setHass(getHass());

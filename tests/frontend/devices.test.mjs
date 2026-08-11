@@ -1635,5 +1635,166 @@ describe('the live power per appliance', () => {
 
     assert.doesNotMatch(tab.textContent, /Nu:/);
   });
+
+  it('shows the lowest measurement on an appliance that modulates', async () => {
+    // The figure an installer cannot reason out (SPEC.md §59.3): the charger
+    // is idle now, and what it charged at is the number he needs.
+    const { tab } = await openDevicesTab(
+      fakeHass({
+        config: sampleConfig({
+          devices: [dishwasher({ device_type: 'ev_charger', can_modulate: true })],
+        }),
+        coach: sampleCoach({
+          metrics: { device_power_w: { d1: 0 }, device_power_lowest_w: { d1: 4140 } },
+        }),
+      }),
+    );
+
+    assert.match(tab.textContent, /laagste meting sinds herstart: 4\.140 W/);
+  });
+
+  it('says since when, because that is the whole truth about the figure', async () => {
+    // It lives in the coordinator's memory, so a restart starts over. Without
+    // those words it reads as "the lowest this charger can do", which is a
+    // claim about the hardware that nothing here can make.
+    const { tab } = await openDevicesTab(
+      fakeHass({
+        config: sampleConfig({
+          devices: [dishwasher({ device_type: 'ev_charger', can_modulate: true })],
+        }),
+        coach: sampleCoach({
+          metrics: { device_power_w: { d1: 0 }, device_power_lowest_w: { d1: 4140 } },
+        }),
+      }),
+    );
+
+    assert.match(tab.textContent, /sinds herstart/);
+  });
+
+  it('keeps it off an appliance that runs at one power or not at all', async () => {
+    // A true fact that answers no question is noise: nobody fills in a minimum
+    // for a dishwasher, so nothing there is measured against.
+    const { tab } = await openDevicesTab(
+      fakeHass({
+        config: sampleConfig({ devices: [dishwasher()] }),
+        coach: sampleCoach({
+          metrics: { device_power_w: { d1: 1150 }, device_power_lowest_w: { d1: 12 } },
+        }),
+      }),
+    );
+
+    assert.match(tab.textContent, /Nu: 1\.150 W/);
+    assert.doesNotMatch(tab.textContent, /laagste meting/);
+  });
+
+  it('names an incomplete charger the fields its own form asks for', async () => {
+    // The row, one step from the dialog notice: same field, same two names.
+    const { tab } = await openDevicesTab(
+      fakeHass({
+        config: sampleConfig({
+          devices: [
+            dishwasher({
+              device_type: 'ev_charger',
+              nominal_power_w: null,
+              energy_per_cycle_kwh: null,
+            }),
+          ],
+        }),
+        coach: sampleCoach({ metrics: { device_power_w: {} } }),
+      }),
+    );
+
+    assert.match(tab.textContent, /maximaal laadvermogen, energie per laadsessie/);
+  });
+
+  it('says nothing about an appliance that has never been seen running', async () => {
+    const { tab } = await openDevicesTab(
+      fakeHass({
+        config: sampleConfig({
+          devices: [dishwasher({ device_type: 'ev_charger', can_modulate: true })],
+        }),
+        coach: sampleCoach({
+          metrics: { device_power_w: { d1: 0 }, device_power_lowest_w: {} },
+        }),
+      }),
+    );
+
+    assert.doesNotMatch(tab.textContent, /laagste meting/);
+  });
+});
+
+describe('the minimum power a charger needs', () => {
+  /** The schema of the open device form, keyed by field name. */
+  function fields(panel) {
+    return Object.fromEntries(form(panel).schema.map((f) => [f.name, f]));
+  }
+
+  it('says the number describes the car and not the charger', async () => {
+    // The whole finding of SPEC.md §59: Sven entered 1380 W on the assumption
+    // that his car charges on one phase, and measured 4140 W.
+    const { panel, tab } = await openDevicesTab();
+    buttonIn(tab, 'Apparaat toevoegen').click();
+    await settle();
+
+    change(panel, { device_type: 'ev_charger' });
+    const helper = fields(panel).min_power_w.helper;
+
+    assert.match(helper, /hangt af van de auto en niet van de paal/);
+    assert.match(helper, /meet het met de auto aan de paal/);
+  });
+
+  it('does not call either number the likely one', async () => {
+    // The old text listed both and §57.3 called single-phase common, which is
+    // what produced the wrong entry. Both appear; neither is recommended.
+    const { panel, tab } = await openDevicesTab();
+    buttonIn(tab, 'Apparaat toevoegen').click();
+    await settle();
+
+    change(panel, { device_type: 'ev_charger' });
+    const helper = fields(panel).min_power_w.helper;
+
+    assert.match(helper, /1380 W/);
+    assert.match(helper, /4140 W/);
+    assert.match(helper, /Allebei komen ze voor/);
+  });
+
+  it('reads an entered value back in ampere, which is what a charger shows', async () => {
+    // The arithmetic an installer should not have to do, and the check that
+    // catches a wrong entry: 18 A on one phase is not a setting any charger has.
+    const { panel, tab } = await openDevicesTab();
+    buttonIn(tab, 'Apparaat toevoegen').click();
+    await settle();
+
+    change(panel, { device_type: 'ev_charger', min_power_w: 4140 });
+    const helper = fields(panel).min_power_w.helper;
+
+    assert.match(helper, /18,0 A op één fase/);
+    assert.match(helper, /6,0 A op drie fasen/);
+  });
+
+  it('names the missing charger fields the way the form does', async () => {
+    // Found in the browser: the notice at the top of this very dialog said
+    // "nominaal vermogen, energie per cyclus" while the two fields under it
+    // read "Maximaal laadvermogen" and "Energie per laadsessie" (SPEC.md §59).
+    const { panel, tab } = await openDevicesTab();
+    buttonIn(tab, 'Apparaat toevoegen').click();
+    await settle();
+
+    change(panel, { device_type: 'ev_charger' });
+    const notice = formDialog(panel).textContent;
+
+    assert.match(notice, /maximaal laadvermogen, energie per laadsessie/);
+    assert.doesNotMatch(notice, /nominaal vermogen/);
+  });
+
+  it('falls back to what an empty field means', async () => {
+    const { panel, tab } = await openDevicesTab();
+    buttonIn(tab, 'Apparaat toevoegen').click();
+    await settle();
+
+    change(panel, { device_type: 'ev_charger' });
+
+    assert.match(fields(panel).min_power_w.helper, /volle vermogen beoordeeld/);
+  });
 });
 ;
