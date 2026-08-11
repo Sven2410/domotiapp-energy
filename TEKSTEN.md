@@ -20,7 +20,7 @@ is dit de invoer en niet de uitvoer.
 - **Engelse regels staan apart**, onderaan. Een Engelse zin in dit product is
   een fout tenzij zij een identifier is: de UI is Nederlands (CLAUDE.md).
 
-**924 Nederlandse teksten**, waarvan 127 op meer dan één plek. En 13 Engelse regels om na te lopen.
+**925 Nederlandse teksten**, waarvan 127 op meer dan één plek. En 14 Engelse regels om na te lopen.
 
 
 ## `custom_components/domotiapp_energy/const.py`
@@ -46,19 +46,20 @@ is dit de invoer en niet de uitvoer.
 
 | Tekst | Waar | Regel |
 |---|---|---|
-| Advies opnieuw berekend | async_recalculate | 257 |
-| De woning {...} {...}% van het ingestelde maximale netvermogen. Dat ligt op of boven de waarschuwingsgrens van {...}%. | _async_log_findings | 527 |
-| Er is {...} W zonneoverschot beschikbaar. | _async_log_findings | 546 |
-| Het energieadvies is opnieuw berekend. | async_recalculate | 258 |
-| Linked entity %s changed | _handle_tracked_state_event | 268 |
-| No linked entities to watch | async_rebuild_state_listener | 231 |
-| Piekbelasting gesignaleerd | _async_log_findings | 526 |
-| Watching %s linked entities | async_rebuild_state_listener | 234 |
-| Zonneoverschot beschikbaar ↔ | _async_log_findings | 545 |
-| levert terug met ↔ | _async_log_findings | 523 |
-| {...} forget ready flags of deleted appliances | _handle_configuration_change | 303 |
-| {...} recalculate after configuration change | _handle_configuration_change | 308 |
-| {...} safety recalculation | async_start | 214 |
+| Advies opnieuw berekend | async_recalculate | 267 |
+| De woning {...} {...}% van het ingestelde maximale netvermogen. Dat ligt op of boven de waarschuwingsgrens van {...}%. | _async_log_findings | 569 |
+| Er is {...} W zonneoverschot beschikbaar. | _async_log_findings | 588 |
+| Het energieadvies is opnieuw berekend. | async_recalculate | 268 |
+| Linked entity %s changed | _handle_tracked_state_event | 278 |
+| No linked entities to watch | async_rebuild_state_listener | 241 |
+| Not reporting %s source failures yet: Home Assistant is %s | _async_update_data | 363 |
+| Piekbelasting gesignaleerd | _async_log_findings | 568 |
+| Watching %s linked entities | async_rebuild_state_listener | 244 |
+| Zonneoverschot beschikbaar ↔ | _async_log_findings | 587 |
+| levert terug met ↔ | _async_log_findings | 565 |
+| {...} forget ready flags of deleted appliances | _handle_configuration_change | 323 |
+| {...} recalculate after configuration change | _handle_configuration_change | 328 |
+| {...} safety recalculation | async_start | 224 |
 
 ## `custom_components/domotiapp_energy/engine/advisor.py`
 
@@ -1068,7 +1069,8 @@ is dit de invoer en niet de uitvoer.
 | Tekst | Waar |
 |---|---|
 | DomotiApp Energy has been removed. The energy configuration is kept in %s under .storage/, so adding the integration again restores it. Delete that file to start over | `custom_components/domotiapp_energy/__init__.py:145` |
-| Clearing ready flag for %r: %s reports %r | `custom_components/domotiapp_energy/coordinator.py:406` |
+| Home Assistant has started: recalculating | `custom_components/domotiapp_energy/coordinator.py:288` |
+| Clearing ready flag for %r: %s reports %r | `custom_components/domotiapp_energy/coordinator.py:448` |
 | No recorder: skipping the history | `custom_components/domotiapp_energy/engine/history.py:287` |
 | Could not read the %s statistics | `custom_components/domotiapp_energy/engine/history.py:311` |
 | No alternative coach provider is available in this release | `custom_components/domotiapp_energy/engine/providers.py:250` |

@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.27.1
+
+Geen loze waarschuwingen meer bij het opstarten. SPEC §63.
+
+### Fixed
+
+- **Bij elke herstart van Home Assistant meldde het logboek dat alle bronnen niet beschikbaar
+  waren.** Dat kwam niet door je bronnen: DomotiApp Energy wordt opgezet zodra zijn eigen
+  afhankelijkheden klaar zijn, en Home Assistant start integraties parallel — dus je
+  omvormer, je prijsbron en je slimme meter bestonden op dat moment nog niet.
+
+  De melding klopte feitelijk en betekende niets: een seconde later waren ze er wel. Bij elke
+  update van Home Assistant kreeg je zo drie waarschuwingen die niets te betekenen hadden, en
+  dat is erger dan ruis — het leert je waarschuwingen negeren.
+
+  Een leesfout tijdens het opstarten gaat nu naar het technische log en niet naar het
+  logboek, en zodra Home Assistant klaar is met starten wordt er opnieuw gerekend. Pas daarna
+  telt een bron die niet gelezen kan worden als een echte melding.
+
 ## 0.27.0
 
 Het logboek leest als een tijdlijn. SPEC §61.4 — het laatste openstaande deel van het
