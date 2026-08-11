@@ -332,11 +332,7 @@ const ADVICE_CONCEPTS = ['priority', 'is_noisy'];
  * by hiding the field here would be deciding it in passing.
  */
 const MEANINGLESS_BY_TYPE = {
-  generic_monitor: [
-    'nominal_power_w',
-    'energy_per_cycle_kwh',
-    'duration_minutes',
-  ],
+  generic_monitor: ['nominal_power_w', 'energy_per_cycle_kwh', 'duration_minutes'],
   home_battery: ['energy_per_cycle_kwh', 'duration_minutes'],
 };
 
@@ -446,9 +442,7 @@ const CHARGER_REQUIRED_LABELS = {
 /** What to call this field on a row of this type. */
 function requiredLabel(name, device) {
   const labels =
-    device.device_type === 'ev_charger'
-      ? CHARGER_REQUIRED_LABELS
-      : REQUIRED_LABELS;
+    device.device_type === 'ev_charger' ? CHARGER_REQUIRED_LABELS : REQUIRED_LABELS;
   return labels[name];
 }
 
@@ -507,11 +501,7 @@ function schemaFor(draft) {
     ...windowFields(draft),
     ...controlFields(draft),
     ...entityLinkFields(draft),
-    {
-      name: 'notes',
-      label: 'Notities',
-      selector: { text: { multiline: true } },
-    },
+    { name: 'notes', label: 'Notities', selector: { text: { multiline: true } } },
   ];
 
   // One filter over the finished list rather than a guard in each builder, so
@@ -841,10 +831,9 @@ function behaviourFields(draft) {
     {
       name: 'is_flexible',
       label: 'Verplaatsbaar in de tijd',
-      helper:
-        `Standaard voor dit type: ${
-          flexibleByDefault(draft.device_type) ? 'ja' : 'nee'
-        }. Alleen verplaatsbare apparaten krijgen een verplaatsingsadvies, en ` +
+      helper: `Standaard voor dit type: ${
+        flexibleByDefault(draft.device_type) ? 'ja' : 'nee'
+      }. Alleen verplaatsbare apparaten krijgen een verplaatsingsadvies, en ` +
         'alleen die hebben een tijdvenster nodig.',
       selector: { boolean: {} },
     },
@@ -907,12 +896,10 @@ function controlFields(draft) {
       selector: {
         select: {
           mode: 'dropdown',
-          options: Object.entries(CONTROL_MODE_LABELS).map(
-            ([value, label]) => ({
-              value,
-              label,
-            }),
-          ),
+          options: Object.entries(CONTROL_MODE_LABELS).map(([value, label]) => ({
+            value,
+            label,
+          })),
         },
       },
     },
@@ -1082,9 +1069,7 @@ function payloadFrom(draft, schema) {
     payload[field.name] =
       field.name === 'days_of_week'
         ? daysToStorage(value)
-        : value === undefined || value === ''
-          ? null
-          : value;
+        : (value === undefined || value === '' ? null : value);
   }
   return payload;
 }
@@ -1241,14 +1226,14 @@ export const devicesTab = {
     // unlinked one from getting an empty line (SPEC.md §37).
     let devicePower = {};
     let powerUnusable = [];
-    // The lowest running power per appliance id, kept in the coordinator's
-    // memory since the last restart (SPEC.md §59.3). Only the appliances that
-    // have actually been seen running appear in it.
-    let deviceLowest = {};
     // Which appliances a resident has said there is work in, with the moment
     // each flag expires (SPEC.md §32.5). Live state, so it arrives with the
     // coach result rather than with the device rows.
     let readyFlags = {};
+    // The lowest running power per appliance id, kept in the coordinator's
+    // memory since the last restart (SPEC.md §59.3). Only the appliances that
+    // have actually been seen running appear in it.
+    let deviceLowest = {};
 
     const rowList = createRowList({
       emptyText:
@@ -1366,8 +1351,8 @@ export const devicesTab = {
 
       // **One of the two places this button belongs** (SPEC.md §44.6): here,
       // where a resident is tidying the kitchen and fills the machine at the
-      // end of it. The other is under the advice that asks about it, which is
-      // the other moment he thinks of it — the same command, two occasions.
+      // end of it. The other is under the advice that asks about it — the same
+      // command, the two moments he thinks of it.
       const readyButton = button('Klaar / vol');
       const readyLine = el('p', { class: 'row-meta' });
       const editButton = button('Bewerken');
@@ -1375,13 +1360,7 @@ export const devicesTab = {
       deleteButton.classList.add('button-danger');
 
       const row = el('div', { class: 'row-item' }, [
-        el('div', { class: 'row-main' }, [
-          name,
-          meta,
-          power,
-          readyLine,
-          status,
-        ]),
+        el('div', { class: 'row-main' }, [name, meta, power, readyLine, status]),
         el('div', { class: 'row-buttons' }, [
           readyButton,
           editButton,
@@ -1420,9 +1399,8 @@ export const devicesTab = {
           power.dataset.tone = refused ? 'warning' : '';
           setVisible(power, hasReading || refused);
 
-          // The flag, and the sentence that goes with it. Only for appliances
-          // that need one at all: a charger is not asked whether somebody
-          // loaded it (SPEC.md §32.5).
+          // The flag, and the sentence that goes with it. Only on appliances
+          // that need one: a charger is not asked whether somebody loaded it.
           const flag = readyFlags[device.id];
           setVisible(readyButton, Boolean(device.needs_ready_flag));
           readyButton.textContent = flag ? 'Toch niet vol' : 'Klaar / vol';
@@ -1477,49 +1455,8 @@ export const devicesTab = {
         return parts.join(' · ');
       }
       parts.push(PRIORITY_LABELS[device.priority] || device.priority);
-      parts.push(
-        CONTROL_MODE_LABELS[device.control_mode] || device.control_mode,
-      );
+      parts.push(CONTROL_MODE_LABELS[device.control_mode] || device.control_mode);
       return parts.join(' · ');
-    }
-
-    /**
-     * Say how long "hij is vol" stays true, in the words somebody would use.
-     *
-     * **Two whole sentences, and which one you get is not a detail** (SPEC.md
-     * §32.6). Where a status or remaining-time entity is linked the flag goes
-     * out by itself when the programme ends, and the expiry is a backstop.
-     * Where nothing is linked it is the *only* way the flag ever goes out, and
-     * the resident has to know that at the moment he presses the button —
-     * not when he wonders why nothing happened.
-     *
-     * The moment is named either way, because a resident who fills the
-     * dishwasher at ten in the evening needs to know it still counts tomorrow
-     * morning.
-     */
-    function describeReady(flag) {
-      if (!flag) {
-        return '';
-      }
-      const until = formatMoment(flag.expires_at);
-      if (flag.auto_clears) {
-        return `Staat vol. Dit vervalt ${until}, of eerder zodra hij klaar is.`;
-      }
-      return (
-        `Staat vol. We kunnen niet zien wanneer hij klaar is, dus dit blijft ` +
-        `staan tot ${until}. Zet het eerder uit als er niets meer in zit.`
-      );
-    }
-
-    /** Say it, or take it back. The panel state refreshes with the answer. */
-    async function toggleReady(device) {
-      const wasSet = Boolean(readyFlags[device.id]);
-      try {
-        await createApi(getHass()).setDeviceReady(device.id, !wasSet);
-        state.setLive(await createApi(getHass()).getCoach());
-      } catch (error) {
-        listNotice.set(describeError(error), { tone: 'warning' });
-      }
     }
 
     /**
@@ -1545,6 +1482,45 @@ export const devicesTab = {
         return '';
       }
       return ` · laagste meting sinds herstart: ${formatNumber(lowest)} W`;
+    }
+
+    /**
+     * Say how long "hij is vol" stays true, in the words somebody would use.
+     *
+     * **Two whole sentences, and which one you get is not a detail** (SPEC.md
+     * §32.6). With a status or remaining-time entity the flag goes out by
+     * itself when the programme ends and the expiry is a backstop. Without
+     * one, expiring is the *only* way it ever goes out — and the resident has
+     * to know that when he presses the button, not when he wonders why
+     * nothing happened.
+     *
+     * The moment is named either way, because somebody who fills the
+     * dishwasher at ten in the evening needs to know it still counts tomorrow.
+     */
+    function describeReady(flag) {
+      if (!flag) {
+        return '';
+      }
+      const until = formatMoment(flag.expires_at);
+      if (flag.auto_clears) {
+        return `Staat vol. Dit vervalt ${until}, of eerder zodra hij klaar is.`;
+      }
+      return (
+        `Staat vol. We kunnen niet zien wanneer hij klaar is, dus dit blijft ` +
+        `staan tot ${until}. Zet het eerder uit als er niets meer in zit.`
+      );
+    }
+
+    /** Say it, or take it back. The panel state refreshes with the answer. */
+    async function toggleReady(device) {
+      const wasSet = Boolean(readyFlags[device.id]);
+      try {
+        const api = createApi(getHass());
+        await api.setDeviceReady(device.id, !wasSet);
+        state.setLive(await api.getCoach());
+      } catch (error) {
+        listNotice.set(describeError(error), { tone: 'warning' });
+      }
     }
 
     /**
@@ -1597,8 +1573,7 @@ export const devicesTab = {
           tone: 'info',
           text:
             'Nog geen vermogenssensor gekoppeld — dit apparaat wordt alleen ' +
-            'gemeten, en er valt nu niets te meten.' +
-            agreement,
+            'gemeten, en er valt nu niets te meten.' + agreement,
         };
       }
 
@@ -1609,9 +1584,7 @@ export const devicesTab = {
           text:
             `Nog niet compleet: ${missing
               .map((name) => requiredLabel(name, device))
-              .join(
-                ', ',
-              )} ${missing.length > 1 ? 'ontbreken' : 'ontbreekt'}. ` +
+              .join(', ')} ${missing.length > 1 ? 'ontbreken' : 'ontbreekt'}. ` +
             'Telt niet mee voor de datakwaliteit.' +
             agreement,
         };
@@ -1623,11 +1596,7 @@ export const devicesTab = {
           text: agreement.replace(' · ', ''),
         };
       }
-      return {
-        icon: 'mdi:check-circle-outline',
-        tone: 'info',
-        text: 'Compleet.',
-      };
+      return { icon: 'mdi:check-circle-outline', tone: 'info', text: 'Compleet.' };
     }
 
     function currentIssues() {
@@ -1667,9 +1636,7 @@ export const devicesTab = {
       schemaKey = key;
 
       for (const { definition, host, form } of forms) {
-        const mine = schema.filter((field) =>
-          definition.fields.includes(field.name),
-        );
+        const mine = schema.filter((field) => definition.fields.includes(field.name));
         if (schemaMoved) {
           form.setSchema(mine);
         }
@@ -1694,10 +1661,7 @@ export const devicesTab = {
               'Opslaan mag ook zonder — het apparaat telt dan alleen nog niet ' +
               'mee voor de datakwaliteit.'
           : 'Dit apparaat is compleet: alles wat de datakwaliteit vraagt is ingevuld.',
-        {
-          tone: missing.length ? 'warning' : 'success',
-          icon: missing.length ? 'mdi:asterisk' : 'mdi:check-circle-outline',
-        },
+        { tone: missing.length ? 'warning' : 'success', icon: missing.length ? 'mdi:asterisk' : 'mdi:check-circle-outline' },
       );
 
       const orphans = orphanedFields(draft, schema);
@@ -1711,9 +1675,7 @@ export const devicesTab = {
         { tone: 'warning' },
       );
 
-      const warnings = editing
-        ? warningMessages(currentIssues(), editing.id)
-        : [];
+      const warnings = editing ? warningMessages(currentIssues(), editing.id) : [];
       warningNotice.set(warnings.join(' '), { tone: 'warning' });
       saveButton.disabled = !isDirty();
     }
@@ -1812,10 +1774,7 @@ export const devicesTab = {
             operationFrom(),
           );
         } else if (editing) {
-          result = await api.updateDevice(revision, {
-            ...payload,
-            id: editing.id,
-          });
+          result = await api.updateDevice(revision, { ...payload, id: editing.id });
         } else {
           result = await api.createDevice(revision, payload);
         }
@@ -2012,9 +1971,9 @@ export const devicesTab = {
         applyRoleToTab();
       }
       devicePower = panelState.live?.metrics?.device_power_w || {};
+      readyFlags = panelState.live?.ready_devices || {};
       powerUnusable = panelState.live?.metrics?.device_power_unusable || [];
       deviceLowest = panelState.live?.metrics?.device_power_lowest_w || {};
-      readyFlags = panelState.live?.ready_devices || {};
       rowList.sync(config.devices || []);
       for (const { form } of forms) {
         form.setHass(getHass());

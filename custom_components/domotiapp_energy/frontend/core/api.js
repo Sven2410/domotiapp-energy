@@ -111,8 +111,7 @@ export function createApi(hass) {
      * button a resident presses in the kitchen to a form an installer happens
      * to have open is exactly what that second store avoids.
      *
-     * Open to every user, like `recalculate`: this is operation, not
-     * configuration.
+     * Open to every user, like `recalculate`: operation, not configuration.
      */
     setDeviceReady: (deviceId, ready) =>
       call('devices/set_ready', { device_id: deviceId, ready }),

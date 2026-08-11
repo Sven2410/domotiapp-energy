@@ -581,7 +581,9 @@ describe('saving a device', () => {
     // No false hope: pressing Opslaan again cannot work, and the sentence says
     // what would (SPEC.md §26 — one whole sentence per situation).
     assert.ok(
-      noticeTexts(formDialog(panel)).some((t) => t.includes('ergens anders verwijderd')),
+      noticeTexts(formDialog(panel)).some((t) =>
+        t.includes('ergens anders verwijderd'),
+      ),
     );
   });
 
@@ -760,7 +762,6 @@ describe('unsaved changes in the device dialog', () => {
     assert.equal(tabPanels(panel).filter(isVisible)[0].id, 'panel-overview');
   });
 });
-
 
 describe('the schema is only replaced when the questions change', () => {
   /** Count how often the form is handed a new schema. */
@@ -980,7 +981,11 @@ describe('nothing is asked of an appliance that only gets measured', () => {
 
     change(panel, { device_type: 'generic_monitor' });
 
-    for (const name of ['nominal_power_w', 'energy_per_cycle_kwh', 'duration_minutes']) {
+    for (const name of [
+      'nominal_power_w',
+      'energy_per_cycle_kwh',
+      'duration_minutes',
+    ]) {
       assert.ok(!fieldNames(panel).includes(name), `${name} is still asked`);
     }
   });
@@ -996,7 +1001,11 @@ describe('nothing is asked of an appliance that only gets measured', () => {
     change(panel, { device_type: 'generic_monitor' });
     change(panel, { is_flexible: true });
 
-    for (const name of ['nominal_power_w', 'energy_per_cycle_kwh', 'duration_minutes']) {
+    for (const name of [
+      'nominal_power_w',
+      'energy_per_cycle_kwh',
+      'duration_minutes',
+    ]) {
       assert.ok(fieldNames(panel).includes(name), `${name} is missing`);
     }
   });
@@ -1303,7 +1312,7 @@ describe('the row says what the appliance is, not what it is not', () => {
 });
 
 describe('what the data quality checklist needs', () => {
-  it("marks the fields the checklist asks for, the way Home Assistant does", async () => {
+  it('marks the fields the checklist asks for, the way Home Assistant does', async () => {
     const { panel, tab } = await openDevicesTab();
     buttonIn(tab, 'Apparaat toevoegen').click();
     await settle();
@@ -1408,7 +1417,9 @@ describe('what the data quality checklist needs', () => {
     });
 
     assert.ok(
-      noticeTexts(formDialog(panel)).some((t) => t.includes('Dit apparaat is compleet')),
+      noticeTexts(formDialog(panel)).some((t) =>
+        t.includes('Dit apparaat is compleet'),
+      ),
     );
   });
 });
@@ -1609,7 +1620,7 @@ describe('what a charger is actually asked', () => {
     assert.equal(dishwasher.energy_per_cycle_kwh.label, 'Energie per cyclus');
     assert.equal(dishwasher.duration_minutes.label, 'Duur van een cyclus');
   });
-})
+});
 
 describe('the live power per appliance', () => {
   it('shows a reading for a linked appliance', async () => {
@@ -1797,4 +1808,97 @@ describe('the minimum power a charger needs', () => {
     assert.match(fields(panel).min_power_w.helper, /volle vermogen beoordeeld/);
   });
 });
-;
+describe('saying there is work in it', () => {
+  /** A dishwasher, which is one of the three that wait to be told. */
+  function loadable(overrides = {}) {
+    return dishwasher({ needs_ready_flag: true, ...overrides });
+  }
+
+  /** One flag, as the coach result carries it. */
+  function flag(overrides = {}) {
+    return {
+      set_at: '2026-08-11T20:00:00+00:00',
+      expires_at: '2026-08-12T05:00:00+00:00',
+      auto_clears: true,
+      ...overrides,
+    };
+  }
+
+  it('offers the button on an appliance that waits to be told', async () => {
+    const { tab } = await openDevicesTab(
+      fakeHass({ config: sampleConfig({ devices: [loadable()] }) }),
+    );
+
+    assert.equal(isVisible(buttonIn(rows(tab)[0], 'Klaar / vol')), true);
+  });
+
+  it('keeps it off an appliance that can see for itself', async () => {
+    // A charger reports through its status entity whether a car is attached,
+    // so a button somebody has to press is the busywork §32.5 removes.
+    const { tab } = await openDevicesTab(
+      fakeHass({
+        config: sampleConfig({
+          devices: [dishwasher({ device_type: 'ev_charger', needs_ready_flag: false })],
+        }),
+      }),
+    );
+
+    assert.equal(isVisible(buttonIn(rows(tab)[0], 'Klaar / vol')), false);
+  });
+
+  it('says when the flag expires, in words somebody would use', async () => {
+    // The whole point of naming it (SPEC.md §32.6): a resident who fills the
+    // dishwasher at ten in the evening has to know it still counts tomorrow.
+    const { tab } = await openDevicesTab(
+      fakeHass({
+        config: sampleConfig({ devices: [loadable()] }),
+        coach: sampleCoach({ ready_devices: { d1: flag() } }),
+      }),
+    );
+
+    assert.match(rows(tab)[0].textContent, /Staat vol\./);
+    assert.match(rows(tab)[0].textContent, /of eerder zodra hij klaar is/);
+  });
+
+  it('says so when nothing can see the programme end', async () => {
+    // Then expiring is the *only* way the flag goes out, and that belongs in
+    // the sentence now — not when he wonders why nothing happened.
+    const { tab } = await openDevicesTab(
+      fakeHass({
+        config: sampleConfig({ devices: [loadable()] }),
+        coach: sampleCoach({ ready_devices: { d1: flag({ auto_clears: false }) } }),
+      }),
+    );
+
+    assert.match(rows(tab)[0].textContent, /We kunnen niet zien wanneer hij klaar is/);
+    assert.match(rows(tab)[0].textContent, /Zet het eerder uit/);
+  });
+
+  it('offers to take it back once the flag is set', async () => {
+    const { tab } = await openDevicesTab(
+      fakeHass({
+        config: sampleConfig({ devices: [loadable()] }),
+        coach: sampleCoach({ ready_devices: { d1: flag() } }),
+      }),
+    );
+
+    assert.ok(buttonIn(rows(tab)[0], 'Toch niet vol'));
+  });
+
+  it('sends the flag without a revision', async () => {
+    // **Not an oversight** (SPEC.md §32.5): the flag lives in a store that has
+    // none, so a button in the kitchen is not tied to a form upstairs.
+    const hass = fakeHass({ config: sampleConfig({ devices: [loadable()] }) });
+    const { tab } = await openDevicesTab(hass);
+
+    buttonIn(rows(tab)[0], 'Klaar / vol').click();
+    await settle();
+
+    const sent = hass.sent.find((m) => m.type.endsWith('devices/set_ready'));
+    assert.deepEqual(sent, {
+      type: 'domotiapp_energy/devices/set_ready',
+      device_id: 'd1',
+      ready: true,
+    });
+  });
+});
