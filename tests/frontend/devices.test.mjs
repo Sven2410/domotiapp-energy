@@ -1808,97 +1808,30 @@ describe('the minimum power a charger needs', () => {
     assert.match(fields(panel).min_power_w.helper, /volle vermogen beoordeeld/);
   });
 });
-describe('saying there is work in it', () => {
-  /** A dishwasher, which is one of the three that wait to be told. */
-  function loadable(overrides = {}) {
-    return dishwasher({ needs_ready_flag: true, ...overrides });
-  }
-
-  /** One flag, as the coach result carries it. */
-  function flag(overrides = {}) {
-    return {
-      set_at: '2026-08-11T20:00:00+00:00',
-      expires_at: '2026-08-12T05:00:00+00:00',
-      auto_clears: true,
-      ...overrides,
-    };
-  }
-
-  it('offers the button on an appliance that waits to be told', async () => {
-    const { tab } = await openDevicesTab(
-      fakeHass({ config: sampleConfig({ devices: [loadable()] }) }),
-    );
-
-    assert.equal(isVisible(buttonIn(rows(tab)[0], 'Klaar / vol')), true);
-  });
-
-  it('keeps it off an appliance that can see for itself', async () => {
-    // A charger reports through its status entity whether a car is attached,
-    // so a button somebody has to press is the busywork §32.5 removes.
+describe('bediening staat niet op Apparaten', () => {
+  it('biedt hier geen "Klaar / vol" aan', async () => {
+    // **Apparaten is waar een installateur iets inricht** (SPEC.md §60). Een
+    // bewoner met een volle vaatwasser gaat daar niet heen, en een knop op een
+    // configuratierij leest bovendien alsof hij iets *instelt*. De handeling
+    // staat op het Overzicht, waar hij hem tegenkomt.
     const { tab } = await openDevicesTab(
       fakeHass({
         config: sampleConfig({
-          devices: [dishwasher({ device_type: 'ev_charger', needs_ready_flag: false })],
+          devices: [dishwasher({ needs_ready_flag: true })],
+        }),
+        coach: sampleCoach({
+          ready_devices: {
+            d1: {
+              set_at: '2026-08-11T20:00:00+00:00',
+              expires_at: '2026-08-12T05:00:00+00:00',
+              auto_clears: false,
+            },
+          },
         }),
       }),
     );
 
-    assert.equal(isVisible(buttonIn(rows(tab)[0], 'Klaar / vol')), false);
-  });
-
-  it('says when the flag expires, in words somebody would use', async () => {
-    // The whole point of naming it (SPEC.md §32.6): a resident who fills the
-    // dishwasher at ten in the evening has to know it still counts tomorrow.
-    const { tab } = await openDevicesTab(
-      fakeHass({
-        config: sampleConfig({ devices: [loadable()] }),
-        coach: sampleCoach({ ready_devices: { d1: flag() } }),
-      }),
-    );
-
-    assert.match(rows(tab)[0].textContent, /Staat vol\./);
-    assert.match(rows(tab)[0].textContent, /of eerder zodra hij klaar is/);
-  });
-
-  it('says so when nothing can see the programme end', async () => {
-    // Then expiring is the *only* way the flag goes out, and that belongs in
-    // the sentence now — not when he wonders why nothing happened.
-    const { tab } = await openDevicesTab(
-      fakeHass({
-        config: sampleConfig({ devices: [loadable()] }),
-        coach: sampleCoach({ ready_devices: { d1: flag({ auto_clears: false }) } }),
-      }),
-    );
-
-    assert.match(rows(tab)[0].textContent, /We kunnen niet zien wanneer hij klaar is/);
-    assert.match(rows(tab)[0].textContent, /Zet het eerder uit/);
-  });
-
-  it('offers to take it back once the flag is set', async () => {
-    const { tab } = await openDevicesTab(
-      fakeHass({
-        config: sampleConfig({ devices: [loadable()] }),
-        coach: sampleCoach({ ready_devices: { d1: flag() } }),
-      }),
-    );
-
-    assert.ok(buttonIn(rows(tab)[0], 'Toch niet vol'));
-  });
-
-  it('sends the flag without a revision', async () => {
-    // **Not an oversight** (SPEC.md §32.5): the flag lives in a store that has
-    // none, so a button in the kitchen is not tied to a form upstairs.
-    const hass = fakeHass({ config: sampleConfig({ devices: [loadable()] }) });
-    const { tab } = await openDevicesTab(hass);
-
-    buttonIn(rows(tab)[0], 'Klaar / vol').click();
-    await settle();
-
-    const sent = hass.sent.find((m) => m.type.endsWith('devices/set_ready'));
-    assert.deepEqual(sent, {
-      type: 'domotiapp_energy/devices/set_ready',
-      device_id: 'd1',
-      ready: true,
-    });
+    assert.doesNotMatch(tab.textContent, /Klaar \/ vol/);
+    assert.doesNotMatch(tab.textContent, /Staat vol/);
   });
 });

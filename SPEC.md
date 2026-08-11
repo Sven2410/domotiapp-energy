@@ -4399,10 +4399,15 @@ Op Apparaten staan dus, ongewijzigd: `control_mode` (bewoner), `capabilities` en
 
 ### 44.3 Waar de handelingen landen
 
-| Handeling | Waar | Waarom daar |
+> **Vervangen door §60.2** (0.24.0). Elke handeling landt in de ene sectie *Wat je
+> nu kunt doen* op het Overzicht, plus — waar zij een aanleiding heeft — onder dat
+> advies in de Energiecoach. De tabel hieronder staat er nog omdat de derde kolom
+> uitlegt wáárom elke handeling daar hoort; de tweede kolom is achterhaald.
+
+| Handeling | Waar (achterhaald) | Waarom daar |
 |---|---|---|
 | **Start nu** | onder het advies dat erom vraagt, op Overzicht én in Energiecoach | de aanleiding staat er al; de knop maakt hem afmaakbaar |
-| **Klaar / vol** (`set_ready`) | onder hetzelfde advies, en op Apparaten bij het apparaat | twee momenten waarop een bewoner eraan denkt (§44.5) |
+| **Klaar / vol** (`set_ready`) | ~~op Apparaten bij het apparaat~~ → de sectie op het Overzicht | twee momenten waarop een bewoner eraan denkt (§44.5) — maar het tweede moment vindt niet op een insteltabblad plaats |
 | **Stop** | in `Nu aangestuurd` op het Overzicht | wie wil stoppen, zoekt niet in een apparaatlijst |
 | **Goedkeuren** | onder het advies dat om goedkeuring vraagt | `approval_required` ís een advies met een knop (§44.6) |
 
@@ -4411,7 +4416,12 @@ uitgegrijsd, niet met een uitleg: helemaal niet. Uitgrijzen is voor iets dat lat
 beantwoordbaar wordt (§33.4a); dit is een afspraak met deze klant, en een zichtbare knop zou
 suggereren dat er over te praten valt. De reden staat wél op Apparaten, waar de afspraak staat.
 
-### 44.4 "Nu aangestuurd": één sectie, één knop per apparaat
+### 44.4 "Nu aangestuurd": een rijsoort, één knop per apparaat
+
+> **Geen eigen sectie meer** (§60.2, 0.24.0): dit wordt een rijsoort binnen *Wat je nu
+> kunt doen*. Alles hieronder blijft gelden — wat er staat, wanneer het er staat en wat
+> `Stop` betekent — behalve de plaatsing. Een tweede sectie zou de bewoner opnieuw laten
+> uitzoeken wélke sectie zijn handeling draagt.
 
 Op het Overzicht, onder `Actuele situatie`. Per apparaat dat DomotiApp op dit moment
 aanstuurt: **wat**, **sinds wanneer**, **waarom** (in de woorden van het advies dat het
@@ -4455,7 +4465,12 @@ afloopt, zodat niemand erdoor verrast wordt — net zoals bij de vlag.
 momenten waarop een bewoner erover nadenkt:
 
 1. **onder het advies** — hij leest *"start nu om 07:00 te halen"* en denkt "hij is niet vol";
-2. **op Apparaten, bij het apparaat** — hij ruimt de keuken op en zet hem aan het einde vol.
+2. **op het Overzicht** — hij ruimt de keuken op en zet hem aan het einde vol.
+
+> Het tweede punt stond hier eerst als *"op Apparaten, bij het apparaat"*. De
+> redenering — twee momenten — klopte; de plaats niet. Een bewoner die de keuken
+> opruimt slaat het Overzicht open en niet het tabblad waar een installateur zijn
+> woning inricht (§60.3).
 
 Dezelfde handeling, hetzelfde commando, twee aanleidingen. Eén ervan weglaten betekent dat de
 bewoner op het verkeerde moment moet onthouden waar de andere staat.
@@ -6620,10 +6635,15 @@ advies uitblijft.
   opslag (CLAUDE.md regel 9). Zonder die woorden leest het als *"het laagste dat
   deze paal kan"* — een uitspraak over de hardware die dit product niet mag doen.
 
-## 60. Voorstel: bediening staat op het Overzicht, niet op een insteltabblad
+## 60. Bediening staat op het Overzicht, niet op een insteltabblad
 
-**Status: voorstel, ronde 1** (aanleiding: Sven, 2026-08-11, bij het opleveren van
-fase 3). Er is nog niets aan gebouwd.
+> **De toets, en zij is breder bruikbaar dan dit geval: *waar staat iemand als hij
+> dit doet?*** Bij de stille uren zit hij erbij te denken — dat mag een tabblad
+> zijn. Bij *"hij is vol"* staat hij met zijn telefoon in de keuken, en dan telt
+> elke tik.
+
+**Akkoord bevonden en gebouwd in 0.24.0** (aanleiding: Sven, 2026-08-11, bij het
+opleveren van fase 3).
 
 De gereed-vlag kreeg zijn knop op twee plekken, zoals §44.6 voorschrijft: onder het
 advies, en op Apparaten bij het apparaat. Die tweede plek is fout, en de reden is
@@ -6675,6 +6695,29 @@ vraag die je niet voor het eerst wilt stellen op het moment dat je hem nodig heb
 Heeft de woning geen enkel apparaat dat de bewoner bedient, dan is er geen sectie —
 geen tekortkoming tonen die deze woning niet kan opheffen.
 
+#### De lege staat, bewust gekozen
+
+Vraag van Sven bij het bouwen: *wat staat er als er wél bedienbare apparaten zijn maar
+op dit moment niets te doen?* Een lege sectie is precies de vorm die dit project vijf
+keer heeft opgeruimd (§16).
+
+**Het antwoord is dat die staat met de gereed-vlag niet kan bestaan**, en dat is geen
+geluk maar de vorm van de rij: *"hij is vol"* zeggen of terugnemen kan altijd. Een rij
+is dus altijd een aanbod, nooit een mededeling dat er niets is. En bestaat er geen
+enkele bedienbare rij, dan bestaat de sectie niet.
+
+Er staat toch een zin klaar — *"Er is op dit moment niets te doen."* — en die is voor
+de aansturingsrelease. Zodra `Nu aangestuurd` een rijsoort wordt (§60.5) hangt die rij
+wél aan het moment, en dan is dit precies het geval dat §44.4 al besloot: zeg dat er
+niets loopt, in plaats van de sectie te laten verdwijnen op het moment dat iemand de
+stopknop zoekt.
+
+**Toepasselijkheid gaat verder dan het bestaan van de rij.** Een apparaat krijgt alleen
+een rij wanneer de vlag ook gelézen wordt: hij voedt uitsluitend het urgentie-advies,
+dus een vaatwasser op *Alleen meekijken* krijgt geen knop. Dat is dezelfde regel als
+bij het tijdvenster en het apparaatprofiel — een vraag hangt aan waar haar antwoord
+voor gebruikt wordt (§16).
+
 ### 60.3 Wat er op Apparaten overblijft, en waarom de knop daar weg moet
 
 Apparaten houdt wat het apparaat **is**: type, vermogen, venster, koppelingen, de
@@ -6721,7 +6764,7 @@ aanleiding"* bedoelt.
 - **`control_forbidden`**: een knop verschijnt nooit, ook niet uitgegrijsd (§44.3).
   Ongewijzigd, en in één sectie is dat makkelijker vol te houden dan in vier.
 
-### 60.6 Wat dit voorstel niet doet
+### 60.6 Wat deze ronde niet doet
 
 - **De Energiecoach houdt zijn knop onder het advies.** Dat is de aanleiding zelf, en
   wie doorklikt naar het waarom moet daar kunnen handelen.

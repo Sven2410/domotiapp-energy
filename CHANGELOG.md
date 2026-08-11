@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.24.0
+
+Bediening staat op het Overzicht. SPEC §60.
+
+De gereed-knop stond op Apparaten, en dat is het tabblad waar een installateur een woning
+inricht. Een bewoner met een volle vaatwasser gaat daar niet heen — hij slaat het Overzicht
+open. De toets die dat beslist: **waar staat iemand als hij dit doet?**
+
+### Toegevoegd
+
+- **"Wat je nu kunt doen"** op het Overzicht, direct onder `Advies`. Per apparaat waarvan de
+  bewoner iets gevraagd wordt: wat het is, hoelang een gezette melding nog geldt, en één knop.
+
+  De sectie bestaat zodra deze woning zoiets heeft, en verdwijnt bij een woning die niets te
+  bedienen heeft — geen lege sectie die een tekortkoming aankondigt die niemand kan opheffen.
+
+  **Eén sectie, niet één per soort handeling.** Bij de aansturingsrelease komen *Start nu*,
+  *Stop* en *Goedkeuren* erbij als rijsoorten in dezelfde sectie. Anders zou de bewoner moeten
+  weten wélke sectie zijn handeling draagt, en dat is precies het probleem dat deze verhuizing
+  oplost.
+
+### Gewijzigd
+
+- **De knop "Klaar / vol" is weg bij Apparaten.** Twee plekken zijn alleen te verdedigen als
+  het twee *momenten* zijn; Apparaten is geen moment dat een bewoner heeft. Bovendien leest een
+  knop op een configuratierij alsof hij iets instelt in plaats van iets doet.
+
+  Onder het advies in de Energiecoach blijft hij staan: dat is de aanleiding zelf.
+
+- **Een apparaat op *Alleen meekijken* krijgt geen knop.** De melding voedt alleen het
+  urgentie-advies, dus zonder advies vraagt hij om iets dat niemand leest — dezelfde regel als
+  bij het tijdvenster en het apparaatprofiel.
+
 ## 0.23.0
 
 De gereed-vlag: de coach adviseert een machine pas te starten als iemand heeft gezegd dat er
