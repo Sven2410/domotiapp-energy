@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.21.0
+
+Het uurbedrag dat niet te berekenen is, legt nu uit waarom. SPEC §56.8.
+
+### Fixed
+
+- **Een laadpaal zonder bedrag per uur zegt nu welk veld de som stopte.** Voor een apparaat
+  dat neemt wat er over is, is het totaal met opzet leeg en is het bedrag per uur het
+  antwoord (§56.4) — maar ontbrak dát bedrag ook, dan toonde de kaart geen van beide rijen
+  en bleef het advies even opgewekt als altijd. De klant zag *"dit is een gunstig moment"*
+  zonder één woord over de prijs die eronder ontbrak.
+
+  Nu staat er bij: *"Hoeveel dit oplevert is niet te berekenen zonder het vaste
+  leveringstarief — vul dat in bij Woning."* Dezelfde zinnen die het totaal al gebruikte,
+  want een ontbrekende importprijs stopt beide sommen om dezelfde reden en wordt op dezelfde
+  plek ingevuld.
+
+  Is het laadvermogen zelf onbekend, dan zegt het advies dát: *"Hoeveel dit per uur oplevert
+  is niet te berekenen zonder het maximale laadvermogen van Laadpaal — vul dat in bij
+  Apparaten."* Dat is de enige andere term die het uurbedrag nodig heeft.
+
+- **Een laadpaal wordt naar het veld gestuurd dat op zijn eigen formulier staat.** Het
+  apparaatformulier vraagt een laadpaal om *Energie per laadsessie* en *Maximaal
+  laadvermogen* — een auto heeft geen cyclus — terwijl het advies iedereen naar *de energie
+  per cyclus* en *het nominale vermogen* verwees. Gevonden bij het splitsen hierboven, en het
+  is dezelfde fout die deze zinnen juist moeten voorkomen: de installateur laten zoeken naar
+  iets dat niet op zijn scherm staat.
+
 ## 0.20.0
 
 Een lege plek zegt nu niets in plaats van "mislukt". SPEC §58.2, uitgewerkt in §58.4.

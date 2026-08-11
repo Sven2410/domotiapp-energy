@@ -364,7 +364,7 @@ def _advise_solar_surplus(context: _Context) -> list[AdviceItem]:
         AdviceItem(
             id=f"{REASON_SOLAR_SURPLUS_AVAILABLE}:{device.id}",
             title="Zonneoverschot beschikbaar",
-            message=_surplus_message(context, device, savings),
+            message=_surplus_message(context, device, savings, rate, surplus),
             severity=SEVERITY_INFO,
             reason_code=REASON_SOLAR_SURPLUS_AVAILABLE,
             confidence=_surplus_confidence(context, device),
@@ -456,7 +456,11 @@ def _surplus_confidence(context: _Context, device: DeviceProfile) -> str:
 
 
 def _surplus_message(
-    context: _Context, device: DeviceProfile, savings: float | None
+    context: _Context,
+    device: DeviceProfile,
+    savings: float | None,
+    rate: float | None,
+    surplus: float | None,
 ) -> str:
     """Phrase the surplus advice so it matches the amount underneath it.
 
@@ -471,12 +475,19 @@ def _surplus_message(
     good rate underneath it told the installer to go and fill in a feed-in cost
     he had just entered. Found in the browser, which is the only place it could
     have been: every layer below agreed with itself.
+
+    **But an empty rate under that appliance is a missing term again**, and
+    until 0.21.0 nothing said so: the card simply showed neither amount row and
+    the sentence was as cheerful as ever (SPEC.md §56.8). The two cases have to
+    be told apart by the amount that appliance actually carries, which is why
+    the rate is an argument here — asking `savings` would answer for the wrong
+    figure, and it is empty for every modulating appliance by design.
     """
     opening = "Er is momenteel zonneoverschot beschikbaar."
     favourable = f"Dit is een gunstig moment om {device.name} te gebruiken."
 
     if device.modulates:
-        return f"{opening} {favourable}"
+        return _modulating_surplus_message(context, device, rate, surplus)
 
     if savings is None:
         # Name the term that is actually missing. Four different gaps can stop
@@ -515,6 +526,37 @@ def _surplus_message(
     return f"{opening} {favourable}"
 
 
+def _modulating_surplus_message(
+    context: _Context,
+    device: DeviceProfile,
+    rate: float | None,
+    surplus: float | None,
+) -> str:
+    """Phrase the advice for an appliance that takes whatever is spare.
+
+    Its own function because it reads its own figure. The total below is empty
+    for every one of these appliances by design (SPEC.md §56.4), so the branches
+    of :func:`_surplus_message` cannot say anything about this one — asking
+    `savings` here would answer for a sum that was never attempted.
+
+    Two situations rather than five: the rate is there, or a term is missing.
+
+    **A negative rate is a third one, and it is not handled here** (SPEC.md
+    §56.9). Once feeding in pays better than self-consumption the margin goes
+    negative, and this sentence stays as cheerful as ever above a rate that is
+    below zero — exactly the contradiction the per-cycle branch has its own
+    sentence for. It cannot happen under net metering, where the margin is the
+    avoided feed-in cost and never negative, so it is a 2027 problem and it
+    needs its own wording rather than the per-cycle sentence with another unit.
+    """
+    opening = "Er is momenteel zonneoverschot beschikbaar."
+    favourable = f"Dit is een gunstig moment om {device.name} te gebruiken."
+
+    if rate is None:
+        return f"{opening} {favourable} {_why_no_rate(context, device, surplus)}"
+    return f"{opening} {favourable}"
+
+
 def _has_feed_in_source(context: _Context) -> bool:
     """Return whether a feed-in price source row exists at all.
 
@@ -550,20 +592,90 @@ def _euro(amount: float) -> str:
 
 
 def _why_no_amount(context: _Context, device: DeviceProfile) -> str:
-    """Say which missing term stopped the saving from being calculated.
+    """Say which missing term stopped the per-cycle saving from being made.
 
     The order matches the checks in :func:`_solar_savings`, so the sentence
     names the term that actually stopped it rather than the last one that could
     have. Each answer says where to go and what to enter, because "niet te
     berekenen" on its own leaves the installer hunting.
-    """
-    home = context.config.home
 
+    **Its own half is the cycle; the rest belongs to the margin** (SPEC.md
+    §56.8). This function used to hold both, and that is precisely why the
+    modulating branch of :func:`_surplus_message` could not call it: a charger
+    that takes whatever is spare does not use `energy_per_cycle_kwh`, so the
+    first sentence here would send its installer to a field that has no bearing
+    on his amount. Split, both branches can name the term that stopped their
+    own sum — see :func:`_why_no_rate`.
+    """
     if device.energy_per_cycle_kwh is None:
+        # **Two whole sentences, not one with the field name slotted in**
+        # (SPEC.md §26). A charger's form asks for *Energie per laadsessie*,
+        # because a car has no cycle; every other appliance is asked for
+        # *Energie per cyclus*. Composing that from a fragment would leave the
+        # sentence the customer reads existing nowhere in the source.
+        if device.device_type == DEVICE_TYPE_EV_CHARGER:
+            return (
+                f"Hoeveel dit oplevert is niet te berekenen zonder de energie "
+                f"per laadsessie van {device.name} — vul die in bij Apparaten."
+            )
         return (
             f"Hoeveel dit oplevert is niet te berekenen zonder de energie per "
             f"cyclus van {device.name} — vul die in bij Apparaten."
         )
+
+    return _why_no_margin(context)
+
+
+def _why_no_rate(
+    context: _Context, device: DeviceProfile, surplus: float | None
+) -> str:
+    """Say which missing term stopped the hourly amount from being made.
+
+    The counterpart of :func:`_why_no_amount` for an appliance that takes
+    whatever is spare (SPEC.md §56.8). The order matches the checks in
+    :func:`_solar_savings_rate`: its own term first, then the margin the two
+    amounts share.
+
+    The margin sentences are reused word for word, and that is the point of the
+    split rather than a shortcut. A missing import price stops both sums for the
+    same reason and is filled in at the same place, so the scale of the amount
+    changes nothing about what the installer has to go and do.
+    """
+    if device.usable_power_w(surplus) is None:
+        # The same two labels one branch up, and the same rule: whole sentences
+        # (SPEC.md §26). A charger's form calls this *Maximaal laadvermogen*,
+        # everything else *Nominaal vermogen* — and modulating is not restricted
+        # to chargers, since the switch is offered on every advisable type, so
+        # the type is asked rather than assumed.
+        if device.device_type == DEVICE_TYPE_EV_CHARGER:
+            return (
+                f"Hoeveel dit per uur oplevert is niet te berekenen zonder het "
+                f"maximale laadvermogen van {device.name} — vul dat in bij "
+                f"Apparaten."
+            )
+        return (
+            f"Hoeveel dit per uur oplevert is niet te berekenen zonder het "
+            f"nominale vermogen van {device.name} — vul dat in bij Apparaten."
+        )
+
+    return _why_no_margin(context)
+
+
+def _why_no_margin(context: _Context) -> str:
+    """Say which missing term stopped the self-consumption margin.
+
+    The half of the story that is about the home rather than the appliance:
+    what a kWh costs, what feeding it in is worth, and what feeding it in
+    costs. The order follows `self_consumption_margin` in the calculator, so
+    the sentence names the term that actually stopped the composition.
+
+    **No appliance is mentioned here on purpose.** Both amounts multiply this
+    margin — the per-cycle total and the per-hour rate — so both are stopped by
+    exactly the same gaps, at exactly the same fields. One answer, so the two
+    can never come to disagree about where the installer should go (SPEC.md
+    §56.8).
+    """
+    home = context.config.home
 
     # The metrics already carry the price that applies, whatever the contract
     # is (SPEC.md §48); this only has to notice that there is none.
