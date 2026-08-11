@@ -22,7 +22,8 @@ from custom_components.domotiapp_energy.const import (
 from custom_components.domotiapp_energy.engine.history import (
     DayHistory,
     _complete_all_day,
-    _hours_recorded,
+    _hours_known,
+    _month_peak,
     _peak_load,
     _Rows,
     _surplus_hours,
@@ -169,30 +170,80 @@ async def test_the_day_never_carries_a_daily_self_consumption(
     assert not [naam for naam in velden if "average" in naam or "gemiddeld" in naam]
 
 
-async def test_a_day_with_gaps_says_how_much_of_it_is_known(
-    hass: HomeAssistant,
-) -> None:
-    """**Gevonden in de browser** (§61.4), en aan de getallen niet te zien.
+async def test_each_fact_counts_its_own_hours(hass: HomeAssistant) -> None:
+    """Gevonden in de browser; de eerste versie keek naar de verkeerde vraag.
 
-    Op een instance die gisteren maar zeven uur aanstond las "ongeveer 6 uur
-    zonneoverschot" als een uitspraak over een hele dag. Zes van zeven bekende
-    uren is iets anders dan zes van vierentwintig, en het verschil zit niet in
-    het getal maar in wat eromheen bekend is.
+    De aanleiding klopte: "ongeveer 6 uur zonneoverschot" rustte op zeven bekende
+    uren, en aan het getal is dat niet te zien. Maar de eerste regel nam de
+    *ruimste* van de drie reeksen als maat voor de dag, en beantwoordde daarmee
+    "liep Home Assistant" in plaats van "is dit gemeten".
+
+    Op de testinstance was dat precies verkeerd: de datakwaliteit had
+    vierentwintig uur en de netmeting zeven. De dag was dus volledig vastgelegd
+    terwijl het hoogste netvermogen op zeven uur rustte — en die regel verborg
+    juist het geval waarvoor hij geschreven was.
     """
-    zeven = _rows(
+    rows = _rows(
         **{
             ENTITY_KEY_SOLAR_SURPLUS: [{"mean": 600.0}] * 7,
             ENTITY_KEY_GRID_POWER: [{"max": 800.0}] * 7,
+            ENTITY_KEY_DATA_QUALITY: [{"min": 100.0}] * 24,
         }
     )
 
-    assert _hours_recorded(zeven) == 7
-    # De ruimste reeks telt: één sensor die niets te melden had is een ander
-    # verhaal dan een uur waarin Home Assistant uit stond.
-    ongelijk = _rows(
+    assert _hours_known(rows, ENTITY_KEY_GRID_POWER, "max") == 7
+    assert _hours_known(rows, ENTITY_KEY_DATA_QUALITY, "min") == 24
+
+
+async def test_an_hour_without_a_value_does_not_count_as_known(
+    hass: HomeAssistant,
+) -> None:
+    """Een gat in de reeks is geen uur waarover iets bekend is."""
+    rows = _rows(
+        **{ENTITY_KEY_SOLAR_SURPLUS: [{"mean": 600.0}, {"mean": None}, {"mean": 0.0}]}
+    )
+
+    assert _hours_known(rows, ENTITY_KEY_SOLAR_SURPLUS, "mean") == 2
+
+
+async def test_the_month_peak_is_a_maximum_and_a_count(hass: HomeAssistant) -> None:
+    """Het enige feit dat over een langere periode meeschaalt (SPEC.md §61.7).
+
+    Een maximum en een telling, en geen van beide middelt iets weg — de val van
+    §61.3 raakt dit dus niet. En het is het enige dat Home Assistant zelf niet
+    kan tonen, want zij kent `max_grid_power_w` niet.
+
+    De telling beantwoordt de vraag die een maximum niet beantwoordt: zit de
+    woning er structureel tegenaan of gebeurde het één keer.
+    """
+    config = _config()  # 5750 W maximum, waarschuwing op 80% = 4600 W
+    dagen = _rows(
         **{
-            ENTITY_KEY_SOLAR_SURPLUS: [{"mean": 600.0}] * 24,
-            ENTITY_KEY_DATA_QUALITY: [{"min": 100.0}] * 3,
+            ENTITY_KEY_GRID_POWER: [
+                {"max": 5100.0},
+                {"max": 4600.0},
+                {"max": 900.0},
+                {"max": 4599.0},
+            ]
         }
     )
-    assert _hours_recorded(ongelijk) == 24
+
+    peak, percent, over, known = _month_peak(dagen, config)
+
+    assert peak == 5100.0
+    assert percent == 88.7
+    # Precies op de grens telt mee; er net onder niet.
+    assert over == 2
+    assert known == 4
+
+
+async def test_a_month_of_only_export_reports_no_peak(hass: HomeAssistant) -> None:
+    """Dezelfde keuze als bij gisteren: teruglevering is een ander verhaal."""
+    peak, percent, over, known = _month_peak(
+        _rows(**{ENTITY_KEY_GRID_POWER: [{"max": -3000.0}]}), _config()
+    )
+
+    assert peak is None
+    assert percent is None
+    assert over == 0
+    assert known == 1

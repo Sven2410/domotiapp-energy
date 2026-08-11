@@ -27,7 +27,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, Final
 
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
@@ -46,6 +46,11 @@ _LOGGER = logging.getLogger(__name__)
 
 _RECORDER = "recorder"
 
+# Waarover "de afgelopen maand" gaat. Dertig dagen en geen kalendermaand: een
+# installateur die een storingsmelding krijgt vraagt naar de laatste tijd, niet
+# naar augustus.
+DAYS_IN_A_MONTH: Final = 30
+
 
 @dataclass(slots=True)
 class DayHistory:
@@ -62,13 +67,38 @@ class DayHistory:
     peak_grid_power_w: float | None = None
     peak_grid_load_percent: float | None = None
     complete_all_day: bool | None = None
-    # Over hoeveel uur van de dag er überhaupt iets is vastgelegd. **Gevonden in
-    # de browser**, op een instance die gisteren maar zeven uur aan stond: zes
-    # uur zonneoverschot "gisteren" is iets anders wanneer er van die dag maar
-    # zeven uur bekend is. Home Assistant staat bij een klant meestal dag en
-    # nacht aan — meestal, en dat is precies het soort aanname dat dit project
-    # niet stilzwijgend maakt (SPEC.md §47).
-    hours_recorded: int = 0
+    # Over hoeveel uur van de dag elk feit werkelijk iets weet. **Per feit en
+    # niet per dag**, en dat is een correctie op de eerste versie hiervan.
+    #
+    # De aanleiding was juist: op de testinstance rustte "ongeveer 6 uur
+    # zonneoverschot" op zeven bekende uren, en aan het getal is dat niet te
+    # zien. De eerste regel nam de *ruimste* reeks als maat voor de dag, en die
+    # vraag — "liep Home Assistant" — is niet de vraag die de zin stelt. De
+    # datakwaliteit had er vierentwintig, de netmeting zeven; de dag was dus
+    # compleet vastgelegd terwijl het hoogste netvermogen op zeven uur rustte,
+    # en precies dat geval verborg de regel die ervoor geschreven was.
+    #
+    # Elk feit draagt daarom zijn eigen teller, want elk feit rust op zijn eigen
+    # reeks (SPEC.md §61.4).
+    surplus_hours_known: int = 0
+    peak_hours_known: int = 0
+    quality_hours_known: int = 0
+    # Het hoogste netvermogen van de afgelopen dertig dagen, en op hoeveel dagen
+    # de woning boven haar waarschuwingsgrens uitkwam.
+    #
+    # **Het enige feit dat over een langere periode meeschaalt zonder scheef te
+    # trekken** (SPEC.md §61.7): het is een maximum en een telling, en geen van
+    # beide middelt iets weg. En het is het enige dat Home Assistant zelf niet
+    # kan tonen, want zij kent `max_grid_power_w` niet.
+    #
+    # Twee getallen en niet één, omdat de installateur een andere vraag stelt
+    # dan "hoe hoog": bij een gesprongen zekering wil hij weten of de woning er
+    # structureel tegenaan zit of dat het één keer gebeurde. Een maximum alleen
+    # zegt dat niet.
+    peak_month_w: float | None = None
+    peak_month_percent: float | None = None
+    days_over_warning: int | None = None
+    days_known: int = 0
     # Waar of onwaar: is er überhaupt iets vastgelegd over deze dag. Het paneel
     # zegt daarmee "nog geen geschiedenis" in plaats van drie lege regels.
     has_data: bool = False
@@ -81,7 +111,13 @@ class DayHistory:
             "peak_grid_power_w": self.peak_grid_power_w,
             "peak_grid_load_percent": self.peak_grid_load_percent,
             "complete_all_day": self.complete_all_day,
-            "hours_recorded": self.hours_recorded,
+            "surplus_hours_known": self.surplus_hours_known,
+            "peak_hours_known": self.peak_hours_known,
+            "quality_hours_known": self.quality_hours_known,
+            "peak_month_w": self.peak_month_w,
+            "peak_month_percent": self.peak_month_percent,
+            "days_over_warning": self.days_over_warning,
+            "days_known": self.days_known,
             "has_data": self.has_data,
         }
 
@@ -135,31 +171,113 @@ async def async_yesterday(
     start, end = yesterday_bounds(dt_util.utcnow())
     day = DayHistory(date=dt_util.as_local(start).date().isoformat())
 
-    rows = await _async_read_hours(hass, start, end)
+    rows = await _async_read(
+        hass,
+        start,
+        end,
+        period="hour",
+        keys={
+            ENTITY_KEY_SOLAR_SURPLUS,
+            ENTITY_KEY_GRID_POWER,
+            ENTITY_KEY_DATA_QUALITY,
+        },
+        types={"mean", "max", "min"},
+    )
     if not rows.by_id:
         return day
 
     day.has_data = True
-    day.hours_recorded = _hours_recorded(rows)
+    day.surplus_hours_known = _hours_known(rows, ENTITY_KEY_SOLAR_SURPLUS, "mean")
+    day.peak_hours_known = _hours_known(rows, ENTITY_KEY_GRID_POWER, "max")
+    day.quality_hours_known = _hours_known(rows, ENTITY_KEY_DATA_QUALITY, "min")
     day.surplus_hours = _surplus_hours(rows, config)
     day.peak_grid_power_w, day.peak_grid_load_percent = _peak_load(rows, config)
     day.complete_all_day = _complete_all_day(rows)
+    await _async_add_month(hass, config, day, end)
     return day
 
 
-async def _async_read_hours(
-    hass: HomeAssistant, start: datetime, end: datetime
+async def _async_add_month(
+    hass: HomeAssistant,
+    config: StoredConfiguration,
+    day: DayHistory,
+    end: datetime,
+) -> None:
+    """Vul aan hoe de afgelopen dertig dagen eruitzagen op het net.
+
+    Per **dag** opgevraagd en niet per uur: over dertig dagen is dat dertig
+    rijen in plaats van zevenhonderd, en het maximum van een dag is precies wat
+    hier telt. Een gemiddelde zou hier trouwens ook niet mogen — zie §61.3 — maar
+    dat probleem doet zich niet voor: een maximum van maxima is nog steeds een
+    maximum.
+    """
+    start = end - timedelta(days=DAYS_IN_A_MONTH)
+    rows = await _async_read(
+        hass, start, end, period="day", keys={ENTITY_KEY_GRID_POWER}, types={"max"}
+    )
+    maxima = rows.values(ENTITY_KEY_GRID_POWER, "max")
+    if not maxima:
+        return
+
+    (
+        day.peak_month_w,
+        day.peak_month_percent,
+        day.days_over_warning,
+        day.days_known,
+    ) = _month_peak(rows, config)
+
+
+def _month_peak(
+    rows: _Rows, config: StoredConfiguration
+) -> tuple[float | None, float | None, int | None, int]:
+    """Reken de maand uit: het hoogste vermogen, en hoe vaak het te hoog was.
+
+    Apart van het lezen, zodat de rekenkant toetsbaar is zonder recorder — de
+    val waar `calculate()` ooit in liep is dat een samenstelling alleen door
+    tests wordt aangeroepen (CLAUDE.md, zevende variant). Hier is het omgekeerd:
+    de aanroeper is één regel en dit is waar het denkwerk zit.
+    """
+    maxima = rows.values(ENTITY_KEY_GRID_POWER, "max")
+    if not maxima:
+        return None, None, None, 0
+
+    peak = max(maxima)
+    watts = round(peak, 1) if peak > 0 else None
+    maximum = config.home.max_grid_power_w
+    if not maximum:
+        return watts, None, None, len(maxima)
+
+    percent = round(peak / maximum * PERCENT_MAX, 1) if peak > 0 else None
+    # Boven de waarschuwingsgrens die de woning zelf gebruikt, want een tweede
+    # drempel hier zou een tweede antwoord zijn op "is dit veel" (SPEC.md §60.2).
+    grens = maximum * config.home.peak_warning_percent / PERCENT_MAX
+    over = sum(1 for value in maxima if value >= grens)
+    return watts, percent, over, len(maxima)
+
+
+async def _async_read(
+    hass: HomeAssistant,
+    start: datetime,
+    end: datetime,
+    *,
+    period: str,
+    keys: set[str],
+    types: set[str],
 ) -> _Rows:
-    """Lees de uurstatistieken van de drie sensoren die dit overzicht gebruikt.
+    """Lees statistieken over een periode, of geef niets terug.
 
     Via de executor van de recorder, want `statistics_during_period` opent een
     databasesessie en hoort dus niet op de eventloop — nagelezen in de bron en
     niet in de documentatie.
+
+    **Nooit een uitzondering naar buiten.** Een geschiedenis die niet gelezen kan
+    worden is een leeg blok, geen kapot paneel: dit is het minst belangrijke
+    onderdeel van het scherm en het mag de rest niet meeslepen.
     """
     if _RECORDER not in hass.config.components:
         # Een woning kan de recorder uitgeschakeld hebben. Dat is een keuze van
         # de eigenaar en geen storing, dus er wordt niets gemeld.
-        _LOGGER.debug("No recorder: skipping the day summary")
+        _LOGGER.debug("No recorder: skipping the history")
         return _Rows()
 
     # **Binnen de functie, en dat is de bedoeling.** De recorder is een
@@ -171,53 +289,37 @@ async def _async_read_hours(
         statistics_during_period,
     )
 
-    ids = {
-        statistic_id(key)
-        for key in (
-            ENTITY_KEY_SOLAR_SURPLUS,
-            ENTITY_KEY_GRID_POWER,
-            ENTITY_KEY_DATA_QUALITY,
-        )
-    }
     try:
         result = await get_instance(hass).async_add_executor_job(
             statistics_during_period,
             hass,
             start,
             end,
-            ids,
-            "hour",
+            {statistic_id(key) for key in keys},
+            period,
             None,
-            {"mean", "max", "min"},
+            types,
         )
     except Exception:
-        _LOGGER.exception("Could not read the statistics for yesterday")
+        _LOGGER.exception("Could not read the %s statistics", period)
         return _Rows()
 
     return _Rows(by_id={key: list(value) for key, value in result.items()})
 
 
-def _hours_recorded(rows: _Rows) -> int:
-    """Geef over hoeveel uur van gisteren er iets is vastgelegd.
+def _hours_known(rows: _Rows, key: str, kind: str) -> int:
+    """Geef over hoeveel uur van gisteren déze reeks iets wist.
 
     **Een dag met gaten is geen dag**, en het verschil is niet te zien aan de
-    getallen zelf: zes uur zonneoverschot leest hetzelfde of de recorder nu
-    vierentwintig uur kende of zeven. Home Assistant kan uit hebben gestaan voor
-    een update, een stroomstoring of — zoals op de testinstance — omdat de doos
-    pas 's middags aanging.
+    getallen zelf: zes uur zonneoverschot leest hetzelfde of het over
+    vierentwintig bekende uren gaat of over zeven. Home Assistant kan uit hebben
+    gestaan, maar een bron kan ook stil zijn gevallen terwijl de rest doorliep —
+    en voor de zin die erop rust maakt dat geen verschil.
 
-    De ruimste van de drie reeksen telt: een sensor kan afzonderlijk niets te
-    melden hebben gehad, en dat is een ander verhaal dan een uur waarin niets
-    draaide.
+    Vandaar per reeks en niet per dag: het hoogste netvermogen weet alleen iets
+    over de uren waarin de netmeter iets meldde.
     """
-    return max(
-        len(rows.by_id.get(statistic_id(key), []))
-        for key in (
-            ENTITY_KEY_SOLAR_SURPLUS,
-            ENTITY_KEY_GRID_POWER,
-            ENTITY_KEY_DATA_QUALITY,
-        )
-    )
+    return len(rows.values(key, kind))
 
 
 def _surplus_hours(rows: _Rows, config: StoredConfiguration) -> int | None:

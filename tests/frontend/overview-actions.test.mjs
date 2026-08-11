@@ -179,6 +179,49 @@ describe('hoe het gisteren ging', () => {
     assert.match(tekst, /De hele dag compleet/);
   });
 
+  it('zegt per feit over hoeveel uur het iets weet', async () => {
+    // **Per feit en niet per dag.** Gisteren had de datakwaliteit vierentwintig
+    // uur en de netmeting zeven: de dag was compleet vastgelegd terwijl het
+    // hoogste netvermogen op zeven uur rustte.
+    const { tab } = await openOverview(
+      fakeHass({
+        history: {
+          surplus_hours: 6,
+          surplus_hours_known: 7,
+          peak_grid_power_w: 800,
+          peak_grid_load_percent: 14,
+          peak_hours_known: 7,
+          complete_all_day: false,
+          quality_hours_known: 24,
+          has_data: true,
+        },
+      }),
+    );
+    const tekst = visibleText(historyCard(tab));
+
+    assert.match(tekst, /Gemeten over 7 van de 24 uur/);
+    // De datakwaliteit kende de dag wél helemaal, dus die rij zwijgt erover.
+    assert.equal(tekst.match(/Gemeten over/g).length, 2);
+  });
+
+  it('zwijgt over de uren zodra een feit de hele dag kent', async () => {
+    const { tab } = await openOverview(
+      fakeHass({
+        history: {
+          surplus_hours: 6,
+          surplus_hours_known: 24,
+          peak_grid_power_w: 800,
+          peak_hours_known: 24,
+          complete_all_day: true,
+          quality_hours_known: 24,
+          has_data: true,
+        },
+      }),
+    );
+
+    assert.doesNotMatch(visibleText(historyCard(tab)), /Gemeten over/);
+  });
+
   it('zegt "ongeveer", want een uurgemiddelde is grof', async () => {
     // Precisie suggereren die er niet is, is erger dan afronden: een uur met
     // een half uur dubbel overschot en een half uur niets telt hier mee.
@@ -197,6 +240,38 @@ describe('hoe het gisteren ging', () => {
     );
 
     assert.match(visibleText(historyCard(tab)), /Geen afname gemeten/);
+  });
+
+  it('toont de dertig dagen als maximum met een telling erbij', async () => {
+    // **De vraag van de installateur** (§61.7): bij een gesprongen zekering wil
+    // hij weten of de woning er structureel tegenaan zit of dat het één keer
+    // gebeurde. Een maximum alleen zegt dat niet.
+    const { tab } = await openOverview(
+      fakeHass({
+        history: {
+          peak_month_w: 5100,
+          peak_month_percent: 88.7,
+          days_over_warning: 2,
+          days_known: 30,
+          has_data: true,
+        },
+      }),
+    );
+    const tekst = visibleText(historyCard(tab));
+
+    assert.match(tekst, /Hoogste in 30 dagen/);
+    assert.match(tekst, /5\.100 W/);
+    assert.match(tekst, /Op 2 van de 30 gemeten dagen boven je waarschuwingsgrens/);
+  });
+
+  it('wijst naar het Energie-dashboard voor "hoeveel"', async () => {
+    // Zonder deze regel zoekt een klant kWh en kosten hier, en concludeert hij
+    // dat het ontbreekt (§61.1). Ook op de eerste dag, dus zonder geschiedenis.
+    const { tab } = await openOverview();
+    const kaart = historyCard(tab);
+
+    assert.match(visibleText(kaart), /Energie-dashboard van Home Assistant/);
+    assert.equal(kaart.querySelector('a')?.getAttribute('href'), '/energy');
   });
 
   it('belooft nergens wat het opgeleverd heeft', async () => {

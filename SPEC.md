@@ -6878,9 +6878,21 @@ drie feiten over gisteren. Elk feit moet los verdedigbaar zijn:
 | *"3 keer advies"* | het logboek | niet dat je het opvolgde |
 | *"installatie compleet"* | datakwaliteit | niet dat het advies goed was |
 
-**Ten hoogste drie, en dat is een grens en geen richtlijn.** Een blok dat groeit
-wordt een dashboard, en dan zijn we alsnog bezig het Energie-dashboard na te
-bouwen.
+**Ten hoogste vier, en dat is een grens en geen richtlijn.** Het waren er drie;
+§61.7 voegde er één toe met een reden die de grens niet oprekt maar verplaatst.
+Een blok dat verder groeit wordt een dashboard, en dan zijn we alsnog bezig het
+Energie-dashboard na te bouwen.
+
+**En het blok wijst zelf naar waar "hoeveel" staat.** Een klant die kWh, kosten of
+zelf verbruikte energie zoekt en hier niets vindt, concludeert dat het ontbreekt —
+niet dat het ergens anders beter staat. De verwijzing hoort dus in het blok en niet
+alleen in de README (besluit Sven, 2026-08-11).
+
+**Elk feit zegt over hoeveel uur het iets weet, wanneer dat niet de hele dag is.**
+Gevonden in de browser: op de testinstance had de datakwaliteit vierentwintig
+uurwaarden en de netmeting zeven, en *"hoogste netvermogen 800 W"* rustte dus op
+zeven uur terwijl de dag volledig was vastgelegd. Per feit en niet per dag — een
+bron kan stil vallen terwijl de rest doorloopt.
 
 Het **Logboek** wordt de diepte. Dat tabblad bestaat al en is nu een technische
 lijst; het wordt een tijdlijn per dag, in de woorden van de klant. Geen zevende
@@ -6919,6 +6931,57 @@ ID's), maar het is wel een belofte.
 Wat dat praktisch betekent: de klant krijgt het getal in HA's eigen grafieken,
 waar hij zelf kan zien wat het doet — en ons blok houdt zich bij de drie feiten
 van §61.4, die los verdedigbaar zijn.
+
+### 61.7 Week, maand en jaar: één uitzondering, en verder niets
+
+**Analyse op verzoek van Sven** (2026-08-11), en het antwoord is grotendeels
+*"hier voegen we niets toe wat Home Assistant niet beter doet"*.
+
+**De val van §61.3 geldt in het kwadraat.** Bij een dag is het gemiddelde van
+uurgemiddelden al scheef; bij een maand komt er een tweede middeling overheen die
+de eerste verbergt. Een maandgemiddelde van daggemiddelden weegt een bewolkte
+zondag even zwaar als een zonnige woensdag. Het getal wordt gladder naarmate het
+minder betekent, en gladde getallen ogen betrouwbaar.
+
+Een langere periode vraagt dus om **sommen, maxima of tellingen** — nooit om
+gemiddelden. Sommen waarvan? Van kWh. Die hebben wij niet en het
+Energie-dashboard wel.
+
+| Feit | Over een langere periode |
+|---|---|
+| uren zonneoverschot | schaalt, als **som** van uren |
+| hoogste netvermogen | schaalt en wordt **beter**: een maximum middelt niets weg |
+| installatie compleet | schaalt als **telling** van dagen |
+| zelfbenutting | wordt betekenislozer als gemiddelde, en is in de juiste vorm (kWh ÷ kWh) het Energie-dashboard |
+
+**Wat Home Assistant al beter doet:** verbruik, opwek, teruglevering, zelf
+verbruikt en de kosten, per dag, week, maand en jaar, uit de meters. Daar is niets
+aan toe te voegen.
+
+**Wat zij niet heeft, en wij wel:** het maximum van het netvermogen afgezet tegen
+`max_grid_power_w`. Zij kent dat maximum niet, want het staat in onze configuratie.
+
+> **Daarom precies één uitzondering: het hoogste netvermogen van de afgelopen
+> dertig dagen, met het aantal dagen boven de waarschuwingsgrens erbij.**
+
+De telling hoort erbij omdat de installateur een andere vraag stelt dan *"hoe
+hoog"*: bij een klant die belt over een gesprongen zekering wil hij weten of de
+woning er structureel tegenaan zit of dat het één keer gebeurde. Een maximum
+alleen beantwoordt dat niet, en het is het bruikbaarste getal van het blok
+(Sven, 2026-08-11).
+
+**Dertig dagen en geen kalendermaand**, want een storingsmelding gaat over de
+laatste tijd en niet over augustus.
+
+#### En dus geen eigen scherm
+
+Het Logboek blijft de tijdlijn (§61.4): dat beantwoordt *"wat gebeurde er"*. Een
+periode beantwoordt *"hoe stond het ervoor"*, en dat zijn twee vormen die je niet
+in één tabblad moet persen.
+
+Maar na aftrek van wat het Energie-dashboard beter doet, blijft er van "hoe stond
+het ervoor" één regel over. **Drie regels zijn geen scherm**, dus er komt geen
+zevende tabblad — de uitzondering staat gewoon in het blok.
 
 ### 61.6 Wat dit overzicht niet doet
 

@@ -38,8 +38,27 @@ import {
 import { createRowList } from '../core/rows.js';
 import { onTap } from '../core/tap.js';
 
-/** Waartegen "hield hij de hele dag bij" wordt afgemeten (SPEC.md §61.4). */
+/** Waartegen "kent dit feit de hele dag" wordt afgemeten (SPEC.md §61.4). */
 const HOURS_IN_A_DAY = 24;
+
+/**
+ * Zet erbij over hoeveel uur dit feit iets weet, wanneer dat niet de hele dag is.
+ *
+ * **Gevonden in de browser**, en de eerste versie hiervan keek naar de
+ * verkeerde vraag: zij nam de ruimste van de drie reeksen als maat voor de dag,
+ * en beantwoordde daarmee *"liep Home Assistant"* in plaats van *"is dit
+ * gemeten"*. Op de testinstance had de datakwaliteit vierentwintig uur en de
+ * netmeting zeven — de dag was dus volledig vastgelegd terwijl het hoogste
+ * netvermogen op zeven uur rustte, en precies dat geval verborg de regel die
+ * ervoor geschreven was.
+ */
+function partialDay(sentence, hoursKnown) {
+  if (typeof hoursKnown !== 'number' || hoursKnown >= HOURS_IN_A_DAY) {
+    return sentence;
+  }
+  const zin = `Gemeten over ${hoursKnown} van de 24 uur.`;
+  return sentence ? `${sentence} ${zin}` : zin;
+}
 
 const EMPTY_NOT_CONFIGURED = 'Nog niet ingesteld';
 const EMPTY_NOT_AVAILABLE = 'Niet beschikbaar';
@@ -363,11 +382,32 @@ export const overviewTab = {
     });
     const peakRow = statRow('Hoogste netvermogen', { empty: 'Geen afname gemeten' });
     const completeRow = statRow('Installatie', { empty: 'Niet gemeten' });
+    // **Het vierde feit, en het enige dat over een langere periode meeschaalt
+    // zonder scheef te trekken** (SPEC.md §61.7). Een maximum en een telling —
+    // geen van beide middelt iets weg — en het is het enige dat Home Assistant
+    // zelf niet kan tonen, want zij kent `max_grid_power_w` niet.
+    //
+    // Twee getallen omdat de installateur een andere vraag stelt dan "hoe
+    // hoog": bij een gesprongen zekering wil hij weten of de woning er
+    // structureel tegenaan zit of dat het één keer gebeurde.
+    const peakMonthRow = statRow('Hoogste in 30 dagen', { empty: 'Niet gemeten' });
+    // **Waar "hoeveel" staat, en waarom dat niet hier staat** (SPEC.md §61.1).
+    // Wie kWh, kosten of zelf verbruikte energie zoekt, hoort te weten dat het
+    // Energie-dashboard van Home Assistant dat toont — uit de meters zelf.
+    // Zonder deze regel zoekt hij het hier en concludeert hij dat het ontbreekt.
+    const energyPointer = el('p', { class: 'row-meta' });
+    energyPointer.append(
+      document.createTextNode('Voor kWh, kosten en wat je zelf verbruikte: '),
+      el('a', { href: '/energy', text: 'het Energie-dashboard van Home Assistant' }),
+      document.createTextNode('.'),
+    );
     const historyNotice = notice('mdi:clock-outline');
     historyCard.body.append(
       surplusHoursRow.element,
       peakRow.element,
+      peakMonthRow.element,
       completeRow.element,
+      energyPointer,
       historyNotice.element,
     );
 
@@ -408,7 +448,11 @@ export const overviewTab = {
       const heeftIets = Boolean(day?.has_data);
       setVisible(surplusHoursRow.element, heeftIets);
       setVisible(peakRow.element, heeftIets);
+      setVisible(peakMonthRow.element, heeftIets);
       setVisible(completeRow.element, heeftIets);
+      // De verwijzing staat er ook zonder geschiedenis: wie "hoeveel" zoekt,
+      // zoekt dat ook op de eerste dag.
+      setVisible(energyPointer, true);
       historyNotice.set(
         heeftIets
           ? ''
@@ -425,35 +469,41 @@ export const overviewTab = {
       // uur niets telt mee. Precisie suggereren die er niet is, is erger dan
       // afronden (§61.4).
       //
-      // En de hint zegt het wanneer de dag gaten heeft. **Gevonden in de
-      // browser**: op een instance die gisteren maar zeven uur aanstond las
-      // "ongeveer 6 uur zonneoverschot" als een uitspraak over een hele dag.
-      // Zes van zeven bekende uren is iets heel anders dan zes van
-      // vierentwintig, en aan het getal zelf is dat niet te zien.
-      const uren = day.hours_recorded;
-      const heleDag = typeof uren !== 'number' || uren >= HOURS_IN_A_DAY;
+      // En de hint zegt het wanneer dit feit maar een deel van de dag kent.
+      // **Per feit en niet per dag**, want een bron kan stil vallen terwijl de
+      // rest doorloopt: gisteren had de datakwaliteit vierentwintig uur en de
+      // netmeting zeven, en dan is de dag compleet vastgelegd terwijl het
+      // hoogste netvermogen op zeven uur rust.
       surplusHoursRow.set(
         day.surplus_hours === null || day.surplus_hours === undefined
           ? null
           : `ongeveer ${day.surplus_hours} uur`,
         {
-          hint: heleDag
-            ? 'Boven de drempel die ook het advies gebruikt.'
-            : `Boven de drempel die ook het advies gebruikt. Home Assistant ` +
-              `hield gisteren ${uren} van de 24 uur bij.`,
+          hint: partialDay(
+            'Boven de drempel die ook het advies gebruikt.',
+            day.surplus_hours_known,
+          ),
         },
       );
 
       const piek = day.peak_grid_power_w;
-      peakRow.set(
-        typeof piek === 'number' ? `${formatNumber(piek)} W` : null,
-        {
-          hint:
-            typeof day.peak_grid_load_percent === 'number'
-              ? `${formatNumber(day.peak_grid_load_percent, { decimals: 0 })}% van je maximum.`
-              : null,
-        },
-      );
+      const deel =
+        typeof day.peak_grid_load_percent === 'number'
+          ? `${formatNumber(day.peak_grid_load_percent, { decimals: 0 })}% van je maximum.`
+          : '';
+      peakRow.set(typeof piek === 'number' ? `${formatNumber(piek)} W` : null, {
+        hint: partialDay(deel, day.peak_hours_known) || null,
+      });
+
+      const maand = day.peak_month_w;
+      const dagen = day.days_over_warning;
+      peakMonthRow.set(typeof maand === 'number' ? `${formatNumber(maand)} W` : null, {
+        hint:
+          typeof dagen === 'number' && typeof day.days_known === 'number'
+            ? `Op ${dagen} van de ${day.days_known} gemeten dagen boven je ` +
+              `waarschuwingsgrens.`
+            : null,
+      });
 
       completeRow.set(
         day.complete_all_day === null || day.complete_all_day === undefined
@@ -461,6 +511,7 @@ export const overviewTab = {
           : day.complete_all_day
             ? 'De hele dag compleet'
             : 'Niet de hele dag compleet',
+        { hint: partialDay('', day.quality_hours_known) || null },
       );
     }
 
