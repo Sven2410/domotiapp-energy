@@ -398,11 +398,34 @@ function markRequired(field, required) {
   return { ...field, required: true };
 }
 
-/** The Dutch name of a field, for the sentence about what is still missing. */
+/**
+ * The Dutch name of a field, for the sentence about what is still missing.
+ *
+ * **Two names per field, because the form has two** (SPEC.md §59). A charger is
+ * asked for *Maximaal laadvermogen* and *Energie per laadsessie* — a car has no
+ * cycle — and this row told its installer that "nominaal vermogen" and "energie
+ * per cyclus" were missing, neither of which is on his screen.
+ *
+ * Found in the browser, one layer below the same mistake in the advice
+ * sentences that 0.21.0 repaired. Two places naming one field differently is
+ * only ever noticed from the outside, which is what that check is for.
+ */
 const REQUIRED_LABELS = {
   nominal_power_w: 'nominaal vermogen',
   energy_per_cycle_kwh: 'energie per cyclus',
 };
+
+const CHARGER_REQUIRED_LABELS = {
+  nominal_power_w: 'maximaal laadvermogen',
+  energy_per_cycle_kwh: 'energie per laadsessie',
+};
+
+/** What to call this field on a row of this type. */
+function requiredLabel(name, device) {
+  const labels =
+    device.device_type === 'ev_charger' ? CHARGER_REQUIRED_LABELS : REQUIRED_LABELS;
+  return labels[name];
+}
 
 /** Which of the checklist's fields this draft has not filled in yet. */
 function missingRequired(draft) {
@@ -1459,7 +1482,7 @@ export const devicesTab = {
           tone: 'warning',
           text:
             `Nog niet compleet: ${missing
-              .map((name) => REQUIRED_LABELS[name])
+              .map((name) => requiredLabel(name, device))
               .join(', ')} ${missing.length > 1 ? 'ontbreken' : 'ontbreekt'}. ` +
             'Telt niet mee voor de datakwaliteit.' +
             agreement,
@@ -1533,7 +1556,7 @@ export const devicesTab = {
       requiredNotice.set(
         missing.length
           ? 'Nog nodig voor een compleet apparaat: ' +
-              `${missing.map((name) => REQUIRED_LABELS[name]).join(', ')}. ` +
+              `${missing.map((name) => requiredLabel(name, draft)).join(', ')}. ` +
               'Opslaan mag ook zonder — het apparaat telt dan alleen nog niet ' +
               'mee voor de datakwaliteit.'
           : 'Dit apparaat is compleet: alles wat de datakwaliteit vraagt is ingevuld.',

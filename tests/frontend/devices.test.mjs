@@ -1687,6 +1687,26 @@ describe('the live power per appliance', () => {
     assert.doesNotMatch(tab.textContent, /laagste meting/);
   });
 
+  it('names an incomplete charger the fields its own form asks for', async () => {
+    // The row, one step from the dialog notice: same field, same two names.
+    const { tab } = await openDevicesTab(
+      fakeHass({
+        config: sampleConfig({
+          devices: [
+            dishwasher({
+              device_type: 'ev_charger',
+              nominal_power_w: null,
+              energy_per_cycle_kwh: null,
+            }),
+          ],
+        }),
+        coach: sampleCoach({ metrics: { device_power_w: {} } }),
+      }),
+    );
+
+    assert.match(tab.textContent, /maximaal laadvermogen, energie per laadsessie/);
+  });
+
   it('says nothing about an appliance that has never been seen running', async () => {
     const { tab } = await openDevicesTab(
       fakeHass({
@@ -1750,6 +1770,21 @@ describe('the minimum power a charger needs', () => {
 
     assert.match(helper, /18,0 A op één fase/);
     assert.match(helper, /6,0 A op drie fasen/);
+  });
+
+  it('names the missing charger fields the way the form does', async () => {
+    // Found in the browser: the notice at the top of this very dialog said
+    // "nominaal vermogen, energie per cyclus" while the two fields under it
+    // read "Maximaal laadvermogen" and "Energie per laadsessie" (SPEC.md §59).
+    const { panel, tab } = await openDevicesTab();
+    buttonIn(tab, 'Apparaat toevoegen').click();
+    await settle();
+
+    change(panel, { device_type: 'ev_charger' });
+    const notice = formDialog(panel).textContent;
+
+    assert.match(notice, /maximaal laadvermogen, energie per laadsessie/);
+    assert.doesNotMatch(notice, /nominaal vermogen/);
   });
 
   it('falls back to what an empty field means', async () => {
