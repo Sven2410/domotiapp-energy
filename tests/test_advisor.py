@@ -2481,3 +2481,127 @@ async def test_the_charger_sentence_does_not_blame_a_missing_amount(
     assert "terugleverkosten" not in item.message
     # And the rate really is there, so the silence is not itself a gap.
     assert item.savings_rate_eur_per_hour is not None
+
+
+def _surplus_item(config: StoredConfiguration, metrics: EnergyMetrics) -> AdviceItem:
+    """Return the surplus advice, which every test below asks the same of."""
+    advice = Advisor().generate(config, metrics)
+    return next(i for i in advice if i.reason_code == REASON_SOLAR_SURPLUS_AVAILABLE)
+
+
+async def test_the_hourly_amount_says_which_field_stopped_it(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """SPEC.md §56.8: an absent rate is a missing term, not a design choice.
+
+    The situation, and it is the one the split is for: a charger that takes
+    whatever is spare, in a home whose fixed tariff has never been entered. The
+    total is empty because this appliance has no cycle, the rate is empty
+    because there is no margin — and until 0.21.0 the card showed neither row
+    and the sentence stayed cheerfully silent about why.
+    """
+    freezer.move_to(local(14, 0))
+    config = _config(min_solar_surplus_w=500.0)
+    config.devices.append(_modulating_charger())
+    metrics = _metrics(solar_surplus_w=2100.0)
+
+    item = _surplus_item(config, metrics)
+
+    assert item.savings_rate_eur_per_hour is None
+    assert "vaste leveringstarief" in item.message
+    assert "bij Woning" in item.message
+
+
+async def test_the_hourly_amount_never_blames_the_energy_per_cycle(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """Why `_why_no_amount` could not simply be called here (SPEC.md §56.8).
+
+    That function opens on `energy_per_cycle_kwh`, which is precisely the field
+    a modulating appliance does not use — its amount is power times margin. So
+    the gap could not be closed by reaching for the sentence that already
+    existed: it would have sent this installer to a field with no bearing on
+    his missing figure, which is the 0.18.0 defect in a new place.
+    """
+    freezer.move_to(local(14, 0))
+    config = _config(min_solar_surplus_w=500.0)
+    config.devices.append(_modulating_charger(energy_per_cycle_kwh=None))
+    metrics = _metrics(solar_surplus_w=2100.0)
+
+    item = _surplus_item(config, metrics)
+
+    assert "energie per" not in item.message
+    assert "vaste leveringstarief" in item.message
+
+
+async def test_a_charger_without_a_maximum_is_told_so_in_its_own_words(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """The rate's own term, and the label the installer actually sees.
+
+    `usable_power_w` is the only other thing the rate needs, and a device whose
+    power is unknown is deliberately not disqualified from the advice
+    (`_fits_in_surplus`) — so this is a real state and not a hypothetical one.
+
+    The charger's form calls this field *Maximaal laadvermogen*; naming it
+    "nominaal vermogen" would send him looking for something that is not on his
+    screen.
+    """
+    freezer.move_to(local(14, 0))
+    config = _config(min_solar_surplus_w=500.0, feed_in_cost_eur_kwh=0.02)
+    config.devices.append(_modulating_charger(nominal_power_w=None))
+    metrics = _metrics(solar_surplus_w=2100.0, self_consumption_margin_eur_kwh=0.05)
+
+    item = _surplus_item(config, metrics)
+
+    assert item.savings_rate_eur_per_hour is None
+    assert "maximale laadvermogen" in item.message
+    assert "per uur" in item.message
+    assert "bij Apparaten" in item.message
+
+
+async def test_a_modulating_dishwasher_is_told_about_its_nominal_power(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """The other half of that label, because modulating is not only chargers.
+
+    The switch is offered on every advisable type, so the sentence asks the
+    type rather than assuming the charger it was written for.
+    """
+    freezer.move_to(local(14, 0))
+    config = _config(min_solar_surplus_w=500.0, feed_in_cost_eur_kwh=0.02)
+    config.devices.append(
+        _device(
+            is_noisy=False,
+            runs_any_time=True,
+            can_modulate=True,
+            min_power_w=400.0,
+            nominal_power_w=None,
+        )
+    )
+    metrics = _metrics(solar_surplus_w=2100.0, self_consumption_margin_eur_kwh=0.05)
+
+    item = _surplus_item(config, metrics)
+
+    assert "nominale vermogen" in item.message
+    assert "laadvermogen" not in item.message
+
+
+async def test_a_charger_is_sent_to_the_energy_field_its_form_shows(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """The same label question one branch up, found while splitting the two.
+
+    A charger that does not modulate keeps the per-cycle sum, and the form asks
+    for that number as *Energie per laadsessie* — because a car has no cycle.
+    The sentence said "de energie per cyclus" to everyone.
+    """
+    freezer.move_to(local(14, 0))
+    config = _config(min_solar_surplus_w=500.0, feed_in_cost_eur_kwh=0.02)
+    config.devices.append(_charger(ready_days=None, energy_per_cycle_kwh=None))
+    metrics = _metrics(solar_surplus_w=3800.0, self_consumption_margin_eur_kwh=0.05)
+
+    item = _surplus_item(config, metrics)
+
+    assert "energie per laadsessie" in item.message
+    assert "cyclus" not in item.message

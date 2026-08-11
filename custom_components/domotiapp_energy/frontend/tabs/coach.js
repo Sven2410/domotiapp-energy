@@ -320,7 +320,8 @@ export const coachTab = {
        * So the row exists because there is a figure to put in it. Where a sum
        * *was* attempted and could not be made, the advice message above
        * already names the field that stopped it (engine/advisor.py
-       * `_why_no_amount`), which is more use than "Niet te berekenen" was.
+       * `_why_no_amount` for the total, `_why_no_rate` for the hourly amount),
+       * which is more use than "Niet te berekenen" was.
        */
       const showAmounts = prefs.show_estimated_savings !== false;
 

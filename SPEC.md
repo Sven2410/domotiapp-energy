@@ -6041,33 +6041,74 @@ metrics al aan, precies zodat die tak er later bij kan zonder dat het advies ver
 
 Drie stappen, elk apart te mergen en elk apart terug te draaien.
 
-### 56.8 Openstaand: het uurbedrag dat niet te berekenen is, legt niet uit waarom
+### 56.8 Het uurbedrag dat niet te berekenen is, legt uit waarom
 
-**Gevonden bij 0.20.0, bewust daar niet opgelost** (besluit Sven, 2026-08-10).
+**Gevonden bij 0.20.0, bewust daar niet opgelost** (besluit Sven, 2026-08-10),
+**gebouwd in 0.21.0**.
 
 Een modulerend apparaat waarvan `_solar_savings_rate` `None` teruggeeft — geen
 leesbaar vermogen, of geen `self_consumption_margin_eur_kwh` omdat de
-prijsinformatie ontbreekt — toont sinds 0.20.0 geen van beide bedragrijen, en
-`_surplus_message` zegt er niets over. De niet-modulerende tak doet dat wél: die
+prijsinformatie ontbreekt — toonde sinds 0.20.0 geen van beide bedragrijen, en
+`_surplus_message` zei er niets over. De niet-modulerende tak deed dat wél: die
 noemt via `_why_no_amount` het veld dat de som stopte.
 
-**Waarom dat gat niet met `_why_no_amount` gedicht mag worden.** Die functie
-begint bij `energy_per_cycle_kwh`, en dat is precies het veld dat een modulerende
-paal niet gebruikt. Hem hier aanroepen levert dus de fout op die de docstring van
+**Waarom dat gat niet met `_why_no_amount` gedicht mocht worden.** Die functie
+begon bij `energy_per_cycle_kwh`, en dat is precies het veld dat een modulerende
+paal niet gebruikt. Hem daar aanroepen levert de fout op die de docstring van
 `_surplus_message` al beschrijft: een paal met een prima tarief die de
 installateur naar een veld stuurt dat hij net had ingevuld. Dat is in 0.18.0 één
 keer gebeurd en in de browser gevonden.
 
-**Wat het wél nodig heeft:** `_why_no_amount` splitsen in de cyclus-controle en
-een `_why_no_margin` met de prijs- en terugleververhalen, zodat de modulerende
-tak alleen het tweede krijgt — plus een eigen zin voor het geval dat het bruikbare
-vermogen onbekend is. Dat is een wijziging aan de adviesteksten van §56 en hoort
-in een ronde die de advisor aanraakt, niet in een tekstronde.
+**Wat er gebouwd is.** `_why_no_amount` is gesplitst langs de scheidslijn die de
+twee bedragen al hadden: de eigen term van het apparaat, en de marge die ze delen.
 
-**Waarom het nu geen blokkade is:** de ontbrekende prijsinformatie wordt al twee
-keer gemeld — in de datakwaliteit en in het antwoord van de coach op *"welke
-gegevens ontbreken nog?"*. Wat ontbreekt is de verwijzing op de plek waar de
-bewoner het bedrag verwachtte.
+| Functie | Beantwoordt | Eigen term |
+|---|---|---|
+| `_why_no_amount` | waarom er geen totaal is | `energy_per_cycle_kwh` |
+| `_why_no_rate` | waarom er geen bedrag per uur is | `usable_power_w` |
+| `_why_no_margin` | waarom geen van beide te maken is | importprijs, terugleververgoeding, terugleverkosten |
+
+De marge-zinnen zijn woord voor woord hergebruikt, en **dat is het punt van de
+splitsing en geen kortere weg**: een ontbrekende importprijs stopt beide sommen om
+dezelfde reden en wordt op dezelfde plek ingevuld, dus de schaal van het bedrag
+verandert niets aan wat de installateur moet doen. Eén antwoord, zodat de twee
+takken het nooit oneens kunnen worden over waar hij heen moet — de negende variant,
+vooraf gesteld in plaats van achteraf gevonden.
+
+De volgorde binnen `_why_no_margin` volgt `self_consumption_margin` in de
+calculator, zodat de zin de term noemt die de samenstelling werkelijk stopte.
+
+**Wat er onderweg bijkwam: het veld heet niet overal hetzelfde.** Het
+apparaatformulier vraagt een laadpaal om *Energie per laadsessie* en *Maximaal
+laadvermogen*, omdat een auto geen cyclus heeft; elk ander apparaat krijgt
+*Energie per cyclus* en *Nominaal vermogen*. De advieszin verwees iedereen naar de
+tweede vorm. Dat is dezelfde fout die deze hele familie zinnen moet voorkomen —
+de installateur naar iets sturen dat niet op zijn scherm staat — dus
+`_cycle_energy_field` en `_power_field` vragen nu het type in plaats van het aan te
+nemen. Modulatie is niet tot laadpalen beperkt (de schakelaar staat op elk
+adviseerbaar type), dus dat is een vraag en geen aanname.
+
+### 56.9 Openstaand: het uurbedrag dat negatief is, krijgt een opgewekte zin
+
+**Gevonden bij het bouwen van §56.8** (2026-08-11), niet daarin opgelost.
+
+Zodra terugleveren meer oplevert dan zelf verbruiken is
+`self_consumption_margin_eur_kwh` negatief, en dan is het bedrag per uur dat ook.
+De per-cyclus-tak heeft daar een eigen zin voor — *"Zelf verbruiken levert nu
+echter minder op dan terugleveren: … kost naar schatting € 0,34 …"* — maar de
+modulerende tak zegt onverstoorbaar *"dit is een gunstig moment"* boven een bedrag
+van € -0,12. Dat is precies de tegenspraak waarvoor `_surplus_message` bestaat, één
+tak verderop.
+
+**Waarom het nu geen blokkade is:** onder de salderingsregeling kán de marge niet
+negatief worden — daar blijft alleen de vermeden terugleverkost over, en die is nul
+of positief. Dit is dus een probleem vanaf 2027, en alleen voor een woning met een
+modulerend apparaat.
+
+**Wat het nodig heeft:** een eigen hele zin met het tarief per uur, niet de
+per-cyclus-zin met een andere eenheid erin (§26 en §56.4: de twee bedragen mogen
+nooit in dezelfde vergelijking komen). Dat is een tekstbesluit, geen rekenwerk — de
+waarde staat er al.
 
 ## 57. Twee regels over eenheden, en waarom ze verschillen
 
@@ -6136,11 +6177,26 @@ geladen wordt, maar het aantal fasen dat telt is dat van de **auto**, niet van d
 | Situatie | `min_power_w` |
 |---|---|
 | Auto laadt op drie fasen | 6 × 3 × 230 = **4140 W** |
-| Auto laadt op één fase (veel auto's, ook op een driefasenpaal) | 6 × 230 = **1380 W** |
+| Auto laadt op één fase | 6 × 230 = **1380 W** |
 
-**Bij twijfel is meten beter dan rekenen:** zet de paal op zijn laagste stand met de auto
-eraan en lees af wat de vermogenssensor meldt. Dat getal is het antwoord, en het is meteen de
-controle of de goede sensor gekoppeld is.
+**Beide komen voor, en welke van de twee het is, is niet te beredeneren.** Deze tabel stond
+er eerst met "veel auto's, ook op een driefasenpaal" achter de eenfasige regel, alsof dat het
+waarschijnlijke geval was. Dat is precies de aanname die het bij de eerste echte meting
+begaf: Sven vulde op grond daarvan 1380 in, en zijn Transit Connect bleek driefasig te laden
+— 7 A leverde 4765 W, wat 3 × 230 × 7 is en niet 230 × 7. Zijn werkelijke minimum is 4140 W,
+een factor drie hoger dan wat er stond (gemeten 2026-08-11).
+
+**Meten is dus geen tweede keus maar de enige route:** zet de paal op zijn laagste stand met
+de auto eraan en lees af wat de vermogenssensor meldt. Dat getal is het antwoord, en het is
+meteen de controle of de goede sensor gekoppeld is.
+
+Meet je bij een hogere stand, dan geeft vermogen ÷ (230 × ampère) het aantal fasen: bij Sven
+4765 ÷ (230 × 7) = 2,96, dus drie. Een uitkomst rond 1 is eenfasig. Reken van daaruit terug
+naar zes ampère; dat is de ondergrens die telt.
+
+**Dat het getal aan de auto hangt en niet aan de installatie, is de zwakke plek van dit veld.**
+Bij een huishouden met twee auto's die verschillend laden klopt één vast getal per definitie
+de helft van de tijd niet. Zie §59 voor de analyse daarvan.
 
 Een te hoge waarde is de veilige kant: dan zwijgt het advies bij een overschot dat eigenlijk
 genoeg was. Een te lage waarde adviseert laden waar de auto niets doet.
@@ -6331,3 +6387,161 @@ uitbreiding van `_surplus_message` en hoort bij §56, niet bij een tekstronde;
 `_why_no_amount` mag er niet zomaar op losgelaten worden, want die begint met
 de energie per cyclus en dat is precies het veld dat een modulerende paal niet
 gebruikt.
+
+**Opgelost in 0.21.0**, langs de splitsing van §56.8.
+
+## 59. Analyse: het laadminimum hangt aan de auto, niet aan de paal
+
+**Aanleiding: de meting van 2026-08-11.** Sven mat 7 A = 4765 W aan zijn Easee.
+Dat is 3 × 230 × 7, dus zijn Transit Connect laadt driefasig en zijn werkelijke
+minimum is ~4140 W — niet de 1380 W die hij had ingevuld op grond van "eenfasig
+laden". Een factor drie, en niets in het product had het kunnen zeggen.
+
+Dit is **geen invulfout maar een modelvraag**, en Sven stelt hem goed: het
+product moet universeel zijn, niet afgestemd op één auto. §57.3 is bijgewerkt,
+maar de tabel daar repareert alleen de aanname, niet de vorm van het veld.
+
+### 59.1 Wat er werkelijk mis is: het veld hoort bij een paar, niet bij een ding
+
+`min_power_w` staat op het apparaat, en het apparaat is de **paal**. De waarde
+beschrijft de **auto**. Zolang er één auto is valt dat samen, en precies daarom
+viel het niet op.
+
+Dat is dezelfde vorm als twee dingen die dit project al eerder tegenkwam:
+
+- **`energy_per_cycle_kwh`** bij een laadpaal is óók een eigenschap van de auto,
+  en §16 heeft dat opgelost door de vraag te veranderen: niet "hoeveel gaat
+  erin" maar "hoe ziet een *typische* laadsessie eruit", plus een plafond op de
+  betrouwbaarheid van elk bedrag dat erop rust (`_surplus_confidence`).
+- **De laadtoestand** (§34.8) is de grens waar het model expliciet stopt.
+
+De vraag is dus niet "hoe meten we het minimum" maar **"welke van deze twee
+vormen is dit"** — een vraag die anders gesteld moet worden, of een grens.
+
+### 59.2 Kan het systeem het afleiden uit wat de paal meldt?
+
+Rekenkundig ja: vermogen ÷ (230 × stroom) geeft het aantal fasen. Maar de
+aanname eronder is precies het soort dat §47 (achtste variant) beschrijft, en
+zij is bij een laadpaal aantoonbaar wankel:
+
+| Aanname | Waar het misgaat |
+|---|---|
+| De stroomsensor meldt de stroom **per fase** | Meldt hij de som over drie fasen, dan geeft dezelfde som 1 fase in plaats van 3 — en er is niets in de waarde dat het verraadt |
+| De netspanning is 230 V | In de praktijk 220–245 V; op zichzelf onschuldig (de uitkomst 2,96 rondt naar 3), maar het maakt een drempel nodig |
+| De auto laadt symmetrisch over de fasen | Niet altijd waar bij het aftoppen door de paal |
+| Er is een stroomsensor gekoppeld | Vandaag koppelt een apparaat alleen een **vermogens**entiteit (§57) |
+
+De eerste is de ernstige: hij geeft **stil het verkeerde antwoord in de richting
+die schaadt** (te laag minimum → advies waar de auto niets mee kan). En het is
+niet op te lossen door beter te rekenen; het vraagt een uitspraak van de
+installateur over zijn sensor — dus ruilt deze route één vraag in voor een
+andere vraag plús een nieuwe koppeling.
+
+**Daar komt bij dat het alleen tijdens het laden waarneembaar is**, en het advies
+gaat juist over het moment dat de auto *niet* laadt. Onthouden zou het antwoord
+zijn, maar afgeleide toestand terugschrijven naar de opslag is een harde regel
+die dit project niet buigt (CLAUDE.md regel 9); in het geheugen van de
+coordinator overleeft het geen herstart.
+
+**Oordeel: niet afleiden.** Niet omdat het niet kan, maar omdat het een aanname
+toevoegt die precies zo faalt als de aanname die we nu proberen te repareren.
+
+### 59.3 Maar meten kan wél iets — en daar is geen stroomsensor voor nodig
+
+De omkering die dit oplevert, en zij is goedkoper dan de berekening hierboven:
+
+> **Laadt de paal aantoonbaar op minder vermogen dan het ingevulde minimum, dan
+> is het ingevulde minimum te hoog.** Dat is af te lezen aan de
+> vermogensentiteit die er al is.
+
+Eén vergelijking, geen fasen, geen spanning, geen tweede koppeling. En hij vangt
+precies de richting die je niet kunt zien:
+
+| Fout in `min_power_w` | Gevolg | Zichtbaar? |
+|---|---|---|
+| Te **hoog** (Sven omgekeerd: 4140 ingevuld, auto laadt eenfasig) | het advies blijft weg bij een overschot dat genoeg was | **nee** — stilte, en stilte lijkt op "geen overschot" |
+| Te **laag** (Sven's echte geval) | advies bij een overschot waar de auto niets mee kan | deels: de klant ziet dat er niets gebeurt |
+
+De stille fout is dus de fout die gemeten kan worden, en de luidruchtige niet.
+Dat is een gelukkige verdeling en geen toeval: te laag betekent dat de paal
+*meer* trekt dan het minimum, en dat is niet te onderscheiden van een auto die
+gewoon harder laadt.
+
+**Vorm: waarnemen en tonen, nooit overrulen.** Op de apparaatrij het laagste
+laadvermogen dat sinds de laatste herstart is gezien, als feit zonder oordeel —
+dezelfde lijn als §57.2 (*weigeren mag, zwijgen niet*) en als §53 (de opslag
+corrigeert nooit stilzwijgend wat iemand heeft ingevuld). De installateur ziet
+dan het getal dat hij had moeten invullen, in plaats van een verwijt.
+
+### 59.4 Een keuze eenfasig/driefasig in plaats van een watt-getal?
+
+**Half goed, en de goede helft hoort in het formulier en niet in de opslag.**
+
+Wat het oplost: de installateur hoeft geen 6 × 3 × 230 uit te rekenen, en dat is
+een som die hij niet zou moeten doen.
+
+Wat het níét oplost, en dat is de kern: **welke van de twee waar is, weet hij
+nog steeds niet.** Sven wist het niet, en hij bouwt dit product. Een keuzelijst
+maakt het foute antwoord even makkelijk als het goede, en geeft er de schijn van
+een vaststaand feit bij.
+
+Wat het kapotmaakt: sommige auto's laden niet onder 8 A, sommige palen hebben
+een eigen vloer. Een watt-veld draagt dat allemaal; een fasenkeuze draagt alleen
+het schoolvoorbeeld.
+
+**Voorstel:** het formulier rekent het voor (zoals het theoretisch maximum bij
+Woning: *"6 A × 3 fasen × 230 V = 4140 W"*), maar de opgeslagen waarde blijft
+watt. Een opgeslagen fasenveld zou een veld zijn dat de motor nooit leest, en
+dat is precies wat §16 verbiedt.
+
+**En een naamsverwarring om vóór te zijn** (negende variant): `HomeProfile.phases`
+bestaat al en beantwoordt *"hoeveel fasen heeft de aansluiting"*. Een fasenveld
+op het apparaat zou daar als tweede antwoord naast staan met een ander onderwerp
+— de auto in plaats van het huis — en dat is de vorm waarin §51 en §56.1 eerder
+misgingen.
+
+### 59.5 Twee auto's die verschillend laden
+
+**Dat is de grens van het model, en zij ligt waar §34 hem al legde:** één auto
+per paal. Twee auto's met verschillend fasegedrag is dezelfde grens één stap
+verder, net als de laadtoestand (§34.8).
+
+De drie vormen die overwogen zijn, en waarom geen van drie het draagt:
+
+1. **Het laagste minimum van de twee** — adviseert bij een overschot waar de
+   driefasige auto niets mee kan. Dat is het defect van §56.3 terug.
+2. **Het hoogste minimum** — veilig maar stil: de eenfasige auto laadt dan de
+   halve zomer niet op zon, en de klant ziet nooit waarom.
+3. **De bewoner laten aanwijzen welke auto eraan hangt** — dat is een handeling
+   per keer, en dit product maakt geen klusjes die het niet kan afdwingen. Het is
+   bovendien de vorm die het dichtst bij aansturing komt.
+
+**Wat wél kan zonder het model te verbouwen:** de waarneming uit §59.3 maakt de
+grens zíchtbaar in plaats van stil. Bij twee auto's toont de rij simpelweg het
+laagste gemeten vermogen van beide, en dat is een eerlijk antwoord op de vraag
+die eronder ligt.
+
+### 59.6 Gedrag zonder meting, en bij afwijking
+
+- **Zonder meting verandert er niets.** Leeg `min_power_w` betekent nog steeds
+  dat `can_modulate` niets doet (§56.2), en de waarneming toont niets tot de
+  paal een keer geladen heeft. Geen enkel getal wordt afgeleid of ingevuld.
+- **Bij afwijking wordt niets overruled.** De ingevulde waarde blijft leidend
+  voor het advies; de meting staat ernaast als feit. Dat is dezelfde keuze als
+  §53: corrigeren is aan de mens, melden is aan het product.
+
+### 59.7 Wat ik zou bouwen, in volgorde
+
+1. **§57.3 bijwerken** — gedaan in 0.21.0: beide gevallen komen voor, alleen de
+   meting geeft antwoord, en de terugrekening van fasen uit een meting bij een
+   hogere stand staat erbij.
+2. **De hulptekst bij `min_power_w`** — nu zegt hij *"1380 W op één fase en 4140
+   W op drie"* zonder te zeggen dat het aan de **auto** hangt en niet aan de
+   paal, en zonder te zeggen dat meten de enige route is. Dat is één tekst en
+   het is de goedkoopste helft van de winst.
+3. **De voorrekening in het formulier** (§59.4) — geen opgeslagen veld.
+4. **Het laagst gemeten laadvermogen op de apparaatrij** (§59.3) — de enige
+   echte gedragswijziging, en de enige die de stille fout zichtbaar maakt.
+
+Punt 2 en 3 zijn tekst en formulier; punt 4 raakt de coordinator en verdient
+zijn eigen ronde met browserverificatie.
