@@ -1103,6 +1103,8 @@ class _Situatie:
     # Laat de klok voorbij het verouderingsvenster lopen in plaats van de
     # toestand te wijzigen (SPEC.md §47).
     verouder: bool = False
+    # Laat er uren verstrijken en geef de bron daarna weer een waarde.
+    keert_terug: bool = False
     # De toestand van Home Assistant zelf op het moment van oordelen.
     kern: CoreState = CoreState.running
     # Het logboekevent dat hierbij hoort, of ``None`` voor stilte.
@@ -1141,6 +1143,16 @@ _SITUATIES: tuple[_Situatie, ...] = (
         eerst_levend=True,
         toestand=STATE_UNAVAILABLE,
         kern=CoreState.stopping,
+    ),
+    _Situatie(
+        naam="de bron keert terug na uren weg te zijn geweest",
+        eerst_levend=True,
+        toestand=STATE_UNAVAILABLE,
+        keert_terug=True,
+        # Alleen de uitvalregel. **Het logboek kent geen herstelgebeurtenis**:
+        # er is geen event_type voor "de bron is er weer", dus de regel van
+        # 23:00 blijft staan en niets zegt dat hij om 07:00 achterhaald is.
+        verwacht=LOG_EVENT_SOURCE_UNAVAILABLE,
     ),
     _Situatie(
         naam="de installateur koppelde iets onbruikbaars",
@@ -1212,6 +1224,12 @@ async def test_which_failed_reads_reach_the_logbook(
             hass.states.async_set(GRID_ENTITY, situatie.toestand)
         await hass.async_block_till_done()
         await _flush_debouncer(hass)
+
+        if situatie.keert_terug:
+            freezer.tick(timedelta(hours=8))
+            hass.states.async_set(GRID_ENTITY, "1150", {"unit_of_measurement": UNIT_W})
+            await hass.async_block_till_done()
+            await _flush_debouncer(hass)
 
     gemeld = [
         entry.event_type
