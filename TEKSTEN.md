@@ -27,20 +27,20 @@ is dit de invoer en niet de uitvoer.
 
 | Tekst | Waar | Regel |
 |---|---|---|
-| Attention | module | 1185 |
-| Current advice | module | 1182 |
-| Data quality | module | 1179 |
+| Attention | module | 1184 |
+| Current advice | module | 1181 |
+| Data quality | module | 1178 |
 | DomotiApp | module | 31 |
 | DomotiApp Energy ↔ | module | 28 |
 | DomotiApp Energy ↔ | module | 49 |
 | Energy Coach | module | 32 |
-| Grid power | module | 1180 |
-| Home consumption | module | 1184 |
+| Grid power | module | 1179 |
+| Home consumption | module | 1183 |
 | Mijn woning | module | 39 |
-| Peak risk | module | 1183 |
-| Score | module | 1178 |
-| Self consumption | module | 1186 |
-| Solar surplus | module | 1181 |
+| Peak risk | module | 1182 |
+| Score | module | 1177 |
+| Self consumption | module | 1185 |
+| Solar surplus | module | 1180 |
 
 ## `custom_components/domotiapp_energy/coordinator.py`
 
