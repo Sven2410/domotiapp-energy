@@ -1,28 +1,46 @@
 name: Release
 
-# Fires on a tag and on nothing else. The question it answers is the one no
-# other check can: does the tag being released match the version the code
-# claims to be?
+# Fires on a tag and on nothing else. It does two things, and until 2026-08-12
+# it did only the first: it checks that the tag matches the version in the code,
+# and then it publishes the release.
 #
-# Why this exists. `test_the_version_is_the_same_everywhere` keeps the four
-# places in the repository consistent with each other, but it cannot know what
-# was tagged. And a check on `main` cannot help either: between bumping the
-# version in a PR and tagging the release, main *always* carries a version that
-# has not been released, so "version equals latest tag" would be permanently
-# red.
+# **Why the second half had to be added.** This workflow used to hold one job
+# and a comment saying it ran "before the release is published" — while nothing
+# here published anything. Sven made every release by hand, and nobody else
+# knew that. On 2026-08-12 the tags 0.28.0 and 0.29.0 both went green with no
+# release behind them, so customers stayed on 0.27.1 for over an hour while the
+# fix for the 0.28.0 regression sat finished and unreachable.
+#
+# That is the seventh variant of CLAUDE.md applied to the release process: the
+# check was correct and the action it guarded did not exist. A green run proved
+# only that the tag matched. It could not prove a release existed, because
+# nothing here ever looked.
+#
+# So the last step now reads the release back. **A workflow that claims to
+# publish has to end by checking that something got published**, or it is the
+# same defect wearing a longer file.
+#
+# Why the version check exists at all. `test_the_version_is_the_same_everywhere`
+# keeps the four places in the repository consistent with each other, but it
+# cannot know what was tagged. And a check on `main` cannot help either: between
+# bumping the version in a PR and tagging the release, main *always* carries a
+# version that has not been released, so "version equals latest tag" would be
+# permanently red.
 #
 # That gap let 0.2.0 ship under the tag 0.1.6: HACS showed 0.1.6 from the
 # release, Home Assistant showed 0.2.0 from the manifest, and nothing anywhere
 # went red (2026-08-07).
-#
-# This runs before the release is published — HACS reads the release, not the
-# tag — so a mismatch can still be withdrawn by deleting the tag and retagging.
 
 on:
   push:
     tags:
       - "*"
   workflow_dispatch:
+
+# Read by default; the publishing job raises its own. A mismatched tag must not
+# be able to reach a token that can write to the repository.
+permissions:
+  contents: read
 
 jobs:
   version-matches-tag:
@@ -31,6 +49,29 @@ jobs:
     steps:
       - name: Check out the repository
         uses: actions/checkout@v4
+        with:
+          # The whole history, so the tag can be placed against main below.
+          fetch-depth: 0
+
+      - name: Check that the tag is on main
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          # **Added together with the publishing step, because publishing is
+          # what made this dangerous.** 0.13.0 was once tagged while the code
+          # still sat on a branch; the workflow went green, because it compares
+          # the tag with the files at that commit and never asks where the
+          # commit lives. That used to end in a release Sven made by hand, so
+          # he would have seen it. Now the workflow ships it by itself, and the
+          # accidental human checkpoint is gone.
+          if git merge-base --is-ancestor "${GITHUB_SHA}" "origin/main"; then
+            echo "De tag staat op main."
+            exit 0
+          fi
+
+          echo "::error::De tag '${GITHUB_REF_NAME}' wijst naar een commit die niet op main staat."
+          echo "::error::Er wordt niets gepubliceerd: main is de laatste geverifieerde staat,"
+          echo "::error::en een release van code die daar niet staat is niet terug te vinden."
+          exit 1
 
       - name: Compare the tag with manifest.json and const.py
         run: |
@@ -47,9 +88,72 @@ jobs:
             echo "::error::De tag '$tag' komt niet overeen met de versie in de code."
             echo "::error::Klanten zouden dan twee verschillende versienummers zien:"
             echo "::error::HACS toont de release, Home Assistant toont het manifest."
-            echo "::error::Verwijder de tag, corrigeer, en tag opnieuw — vóór je de release publiceert."
+            echo "::error::Verwijder de tag, corrigeer, en tag opnieuw."
             exit 1
           fi
 
           echo
           echo "De tag komt overeen met de versie in de code."
+
+  publish:
+    name: Publish the release
+    runs-on: ubuntu-latest
+    # Only after the version check, and only for an actual tag. A
+    # workflow_dispatch from a branch has a branch name in GITHUB_REF_NAME,
+    # which the version check would already reject — this makes that explicit
+    # rather than relying on it.
+    needs: version-matches-tag
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Collect the release notes
+        run: |
+          python scripts/release_notes.py "${GITHUB_REF_NAME}" > "${RUNNER_TEMP}/notes.md"
+          echo "De notities voor ${GITHUB_REF_NAME}:"
+          echo
+          cat "${RUNNER_TEMP}/notes.md"
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${GITHUB_REF_NAME}"
+
+          # Idempotent on purpose. A re-run, or a release Sven already made by
+          # hand, must not fail the workflow — and it must not overwrite notes
+          # somebody wrote themselves either.
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "::notice::Release $tag bestaat al; er wordt niets overschreven."
+            exit 0
+          fi
+
+          gh release create "$tag" \
+            --title "$tag" \
+            --notes-file "${RUNNER_TEMP}/notes.md" \
+            --verify-tag
+
+      - name: Check that the release is really there
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${GITHUB_REF_NAME}"
+
+          # **The step this workflow was missing.** Everything above can succeed
+          # and still leave nothing behind; this is what turns that into a red
+          # run instead of a quiet one. HACS reads published releases, so a
+          # draft counts as nothing.
+          if ! draft=$(gh release view "$tag" --json isDraft --jq .isDraft 2>/dev/null); then
+            echo "::error::Er staat geen release op tag '$tag', terwijl deze workflow hem had moeten publiceren."
+            exit 1
+          fi
+
+          if [ "$draft" != "false" ]; then
+            echo "::error::De release op tag '$tag' is een concept, en HACS ziet een concept niet."
+            exit 1
+          fi
+
+          echo "Release $tag staat gepubliceerd."
