@@ -173,8 +173,11 @@ de tag met `manifest.json` en `const.py` — **niet of die commit op `main` staa
 daarna nog iets aan de PR veranderd, dan had de release code bevat die nooit op `main` kwam.
 Meld de merge dus expliciet, dat is het sein.
 
-**Tags en releases maakt Sven zelf.** Bump het versienummer en de CHANGELOG,
-meld dat `main` klaar is om te taggen, en maak nooit zelf een tag of release.
+**De tag zet Sven; de release maakt de workflow.** Bump het versienummer en de
+CHANGELOG, meld dat `main` klaar is om te taggen, en maak nooit zelf een tag of
+release. Sinds 2026-08-12 publiceert `release.yml` de release zodra de tag door
+de versiecontrole komt — dus een tag zetten is voortaan genoeg, en er is niets
+meer met de hand te doen.
 
 **Noem het te taggen versienummer als aparte regel in je eindrapport**, niet
 terloops in een PR-tekst. Zo:
@@ -187,11 +190,38 @@ Sven tagde 0.1.6 als volgende in de reeks. Beide redeneringen waren op zichzelf
 juist. Het gevolg is dat een klant **twee verschillende versienummers ziet**:
 HACS toont de release, de integratiepagina in Home Assistant toont het manifest.
 
-**De harde vangnet is `.github/workflows/release.yml`**, die op een tag-push
-faalt zodra de tag afwijkt van `manifest.json` en `const.py`. Die controle
-hangt niet van aandacht af, en hij slaat toe vóórdat de release gepubliceerd is
-— HACS leest de release, niet de tag, dus een verkeerde tag is dan nog in te
-trekken.
+**`.github/workflows/release.yml` controleert de tag én publiceert de release.**
+Op een tag-push faalt hij zodra de tag afwijkt van `manifest.json` en
+`const.py`; slaagt die controle, dan maakt hij de release aan met de notities
+uit `CHANGELOG.md`, en de laatste stap leest hem terug en faalt als er niets
+staat.
+
+**Hier stond dat dit "het harde vangnet is dat niet van aandacht afhangt". Dat
+was aantoonbaar onjuist** (Sven, 2026-08-12). De workflow had één job, geen
+enkele publicatiestap, en bovenin een commentaarregel die zei dat hij draaide
+*"before the release is published"* — terwijl Sven elke release met de hand
+maakte en niemand anders dat wist. De tags 0.28.0 en 0.29.0 werden allebei
+groen zonder dat er een release achter stond; klanten zaten ruim een uur op
+0.27.1 terwijl de reparatie van de 0.28.0-regressie klaarstond en onbereikbaar
+was.
+
+> **Groen bewees hier niets, en dat is de les.** De controle klopte, en de
+> handeling die hij bewaakte bestond niet — de zevende variant, toegepast op
+> het releaseproces zelf. *Roept het product deze functie werkelijk aan, of
+> alleen mijn test?* is bij een workflow: **gebeurt er werkelijk iets, of wordt
+> er alleen iets gecontroleerd?**
+
+Twee dingen die daaruit volgen en die je overal kunt hergebruiken:
+
+1. **Een workflow die zegt dat hij iets doet, eindigt met de vaststelling dat
+   het gebeurd is.** `release.yml` leest de release nu terug en faalt op een
+   ontbrekende of concept-release. Zonder die stap is "groen" opnieuw alleen
+   een uitspraak over de stappen die er wél staan.
+2. **Logica die bepaalt wat een klant leest, hoort niet in YAML.** Geen enkele
+   test kan bij een workflowstap. De notities komen daarom uit
+   `scripts/release_notes.py`, met `tests/test_release_notes.py` erbij — dat
+   bewaakt onder meer dat elke versiekop in `CHANGELOG.md` zijn eigen sectie
+   terugvindt in plaats van stilzwijgend op de terugvalzin uit te komen.
 
 Een controle op `main` kan dit principieel niet vangen: tussen het bumpen in
 een PR en het taggen draagt `main` per definitie een versie die nog niet
