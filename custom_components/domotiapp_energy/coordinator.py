@@ -353,16 +353,26 @@ class EnergyCoordinator(DataUpdateCoordinator[CoachResult]):
 
     # --- Which failed reads are worth a logbook line (SPEC.md §63.5) ---------
 
-    def _remember_sources_that_answered(
+    def _sources_that_answered(
         self, config: StoredConfiguration, snapshot: EnergySnapshot
-    ) -> None:
-        """Mark every source that produced a usable value on this pass.
+    ) -> set[str]:
+        """Return every source that produced a usable value on this pass.
 
-        A source is "alive" when the calculator did *not* record it as invalid;
+        A source answered when the calculator did *not* record it as invalid;
         that list is the calculator's own account of what it could not use, so
         there is no second opinion about what counts as a good read.
+
+        **Only the usable rows, and 0.29.0 had to add that.** The calculator
+        skips a disabled or unfinished row entirely, so it never appears among
+        the invalid ids either — and subtracting one list from the other
+        therefore counted it as a source that had just been read successfully. Harmless
+        while the answer only fed the seen-alive memory, which no failure of a
+        disabled row could ever consult; not harmless now that the same set
+        closes logbook entries, where it would read "switched off" as "repaired"
+        (the fifth variant: a value that read nothing until behaviour hung on
+        it).
         """
-        self._sources_seen_alive |= {source.id for source in config.sources} - set(
+        return {source.id for source in config.sources if source.is_usable} - set(
             snapshot.invalid_source_ids
         )
 
@@ -446,9 +456,17 @@ class EnergyCoordinator(DataUpdateCoordinator[CoachResult]):
             # moment the quarantined rows become functionally relevant — the
             # engine is about to skip them.
             snapshot = self._calculator.build_snapshot(config)
-            self._remember_sources_that_answered(config, snapshot)
+            readable = self._sources_that_answered(config, snapshot)
+            self._sources_seen_alive |= readable
+            # Three things, because the store must not re-derive any of them
+            # (SPEC.md §63.6): what is worth saying, what is still broken
+            # whether or not it was said, and what reads cleanly again.
             await self._store.async_report_invalid_rows(
-                self._failures_worth_reporting(snapshot.source_failures)
+                self._failures_worth_reporting(snapshot.source_failures),
+                still_failing={
+                    failure.source_id for failure in snapshot.source_failures
+                },
+                readable=readable,
             )
 
             # Before the advice, because a programme that has just finished

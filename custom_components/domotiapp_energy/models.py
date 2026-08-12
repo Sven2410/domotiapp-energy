@@ -1432,6 +1432,20 @@ class LogEntry:
     # so repeated events about the same subject can be collapsed.
     subject: str | None = None
     count: int = 1
+    # When the situation this entry describes was over (SPEC.md §63.6).
+    #
+    # **Three states, and the third is why this is optional rather than a bool.**
+    # A datetime means "it ended, then"; ``None`` on an entry written by this
+    # version means "still going"; and ``None`` on an entry written before
+    # 0.29.0 means "we never recorded an end". A reader that folds the last two
+    # together puts every logbook entry a customer already had back on screen as
+    # an ongoing fault.
+    #
+    # There is deliberately **no start**, so no duration is shown anywhere. A
+    # collapsed entry carries the time of its *most recent* occurrence, not its
+    # first, so a span from `timestamp` to `resolved_at` would be an invented
+    # figure for every entry with a counter above one.
+    resolved_at: datetime | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Return the entry as a JSON-serialisable mapping."""
@@ -1444,6 +1458,7 @@ class LogEntry:
             "severity": self.severity,
             "subject": self.subject,
             "count": self.count,
+            "resolved_at": self.resolved_at.isoformat() if self.resolved_at else None,
         }
 
     @classmethod
@@ -1459,6 +1474,7 @@ class LogEntry:
             severity=_as_choice(data.get("severity"), SEVERITIES, SEVERITY_INFO),
             subject=_as_optional_str(data.get("subject")),
             count=_as_int(data.get("count"), 1, minimum=1),
+            resolved_at=_as_datetime(data.get("resolved_at")),
         )
 
 

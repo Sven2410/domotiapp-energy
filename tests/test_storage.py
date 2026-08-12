@@ -549,6 +549,7 @@ async def test_log_entries_are_serialisable(hass: HomeAssistant) -> None:
         "severity",
         "subject",
         "count",
+        "resolved_at",
     }
 
 

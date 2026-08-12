@@ -1,5 +1,44 @@
 # Changelog
 
+## 0.29.0
+
+Het logboek spreekt niet meer over nu. SPEC §63.6.
+
+### Fixed
+
+- **Een storingsmelding bleef er de volgende ochtend staan alsof zij van dat moment was.**
+  "De bron is niet bereikbaar, er is op dit moment geen meting", geschreven om 23:00 en
+  gelezen om 09:00 met de omvormer alweer twee uur aan het leveren.
+
+  Een regel in een logboek gaat over het moment waarop zij geschreven werd. De zin staat nu
+  in de verleden tijd, en zodra de bron weer gelezen kan worden krijgt de regel er één zin
+  bij: *"Opgelost om 07:02."* Geen tweede regel, dus het logboek blijft even ver
+  terugkijken als het deed.
+
+- **Bekende regressie van 0.28.0, hiermee opgelost.** In 0.28.0 kon een bron die van
+  "niet bereikbaar" naar "nog geen waarde" ging en uren later terugviel, een **tweede**
+  waarschuwing opleveren voor dezelfde storing. De stille melding was voor het
+  anti-spamgeheugen niet te onderscheiden van een herstel.
+
+  Wie 0.28.0 draait en dit ziet: het is dit, en het is nu weg. Er is verder niets aan de
+  hand met de bron.
+
+- **Een uitgeschakelde bron telde als "zojuist met succes gelezen".** Dat had in 0.28.0 nog
+  geen gevolgen, maar het zou "uitgezet" als "gerepareerd" hebben gelezen zodra er gedrag
+  aan hing.
+
+### Changed
+
+- Het opgeslagen logboek kreeg er één veld bij. Bestaande logboeken worden gewoon gelezen;
+  regels van vóór deze versie dragen geen einde, en het paneel doet daar dan ook geen
+  uitspraak over — "nog gaande" beweren over een oude regel zou dezelfde onwaarheid zijn
+  als die deze versie wegneemt.
+
+### Nog niet in deze versie
+
+- Een omvormer die 's nachts slaapt levert nog steeds een melding op, en de datakwaliteit
+  zakt er nog steeds van. Dat is een eigen ronde.
+
 ## 0.28.0
 
 Een bron zonder waarde is geen kapotte bron. SPEC §63.5.
