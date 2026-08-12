@@ -85,9 +85,9 @@ from custom_components.domotiapp_energy.engine.completeness import (
     is_advisable,
 )
 from custom_components.domotiapp_energy.engine.reason_codes import (
+    REASON_ENTITY_UNAVAILABLE,
     REASON_HIGH_ENERGY_PRICE,
     REASON_HIGH_GRID_LOAD,
-    REASON_INVALID_ENTITY_STATE,
     REASON_LOW_ENERGY_PRICE,
     REASON_MISSING_REQUIRED_DATA,
     REASON_SOLAR_SURPLUS_AVAILABLE,
@@ -389,7 +389,7 @@ async def test_an_unreadable_source_is_reported(hass: HomeAssistant) -> None:
 
     assert snapshot.grid_power_w is None
     assert snapshot.invalid_source_ids == ["grid_meter-1"]
-    assert REASON_INVALID_ENTITY_STATE in snapshot.reason_codes
+    assert REASON_ENTITY_UNAVAILABLE in snapshot.reason_codes
 
 
 async def test_two_solar_sources_add_up(hass: HomeAssistant) -> None:
@@ -548,7 +548,7 @@ async def test_two_sources_failing_the_same_way_share_one_reason_code(
     snapshot = Calculator(hass).build_snapshot(config)
 
     assert snapshot.solar_power_w is None
-    assert snapshot.reason_codes == [REASON_INVALID_ENTITY_STATE]
+    assert snapshot.reason_codes == [REASON_ENTITY_UNAVAILABLE]
     assert snapshot.invalid_source_ids == ["solar-1", "solar-2"]
 
 

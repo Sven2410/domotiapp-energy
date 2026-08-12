@@ -15,8 +15,38 @@ from typing import Final
 # Something the calculation needs is absent: no entity linked, no meter mode
 # chosen, no maximum grid power entered.
 REASON_MISSING_REQUIRED_DATA: Final = "missing_required_data"
-# The entity is linked but its current state cannot be used as a measurement.
+# The entity is linked, present and reporting, but what it reports cannot be
+# used as a measurement: a word where a number was expected, an attribute that
+# is not there, a value that is not finite.
+#
+# **This code became narrower in 0.28.0** (SPEC.md §63.5). Until then it was
+# the single answer to four different situations, and the four below took its
+# place. What is left is the one of the five that is always a statement about
+# the installation rather than about the moment.
 REASON_INVALID_ENTITY_STATE: Final = "invalid_entity_state"
+
+# --- Why an entity carried no measurement (SPEC.md §63.5) --------------------
+#
+# Home Assistant already distinguishes these, and the distinction is the whole
+# repair: `unknown` means "this entity is alive and has no value yet", while
+# `unavailable` means "the integration behind it declares the device
+# unreachable". Collapsing them made a source that had not spoken yet
+# indistinguishable from a source that was broken.
+
+# The entity is not in the state machine at all. True while an integration is
+# still setting up, true while one is being torn down, and true when the
+# installer linked something that does not exist.
+REASON_ENTITY_MISSING: Final = "entity_missing"
+# The entity is there and available, but carries no value yet: `unknown`, or an
+# attribute that exists without content. A source that has never spoken is an
+# unanswered question, not a fault.
+REASON_ENTITY_WITHOUT_VALUE: Final = "entity_without_value"
+# The integration itself reports the entity as `unavailable`. This is the one
+# statement in this group that another integration made on purpose.
+REASON_ENTITY_UNAVAILABLE: Final = "entity_unavailable"
+# There is a value, and it is older than the window for this kind of source
+# (SPEC.md §47). The source went quiet while everything around it kept running.
+REASON_ENTITY_STALE: Final = "entity_stale"
 
 REASON_SOLAR_SURPLUS_AVAILABLE: Final = "solar_surplus_available"
 # Overload caused by drawing from the grid: postpone consumers.
@@ -49,6 +79,10 @@ REASON_CODES: Final[tuple[str, ...]] = (
     REASON_QUIET_HOURS_ACTIVE,
     REASON_DEADLINE_APPROACHING,
     REASON_INVALID_ENTITY_STATE,
+    REASON_ENTITY_MISSING,
+    REASON_ENTITY_WITHOUT_VALUE,
+    REASON_ENTITY_UNAVAILABLE,
+    REASON_ENTITY_STALE,
     REASON_INSUFFICIENT_SAVINGS,
     REASON_NEUTRAL_ENERGY_SITUATION,
 )

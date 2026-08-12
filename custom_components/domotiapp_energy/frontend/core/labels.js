@@ -25,6 +25,10 @@
 const REASON_LABELS = {
   missing_required_data: 'Er ontbreken gegevens',
   invalid_entity_state: 'Een gekoppelde entiteit levert geen bruikbare waarde',
+  entity_missing: 'Een gekoppelde entiteit bestaat niet',
+  entity_without_value: 'Een gekoppelde entiteit heeft nog geen waarde',
+  entity_unavailable: 'Een gekoppelde entiteit is niet bereikbaar',
+  entity_stale: 'Een gekoppelde entiteit is stilgevallen',
   solar_surplus_available: 'Er is zonneoverschot',
   high_grid_load: 'De netbelasting is hoog',
   high_grid_export: 'De teruglevering is hoog',

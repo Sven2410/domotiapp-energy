@@ -1,5 +1,46 @@
 # Changelog
 
+## 0.28.0
+
+Een bron zonder waarde is geen kapotte bron. SPEC §63.5.
+
+### Fixed
+
+- **De reparatie van 0.27.1 hield acht herstarts op één dag niet tegen.** Op 11 augustus
+  stonden er acht herstarts in Svens logboek, en na elke herstart verschenen dezelfde loze
+  bronmeldingen weer — enkele seconden na het laden van de integratie.
+
+  De poort van 0.27.1 vroeg "is Home Assistant klaar met opstarten", terwijl de melding
+  beweert "deze bron is stuk". Dat zijn twee verschillende dingen. Home Assistant is klaar
+  met opstarten op het moment dat je slimme meter zijn eerste telegram nog moet sturen: de
+  entiteit bestáát dan, en staat op `unknown`.
+
+- **`unknown` en `unavailable` worden niet langer als hetzelfde gelezen.** Home Assistant
+  schrijft `unavailable` wanneer een integratie zegt dat zij het apparaat niet kan bereiken,
+  en `unknown` wanneer de entiteit leeft en nog geen waarde heeft. Dat onderscheid ging bij
+  ons één regel na het uitlezen verloren, samen met het verschil tussen "de entiteit bestaat
+  niet" en "de meting is te oud".
+
+  Vier situaties krijgen nu hun eigen reden en hun eigen zin in het logboek.
+
+- **Een bron die nog nooit gelezen is, krijgt geen oordeel.** "Deze installatie heeft een
+  kapotte bron" veronderstelt dat wij hem ooit hebben zien werken. Vlak na een herstart weten
+  we dat niet, dus zeggen we het niet.
+
+- **Een echte storing blijft gewoon gemeld.** Een omvormer die de hele avond geleverd heeft
+  en om 23:00 van het netwerk valt, staat onverkort in het logboek — net als een verkeerd
+  gekoppelde entiteit, die zelfs meteen gemeld wordt zonder op iets te wachten.
+
+  Er zit **geen wachttijd** in deze reparatie. Die zou de echte storing verbergen en het
+  herstartprobleem laten bestaan: de acht herstarts werden beslist door minder dan vijf
+  seconden, en bij de achtste ging het toevallig goed.
+
+### Changed
+
+- Het logboek zegt voortaan wát er met een bron aan de hand is: "Bron niet bereikbaar",
+  "Bron is stilgevallen", "Bron niet gevonden" of "Bron heeft nog geen waarde", elk met een
+  eigen uitleg in plaats van één zin voor alle vier.
+
 ## 0.27.1
 
 Geen loze waarschuwingen meer bij het opstarten. SPEC §63.

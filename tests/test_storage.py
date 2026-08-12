@@ -1310,11 +1310,10 @@ def test_energy_snapshot_round_trip() -> None:
             SourceFailure(
                 source_id="source-9",
                 entity_id="sensor.weg",
-                reason_code="invalid_entity_state",
-                unavailable=True,
+                reason_code="entity_unavailable",
             )
         ],
-        reason_codes=["invalid_entity_state"],
+        reason_codes=["entity_unavailable"],
     )
 
     restored = EnergySnapshot.from_dict(snapshot.to_dict())
@@ -1324,13 +1323,18 @@ def test_energy_snapshot_round_trip() -> None:
     assert restored.household_consumption_w == 1800.0
     assert restored.current_price_eur_kwh == 0.21
     assert restored.invalid_source_ids == ["source-9"]
-    assert restored.reason_codes == ["invalid_entity_state"]
+    assert restored.reason_codes == ["entity_unavailable"]
     assert restored.timestamp == snapshot.timestamp
     assert restored.source_failures == snapshot.source_failures
 
 
 def test_a_damaged_source_failure_degrades_to_empty_strings() -> None:
-    """A failure record rebuilt from rubbish is usable, not an exception."""
+    """A failure record rebuilt from rubbish is usable, not an exception.
+
+    ``unavailable`` in the payload is ignored on the way in: it is derived from
+    the reason code, so a mapping that disagrees with its own code cannot smuggle
+    the disagreement back in (SPEC.md §63.5).
+    """
     restored = SourceFailure.from_dict({"source_id": 42, "unavailable": "misschien"})
 
     assert restored.source_id == ""

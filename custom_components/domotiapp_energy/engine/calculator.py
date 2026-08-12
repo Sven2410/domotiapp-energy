@@ -378,7 +378,6 @@ class Calculator:
                     source_id=source.id,
                     entity_id=result.entity_id,
                     reason_code=result.reason_code or "",
-                    unavailable=result.unavailable,
                 )
             )
         return None

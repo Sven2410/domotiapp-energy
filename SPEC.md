@@ -7214,3 +7214,130 @@ wij moeten weten welke integraties een klant gebruikt — SolarEdge, Frank Energ
 een P1-lezer — en dat is precies de discovery die regel 1 van CLAUDE.md verbiedt.
 De volgorde is een probleem van het moment, niet van de configuratie, en zij wordt
 op het moment opgelost.
+
+### 63.5 De reparatie deugde niet, en waarom niet
+
+**Gevonden op productie, 2026-08-12**, door Sven in zijn eigen logboek van de dag
+ervoor. §63.3 is gebouwd en heeft **acht herstarts op één dag laten passeren**.
+
+Op 11 augustus staan acht expliciete `homeassistant.restart`-aanroepen: 15:41:33,
+16:02:30, 17:12:55, 18:42:06, 20:51:01, 20:53:33, 21:38:02 en 23:32:45. Elk
+meervoudig bronincident in het logboek valt binnen enkele seconden na een van die
+acht. Bij vier ervan staat er bovendien een losse melding vlak **vóór** de afbraak.
+
+#### Wat er misging in §63.3
+
+De poort was één toestandsvergelijking: `hass.state is CoreState.running`. Geen
+venster, geen drempel, geen getal — en dus ook niets om te verruimen.
+
+> **`CoreState.running` betekent "Home Assistant is klaar met opstarten". De
+> logboekregel beweert "deze bron is stuk". Dat zijn twee verschillende
+> onderwerpen, en ze lopen uiteen in precies de seconden na elke herstart.**
+
+Want de entiteiten *bestaan* dan wel. `sensor.slimme_meter` staat bij elke
+herstart op `unknown`: de integratie is opgezet, de entiteit is geregistreerd, en
+het eerste telegram is nog niet binnen. §63.1 beschreef alleen het geval dat de
+entiteit er nog niet is, en heeft daarmee de helft van de werkelijkheid gemist.
+
+De aanname die dit blootlegt, opnieuw in de vorm van §47:
+
+> **"Zodra Home Assistant gestart is, heeft elke bron een waarde."** Waar voor
+> alles wat bij het opzetten al een meting meekrijgt. Onwaar voor een
+> Modbus-poller, een P1-lezer vóór zijn eerste telegram, MQTT zonder retain en een
+> uurlijkse prijsbron.
+
+#### De werkelijke oorzaak zat één regel eerder
+
+`read_entity_value` gaf **vier verschillende werelden dezelfde uitkomst** —
+`unavailable=True`, reden `invalid_entity_state`:
+
+1. de entiteit staat niet in de state machine;
+2. de entiteit is er en staat op `unavailable`;
+3. de entiteit is er en staat op `unknown`;
+4. de entiteit is er, heeft een waarde, en die is te oud (§47).
+
+Twee daarvan zijn een uitspraak over de installatie en twee niet, en dat verschil
+werd weggegooid door `UNUSABLE_ENTITY_STATES`, één verzameling met één lezer.
+
+**Home Assistant maakt het onderscheid zelf.** Een entiteit wordt `unavailable`
+geschreven wanneer haar integratie `available = False` zet — een uitspraak dat het
+apparaat niet bereikbaar is. Zij wordt `unknown` wanneer de entiteit beschikbaar
+is en haar waarde `None` is: levend, nog geen meting.
+
+#### 63.5.1 Wat er gebouwd is
+
+**Vijf reden-codes waar er één was.** `entity_missing`, `entity_without_value`,
+`entity_unavailable`, `entity_stale`, en `invalid_entity_state` voor wat overblijft
+— aanwezig en rapporteert iets onbruikbaars.
+
+**Eén predicaat beslist wat het melden waard is**, in de coordinator, en er staat
+geen tweede poort meer naast. Het houdt drie dingen tegen:
+
+1. Home Assistant draait niet (uit §63, nu ingesloten in plaats van ernaast);
+2. de entiteit is er niet of heeft nog geen waarde — geen fout maar een
+   onbeantwoorde vraag;
+3. deze bron is in dit proces nog nooit met succes gelezen. *"Deze installatie
+   heeft een kapotte bron"* veronderstelt dat je weet dat hij ooit werkte.
+
+Al het overige wordt onmiddellijk gemeld. Dat geldt met nadruk voor een verkeerd
+gekoppelde entiteit — verkeerde eenheid, verkeerd attribuut — want dat is een
+staande configuratiefout en geen moment.
+
+**Het "eerder levend gezien"-geheugen** staat in het geheugen van het proces, naast
+de latches, en gaat nooit naar de storage (regel 9). Het wordt gewist bij een
+configuratiewijziging, omdat een bewerking de entiteit achter een bron kan
+veranderen en de gezondheid van de oude dan voor de nieuwe zou tekenen.
+
+#### 63.5.2 Wat er met opzet níét gebouwd is
+
+**Geen melddrempel, geen wachttijd, geen aantal pogingen.** De acht herstarts
+werden beslist door 0,2 tot 4,3 seconden en bij de achtste wonnen de bronnen de
+race. Elk getal verschuift zo'n race in plaats van haar op te heffen, het zou een
+constante zijn zonder eerlijk *"dit geldt omdat…"*, en het zou de enige echte
+storing in de dataset — de SolarEdge-uitval van 23:00 — verbergen.
+
+**Geen herkenning van "wij gaan zo uit".** Vier meldingen staan vlak vóór de
+afbraak, waarvan één 3,1 seconde vóór de service-aanroep. `CoreState.stopping`
+wordt pas binnen `async_stop()` gezet, ná de configuratiecontrole van de
+`homeassistant.restart`-service, dus alles daarvóór is van buiten niet van normaal
+draaien te onderscheiden. Een machine weet niet dat zij herstart gaat worden, en
+een ontwerp dat dat moment probeert te herkennen gokt. Wat de afbraakkant wél dekt
+is de classificatie zelf: een entiteit die verdwijnt of naar `unknown` gaat is
+voortaan stil, een entiteit die naar `unavailable` gaat niet — en die grens trekt
+de eis dat 23:00 gemeld moet blijven, niet een keuze van ons.
+
+#### 63.5.3 De grens tussen 23:00 en 21:38
+
+| Situatie | Toestandswoord | Eerder levend gezien | Uitkomst |
+|---|---|---|---|
+| 23:00, omvormer valt uit na een avond leveren | `unavailable` | ja | **melden** |
+| 21:38, P1 na een herstart | `unknown` | nee | stil |
+| 21:38, een bron die zich na een herstart onbereikbaar meldt | `unavailable` | nee | stil |
+| afbraak, entiteit verdwijnt | — | ja | stil |
+| installateur koppelt een verkeerde eenheid | waarde | n.v.t. | **melden** |
+| §47, bron valt stil bij vol daglicht | waarde, te oud | ja | **melden** |
+
+Twee criteria houden die rijen uit elkaar, en allebei zijn ze tijdloos: **welk
+woord de integratie schreef**, en **of wij deze bron ooit hebben zien werken**.
+`tests/test_coordinator.py::test_which_failed_reads_reach_the_logbook` is die
+tabel, één rij per situatie.
+
+#### 63.5.4 De assertie die het defect vastlegde
+
+`test_the_same_source_is_reported_once_home_assistant_has_started` eiste dat een
+onleesbare bron gemeld werd op het moment dat Home Assistant op `running` sprong.
+Onder het oude model was dat juist. In Svens huis is dat precies het moment waarop
+de P1 nog niets gestuurd heeft, dus de test verifieerde actief het gedrag dat de
+klant acht keer op één dag trof. Hij is vervangen door de tabel hierboven.
+
+**Wat een unittest hier principieel niet kan**: hij schrijft de state een moment
+voordat hij hem leest, dus elke entiteit is altijd vers en er is nooit een
+herstart. Het bewijs voor deze reparatie komt uit een productielogboek, niet uit
+de suite (achtste variant in CLAUDE.md).
+
+#### 63.5.5 Wat hier niet bij hoort
+
+**De SolarEdge-uitval van 23:00 is een eigen spoor.** Vijf nachten op rij, altijd
+alleen de omvormer, pymodbus `[Errno 111]` naar `192.168.1.51:1502` terwijl de rest
+van de woning op `192.168.3.x` zit. Dat is een echte storing en de enige legitieme
+bronmelding in de dataset; zij hoort gemeld te blijven en wordt apart onderzocht.
