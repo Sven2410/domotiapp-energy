@@ -1224,6 +1224,14 @@ ATTR_ADVICE_TITLE: Final = "advice_title"
 # point in every Home Assistant, which is neither rare nor actionable, and the
 # attributes went on quoting the advice. Whatever lights this sensor must also
 # supply its sentence, so this tuple is the whole of it (SPEC.md §45.6).
+#
+# **The same holds for the four codes that took its place in 0.28.0** —
+# `entity_missing`, `entity_without_value`, `entity_unavailable` and
+# `entity_stale` (SPEC.md §63.5). `entity_unavailable` is the tempting one,
+# because it is the only one of the four that names a real fault. It still does
+# not belong here: the advisor never produces these codes at all, so adding one
+# would light a tile whose text comes from somewhere else entirely — exactly the
+# contradiction 0.11.0 shipped.
 ATTENTION_ADVICE_REASON_CODES: Final[tuple[str, ...]] = (
     "missing_required_data",
     "high_grid_load",
