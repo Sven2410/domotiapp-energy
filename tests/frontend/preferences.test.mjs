@@ -245,6 +245,40 @@ describe('het logboek als tijdlijn (SPEC.md §61.4)', () => {
     assert.doesNotMatch(rij, /\d{2}-\d{2}-\d{4}/);
   });
 
+  it('zegt wanneer een storing voorbij was, en verzint geen tijdvak', async () => {
+    // **Een blijvend register spreekt niet over nu** (SPEC.md §63.6). De regel
+    // van 23:00 stond er om 09:00 nog steeds in de tegenwoordige tijd, terwijl
+    // de omvormer alweer draaide.
+    const { tab } = await openTab(
+      'Logboek',
+      'logbook',
+      hassWithLogs(
+        logs({ timestamp: vandaag(14), resolved_at: vandaag(16), count: 5 }),
+      ),
+    );
+    await settle();
+
+    const rij = visibleText(tab.querySelector('.row-item'));
+
+    assert.match(rij, /Opgelost om 16:32/);
+    // Geen span: een samengevouwen regel draagt het tijdstip van haar laatste
+    // keer, dus "14:32 tot 16:32" zou een duur zijn die niemand gemeten heeft.
+    assert.doesNotMatch(rij, /14:32\s*(tot|-|–|—)\s*16:32/);
+  });
+
+  it('zwijgt over een regel zonder einde, want dat kan ook "van vroeger" zijn', async () => {
+    // Drie toestanden, geen twee: leeg betekent óf "nog gaande" óf "van vóór
+    // 0.29.0". Die twee zijn niet te onderscheiden, dus zegt het paneel niets.
+    const { tab } = await openTab(
+      'Logboek',
+      'logbook',
+      hassWithLogs(logs({ timestamp: vandaag(14) })),
+    );
+    await settle();
+
+    assert.doesNotMatch(visibleText(tab.querySelector('.row-item')), /Opgelost/);
+  });
+
   it('herhaalt de kop niet binnen dezelfde dag', async () => {
     const { tab } = await openTab(
       'Logboek',

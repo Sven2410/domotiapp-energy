@@ -109,6 +109,7 @@ export const logbookTab = {
       const title = el('p', { class: 'row-name' });
       const meta = el('p', { class: 'row-meta' });
       const message = el('p', { class: 'row-meta' });
+      const resolved = el('p', { class: 'row-meta' });
       const status = el('div', { class: 'row-status' });
       const statusIcon = el('ha-icon', { attrs: { 'aria-hidden': 'true' } });
       const statusText = el('span');
@@ -116,7 +117,7 @@ export const logbookTab = {
 
       const row = el('div', { class: 'row-item' }, [
         heading,
-        el('div', { class: 'row-main' }, [title, meta, message, status]),
+        el('div', { class: 'row-main' }, [title, meta, message, resolved, status]),
       ]);
 
       return {
@@ -136,6 +137,23 @@ export const logbookTab = {
             .filter(Boolean)
             .join(' · ');
           message.textContent = entry.message || '';
+
+          // **Drie toestanden, geen twee** (SPEC.md §63.6). Een tijdstip betekent
+          // "het was toen voorbij"; leeg betekent óf "nog gaande" óf "van vóór
+          // 0.29.0, en toen legden we geen einde vast". Die laatste twee zijn
+          // niet uit elkaar te houden, dus zegt het paneel alleen iets wanneer
+          // het iets weet — een regel zonder einde krijgt geen woord, want
+          // "nog gaande" beweren over een oude regel is precies de onwaarheid
+          // die deze ronde wegneemt.
+          //
+          // En geen tijdvak: een samengevouwen regel draagt het tijdstip van
+          // haar *laatste* keer, dus "23:00 tot 07:02" zou een duur zijn die
+          // niemand gemeten heeft.
+          const opgelost = entry.resolved_at
+            ? `Opgelost om ${formatTimeOfDay(entry.resolved_at)}.`
+            : '';
+          resolved.textContent = opgelost;
+          setVisible(resolved, Boolean(opgelost));
 
           const severity = SEVERITY[entry.severity] || SEVERITY.info;
           statusIcon.setAttribute('icon', severity.icon);

@@ -26,7 +26,7 @@ from .engine.reason_codes import (
 
 DOMAIN: Final = "domotiapp_energy"
 INTEGRATION_NAME: Final = "DomotiApp Energy"
-VERSION: Final = "0.28.0"
+VERSION: Final = "0.29.0"
 
 MANUFACTURER: Final = "DomotiApp"
 DEVICE_MODEL: Final = "Energy Coach"
@@ -74,7 +74,11 @@ PANEL_MODULE_URL: Final = f"{FRONTEND_URL_BASE}/{PANEL_COMPONENT_NAME}.js?v={VER
 
 STORAGE_KEY: Final = f"{DOMAIN}.config"
 STORAGE_VERSION: Final = 1
-STORAGE_MINOR_VERSION: Final = 1
+# Raised to 2 in 0.29.0, when a logbook entry gained `resolved_at`. Nothing has
+# to be migrated — `LogEntry.from_dict` fills a missing key with `None`, which
+# is the honest value for an entry written before we recorded endings — so this
+# is a signal and not a gate.
+STORAGE_MINOR_VERSION: Final = 2
 SCHEMA_VERSION: Final = 1
 
 # A second store, for state that is not configuration (SPEC.md §32.5).
@@ -844,6 +848,13 @@ LOG_EVENT_SOLAR_SURPLUS_DETECTED: Final = "solar_surplus_detected"
 # unrecognised type is a configuration problem, not an availability problem
 # (source_unavailable) and not a bad reading (invalid_measurement).
 LOG_EVENT_INVALID_CONFIGURATION: Final = "invalid_configuration"
+# The two events that describe a source the engine could not read. They are the
+# only ones that can be *over*: everything else in the logbook records something
+# that happened rather than a situation that lasts (SPEC.md §63.6).
+SOURCE_FAILURE_LOG_EVENTS: Final[tuple[str, ...]] = (
+    LOG_EVENT_SOURCE_UNAVAILABLE,
+    LOG_EVENT_INVALID_MEASUREMENT,
+)
 LOG_EVENT_TYPES: Final[tuple[str, ...]] = (
     LOG_EVENT_CONFIG_CHANGED,
     LOG_EVENT_DEVICE_ADDED,

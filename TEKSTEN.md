@@ -27,37 +27,37 @@ is dit de invoer en niet de uitvoer.
 
 | Tekst | Waar | Regel |
 |---|---|---|
-| Attention | module | 1184 |
-| Current advice | module | 1181 |
-| Data quality | module | 1178 |
+| Attention | module | 1195 |
+| Current advice | module | 1192 |
+| Data quality | module | 1189 |
 | DomotiApp | module | 31 |
 | DomotiApp Energy ↔ | module | 28 |
 | DomotiApp Energy ↔ | module | 49 |
 | Energy Coach | module | 32 |
-| Grid power | module | 1179 |
-| Home consumption | module | 1183 |
+| Grid power | module | 1190 |
+| Home consumption | module | 1194 |
 | Mijn woning | module | 39 |
-| Peak risk | module | 1182 |
-| Score | module | 1177 |
-| Self consumption | module | 1185 |
-| Solar surplus | module | 1180 |
+| Peak risk | module | 1193 |
+| Score | module | 1188 |
+| Self consumption | module | 1196 |
+| Solar surplus | module | 1191 |
 
 ## `custom_components/domotiapp_energy/coordinator.py`
 
 | Tekst | Waar | Regel |
 |---|---|---|
 | Advies opnieuw berekend | async_recalculate | 289 |
-| De woning {...} {...}% van het ingestelde maximale netvermogen. Dat ligt op of boven de waarschuwingsgrens van {...}%. | _async_log_findings | 655 |
-| Er is {...} W zonneoverschot beschikbaar. | _async_log_findings | 674 |
+| De woning {...} {...}% van het ingestelde maximale netvermogen. Dat ligt op of boven de waarschuwingsgrens van {...}%. | _async_log_findings | 673 |
+| Er is {...} W zonneoverschot beschikbaar. | _async_log_findings | 692 |
 | Het energieadvies is opnieuw berekend. | async_recalculate | 290 |
 | Linked entity %s changed | _handle_tracked_state_event | 300 |
 | No linked entities to watch | async_rebuild_state_listener | 263 |
-| Not reporting %s source failures: Home Assistant is %s | _failures_worth_reporting | 405 |
-| Not reporting source %s (%s): %s | _failures_worth_reporting | 415 |
-| Piekbelasting gesignaleerd | _async_log_findings | 654 |
+| Not reporting %s source failures: Home Assistant is %s | _failures_worth_reporting | 415 |
+| Not reporting source %s (%s): %s | _failures_worth_reporting | 425 |
+| Piekbelasting gesignaleerd | _async_log_findings | 672 |
 | Watching %s linked entities | async_rebuild_state_listener | 266 |
-| Zonneoverschot beschikbaar ↔ | _async_log_findings | 673 |
-| levert terug met ↔ | _async_log_findings | 651 |
+| Zonneoverschot beschikbaar ↔ | _async_log_findings | 691 |
+| levert terug met ↔ | _async_log_findings | 669 |
 | {...} forget ready flags of deleted appliances | _handle_configuration_change | 346 |
 | {...} recalculate after configuration change | _handle_configuration_change | 351 |
 | {...} safety recalculation | async_start | 246 |
@@ -620,26 +620,26 @@ is dit de invoer en niet de uitvoer.
 | Advies herberekend | logbook | 21 |
 | Apparaat toegevoegd ↔ | logbook | 19 |
 | Apparaat verwijderd ↔ | logbook | 20 |
-| Bezig met wissen… | logbook | 158 |
+| Bezig met wissen… | logbook | 176 |
 | Bron niet beschikbaar | logbook | 22 |
 | Configuratie gewijzigd | logbook | 18 |
 | Configuratieprobleem | logbook | 26 |
 | Fout ↔ | logbook | 34 |
 | Gelukt | logbook | 32 |
-| Het logboek is gewist. | logbook | 162 |
+| Het logboek is gewist. | logbook | 180 |
 | Het logboek is leeg. Hier komt te staan wat DomotiApp Energy | logbook | 60 |
 | Info | logbook | 31 |
 | Logboek ↔ | logbook | 39 |
 | Logboek ↔ | logbook | 44 |
 | Logboek wissen ↔ | logbook | 47 |
-| Logboek wissen ↔ | logbook | 174 |
+| Logboek wissen ↔ | logbook | 192 |
 | Ongeldige meting ↔ | logbook | 23 |
 | Piekrisico gesignaleerd | logbook | 24 |
 | Waarschuwing ↔ | logbook | 33 |
-| Weet je zeker dat je het logboek wilt wissen? De gebeurtenissen | logbook | 176 |
-| Wissen | logbook | 178 |
+| Weet je zeker dat je het logboek wilt wissen? De gebeurtenissen | logbook | 194 |
+| Wissen | logbook | 196 |
 | Zonneoverschot gesignaleerd | logbook | 25 |
-| zijn daarna weg. De configuratie zelf verandert niet. | logbook | 177 |
+| zijn daarna weg. De configuratie zelf verandert niet. | logbook | 195 |
 
 ## `custom_components/domotiapp_energy/frontend/tabs/overview.js`
 
@@ -966,23 +966,23 @@ is dit de invoer en niet de uitvoer.
 
 | Tekst | Waar | Regel |
 |---|---|---|
-| Bron heeft nog geen waarde | _async_report_failures | 373 |
-| Bron is stilgevallen | _async_report_failures | 358 |
-| Bron niet bereikbaar | _async_report_failures | 351 |
-| Bron niet gevonden | _async_report_failures | 366 |
-| De energiebron '{...}' heeft een onbekend type ('{...}') en is uitgeschakeld. Kies een geldig type om de bron weer te gebruiken. | async_report_invalid_rows | 270 |
-| De energiebron '{...}' is gekoppeld aan '{...}', en die entiteit bestaat wel maar draagt nog geen meetwaarde. | _async_report_failures | 375 |
-| De energiebron '{...}' is niet bereikbaar. De integratie achter '{...}' meldt de entiteit als niet beschikbaar, dus er is op dit moment geen meting. | _async_report_failures | 353 |
-| De energiebron '{...}' is stilgevallen. De entiteit '{...}' bestaat nog en meldt geen storing, maar heeft te lang geen nieuwe waarde gerapporteerd om nog als meting van nu te gelden. | _async_report_failures | 360 |
-| De energiebron '{...}' leverde geen bruikbare meetwaarde. Controleer bij de entiteit '{...}' de gekozen waardebron, het attribuut en de eenheid. (reden: {...}) | _async_report_failures | 381 |
-| De energiebron '{...}' verwijst naar de entiteit '{...}', en die bestaat niet in deze Home Assistant. Controleer of de entiteit hernoemd of verwijderd is. | _async_report_failures | 368 |
-| Er zijn {...} ingeschakelde bronnen van het type '{...}'. Deze waarden zijn niet op te tellen en er is niet te bepalen welke de juiste is, dus geen van beide wordt gebruikt. Schakel er één uit of verwijder er één. | async_report_invalid_rows | 248 |
-| Het apparaat '{...}' heeft een onbekend type ('{...}') en is uitgeschakeld. Kies een geldig type om het apparaat weer te gebruiken. | async_report_invalid_rows | 289 |
-| Meerdere bronnen van hetzelfde type | async_report_invalid_rows | 247 |
-| Multiple enabled sources of type %r; none of them is used ↔ | async_report_invalid_rows | 242 |
-| Onbekend apparaattype | async_report_invalid_rows | 288 |
-| Onbekend brontype | async_report_invalid_rows | 269 |
-| Ongeldige meting ↔ | _async_report_failures | 379 |
+| Bron heeft nog geen waarde | _async_report_failures | 394 |
+| Bron is stilgevallen | _async_report_failures | 379 |
+| Bron niet bereikbaar | _async_report_failures | 372 |
+| Bron niet gevonden | _async_report_failures | 387 |
+| De energiebron '{...}' heeft een onbekend type ('{...}') en is uitgeschakeld. Kies een geldig type om de bron weer te gebruiken. | async_report_invalid_rows | 289 |
+| De energiebron '{...}' is gekoppeld aan '{...}', en die entiteit bestond wel maar droeg geen meetwaarde. | _async_report_failures | 396 |
+| De energiebron '{...}' leverde geen bruikbare meetwaarde. Controleer bij de entiteit '{...}' de gekozen waardebron, het attribuut en de eenheid. (reden: {...}) | _async_report_failures | 402 |
+| De energiebron '{...}' verwijst naar de entiteit '{...}', en die bestaat niet in deze Home Assistant. Controleer of de entiteit hernoemd of verwijderd is. | _async_report_failures | 389 |
+| De energiebron '{...}' was niet bereikbaar. De integratie achter '{...}' meldde de entiteit als niet beschikbaar, dus er was geen meting. | _async_report_failures | 374 |
+| De energiebron '{...}' was stilgevallen. De entiteit '{...}' bestond nog en meldde geen storing, maar had te lang geen nieuwe waarde gerapporteerd om nog als een meting te gelden. | _async_report_failures | 381 |
+| Er zijn {...} ingeschakelde bronnen van het type '{...}'. Deze waarden zijn niet op te tellen en er is niet te bepalen welke de juiste is, dus geen van beide wordt gebruikt. Schakel er één uit of verwijder er één. | async_report_invalid_rows | 267 |
+| Het apparaat '{...}' heeft een onbekend type ('{...}') en is uitgeschakeld. Kies een geldig type om het apparaat weer te gebruiken. | async_report_invalid_rows | 308 |
+| Meerdere bronnen van hetzelfde type | async_report_invalid_rows | 266 |
+| Multiple enabled sources of type %r; none of them is used ↔ | async_report_invalid_rows | 261 |
+| Onbekend apparaattype | async_report_invalid_rows | 307 |
+| Onbekend brontype | async_report_invalid_rows | 288 |
+| Ongeldige meting ↔ | _async_report_failures | 400 |
 
 ## `custom_components/domotiapp_energy/validators.py`
 
@@ -1081,16 +1081,16 @@ is dit de invoer en niet de uitvoer.
 |---|---|
 | DomotiApp Energy has been removed. The energy configuration is kept in %s under .storage/, so adding the integration again restores it. Delete that file to start over | `custom_components/domotiapp_energy/__init__.py:145` |
 | Home Assistant has started: recalculating | `custom_components/domotiapp_energy/coordinator.py:310` |
-| Not reporting source %s (%s): %s, and it has not been read successfully since Home Assistant started | `custom_components/domotiapp_energy/coordinator.py:426` |
-| Clearing ready flag for %r: %s reports %r | `custom_components/domotiapp_energy/coordinator.py:534` |
+| Not reporting source %s (%s): %s, and it has not been read successfully since Home Assistant started | `custom_components/domotiapp_energy/coordinator.py:436` |
+| Clearing ready flag for %r: %s reports %r | `custom_components/domotiapp_energy/coordinator.py:552` |
 | No recorder: skipping the history | `custom_components/domotiapp_energy/engine/history.py:287` |
 | Could not read the %s statistics | `custom_components/domotiapp_energy/engine/history.py:311` |
 | No alternative coach provider is available in this release | `custom_components/domotiapp_energy/engine/providers.py:250` |
 | Dropping ready flag for %r: %r is not a timestamp | `custom_components/domotiapp_energy/runtime_store.py:83` |
-| Migrating %s from schema %s.%s to %s.%s | `custom_components/domotiapp_energy/storage.py:108` |
-| Configuration accessed before it was loaded | `custom_components/domotiapp_energy/storage.py:155` |
-| Could not read %s, continuing with a default configuration | `custom_components/domotiapp_energy/storage.py:203` |
-| Energy source %s has unrecognised type %r and is disabled | `custom_components/domotiapp_energy/storage.py:263` |
-| Device profile %s has unrecognised type %r and is disabled | `custom_components/domotiapp_energy/storage.py:282` |
-| Energy source %s could not be read from %s (%s) | `custom_components/domotiapp_energy/storage.py:340` |
+| Migrating %s from schema %s.%s to %s.%s | `custom_components/domotiapp_energy/storage.py:110` |
+| Configuration accessed before it was loaded | `custom_components/domotiapp_energy/storage.py:157` |
+| Could not read %s, continuing with a default configuration | `custom_components/domotiapp_energy/storage.py:205` |
+| Energy source %s has unrecognised type %r and is disabled | `custom_components/domotiapp_energy/storage.py:282` |
+| Device profile %s has unrecognised type %r and is disabled | `custom_components/domotiapp_energy/storage.py:301` |
+| Energy source %s could not be read from %s (%s) | `custom_components/domotiapp_energy/storage.py:361` |
 | Could not persist a configuration change | `custom_components/domotiapp_energy/websocket_api.py:316` |

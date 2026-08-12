@@ -7341,3 +7341,109 @@ de suite (achtste variant in CLAUDE.md).
 alleen de omvormer, pymodbus `[Errno 111]` naar `192.168.1.51:1502` terwijl de rest
 van de woning op `192.168.3.x` zit. Dat is een echte storing en de enige legitieme
 bronmelding in de dataset; zij hoort gemeld te blijven en wordt apart onderzocht.
+
+### 63.6 Het logboek spreekt niet meer over nu
+
+**Gevonden op productie, 2026-08-12**, door Sven bij het natrekken van de
+SolarEdge die 's nachts zijn modbus-server uitzet.
+
+Zijn logboek zei om negen uur 's ochtends nog steeds:
+
+> *"De energiebron 'Solaredge' is niet bereikbaar … er is **op dit moment** geen
+> meting."* — geschreven om 23:00, gelezen om 09:00, met de omvormer alweer twee
+> uur aan het leveren.
+
+**Een blijvend register dat in de tegenwoordige tijd spreekt, veroudert tot een
+onwaarheid.** Dat is geen ruis maar een onware mededeling, elke ochtend opnieuw,
+en het was de zwaarste kostenpost van de hele afweging rond de nachtelijke
+meldingen.
+
+#### 63.6.1 Wat er gebouwd is
+
+**Een logboekregel kan afgesloten worden.** `LogEntry` krijgt `resolved_at`: het
+moment waarop de situatie voorbij was. Geen nieuwe gebeurtenis, geen tweede
+regel — het paneel zet er één zin bij, *"Opgelost om 07:02."*
+
+**De tegenwoordige tijd gaat uit de tekst.** De regel draagt haar tijdstip al;
+de zin gaat over het moment waarop zij geschreven werd.
+
+#### 63.6.2 Waarom afsluiten en geen eigen `source_recovered`
+
+Een eigen gebeurtenis is append-only en op het eerste gezicht zuiverder, maar
+zij kost drie dingen: zij verdubbelt het aantal regels tegen een logboek dat op
+`MAX_LOG_ENTRIES` staat, zij dwingt de lezer twee regels te koppelen die uren
+uit elkaar liggen, en een flikkerende bron levert er 2N in plaats van N.
+
+**En de belofte waar dit tegenaan leek te lopen, is smaller dan zij klinkt.**
+De README zegt *"the last 200 events, with identical consecutive events
+collapsed"* — en dat samenvouwen ís het bijwerken van een bestaande regel:
+`_collapse_into_recent` verhoogt haar teller, zet haar timestamp op nu en
+verplaatst haar naar voren. Een einde toevoegen is dezelfde handeling met een
+ander veld. Geen tekst wordt herschreven, geen regel verdwijnt.
+
+#### 63.6.3 Drie dingen die het ontwerp bijna verkeerd deden
+
+**Geen tijdvak.** Een samengevouwen regel draagt het tijdstip van haar
+*laatste* keer, niet van haar eerste; er is nergens een begin opgeslagen. "23:00
+tot 07:02" zou dus een verzonnen duur zijn voor elke regel met een teller boven
+één. Het paneel toont daarom een moment en geen span.
+
+**Een afgesloten regel mag wél opnieuw samenvouwen.** De eerste versie van dit
+ontwerp verbood dat, zodat een vastgelegd einde niet gewist kon worden. Loop het
+door: storing, herstel, storing → de tweede storing kan niet samenvouwen in de
+afgesloten regel en schrijft er een nieuwe. Een bron die elke minuut flikkert
+krijgt dan één regel per cyclus, wat precies de schrijfamplificatie is waarvoor
+het samenvouwen bestaat. Binnen het venster is het één situatie met een teller,
+en het einde van de vorige keer is geen regel per flikkering waard.
+
+**Geen tijdstip in de berichttekst.** Het samenvouwen matcht onder meer op de
+tekst. Een zin als *"was om 23:00 niet bereikbaar"* verschilt per keer, matcht
+nooit meer, en schrijft dan bij elke herberekening een nieuwe regel. De
+tegenwoordige tijd gaat er dus uit zonder dat er een klok voor in de plaats
+komt.
+
+#### 63.6.4 Het afsluiten hangt aan de gebeurtenis, niet aan de ledger
+
+De anti-spamledger staat in het geheugen. Zou het afsluiten daarvan afhangen,
+dan laat een herstart om drie uur 's nachts — met de omvormer weg — een regel
+achter die niemand meer kan sluiten: **voor altijd open, een nieuw soort
+liegende regel in plaats van het oude.**
+
+Daarom sluit een bron die schoon leest haar nieuwste open regel, of dit proces
+haar nu heeft zien ontstaan of niet. Alleen de nieuwste per onderwerp: een
+oudere beschrijft een eerdere episode die haar eigen einde had, vastgelegd of
+niet.
+
+#### 63.6.5 De regressie van 0.28.0, meegenomen
+
+**§63.5 introduceerde een fout die in 0.28.0 is uitgeleverd.** Sinds die versie
+filtert de coordinator de stille meldingen weg vóórdat de storage ze ziet, en de
+vergeet-lus daar verwijdert elk onderwerp dat niet in `still_invalid` zit. Een
+gefilterde melding was dus niet te onderscheiden van een herstel: een bron die
+van `unavailable` naar `unknown` ging en uren later terugviel, kreeg een tweede
+regel voor dezelfde storing.
+
+Met het afsluiten erbij zou het erger worden — er kwam dan *"opgelost"* te staan
+op het moment dat de bron juist stiller werd. Daarom hoort de reparatie in
+dezelfde ronde.
+
+De coordinator geeft de storage nu drie dingen in plaats van één: wat het melden
+waard is, **wat nog steeds faalt of het nu gemeld werd of niet**, en wat schoon
+leest. Alle drie op één plek berekend, dus er komt geen tweede oordeel bij.
+
+**En één bug die er al in zat kwam mee.** De verzameling "bronnen die
+antwoordden" was *alle* rijen min de ongeldige, terwijl de calculator een
+uitgeschakelde of onvoltooide rij helemaal overslaat — die telde dus als
+zojuist met succes gelezen. Onschadelijk zolang het antwoord alleen het
+eerder-levend-geheugen voedde, want een uitgeschakelde rij levert geen fouten
+op. Niet onschadelijk zodra diezelfde verzameling logboekregels afsluit, want
+dan leest "uitgezet" als "gerepareerd". De vijfde variant: een waarde die niets
+las tot er gedrag aan hing.
+
+#### 63.6.6 Wat hier niet in zit
+
+Het nachtelijke zwijgen zelf. Een omvormer die 's nachts slaapt levert nog
+steeds een melding op, en de datakwaliteit zakt er nog steeds vijftien punten
+van. Dat is een eigen beslissing (`sun.is_up` voor de toepasselijkheid van het
+zonne-item) en zij komt in een eigen ronde, samen met de bronrij die vandaag
+*"Compleet."* zegt over een bron die de motor zojuist geweigerd heeft.

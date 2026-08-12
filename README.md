@@ -55,8 +55,9 @@ plausible-looking wrong number is worse than an honest gap.
   AI provider, and no API key.
 - No browser storage. The panel uses no `localStorage`, `sessionStorage`, `IndexedDB` or
   cookies; the backend storage is the only source of truth.
-- The logbook stores an event type, a title, a short message, a severity and a subject
-  id. It never stores a Home Assistant state object, a location or personal data.
+- The logbook stores an event type, a title, a short message, a severity, a subject id
+  and, for a source that could not be read, the moment the situation was over. It never
+  stores a Home Assistant state object, a location or personal data.
 - Home Assistant log lines carry no entity states, home name or location.
 
 ## Requirements

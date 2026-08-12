@@ -67,6 +67,7 @@ from custom_components.domotiapp_energy.models import (
     DeviceProfile,
     EnergySource,
     HomeProfile,
+    LogEntry,
     StoredConfiguration,
 )
 from custom_components.domotiapp_energy.runtime_store import RuntimeStore
@@ -1105,6 +1106,8 @@ class _Situatie:
     verouder: bool = False
     # Laat er uren verstrijken en geef de bron daarna weer een waarde.
     keert_terug: bool = False
+    # Verwacht einde op de nieuwste bronregel: True = afgesloten, False = open.
+    verwacht_afgesloten: bool = False
     # De toestand van Home Assistant zelf op het moment van oordelen.
     kern: CoreState = CoreState.running
     # Het logboekevent dat hierbij hoort, of ``None`` voor stilte.
@@ -1149,10 +1152,18 @@ _SITUATIES: tuple[_Situatie, ...] = (
         eerst_levend=True,
         toestand=STATE_UNAVAILABLE,
         keert_terug=True,
-        # Alleen de uitvalregel. **Het logboek kent geen herstelgebeurtenis**:
-        # er is geen event_type voor "de bron is er weer", dus de regel van
-        # 23:00 blijft staan en niets zegt dat hij om 07:00 achterhaald is.
+        # Eén regel, en die draagt sinds 0.29.0 haar einde (SPEC.md §63.6).
+        # Hiervoor bleef de regel van 23:00 er 's ochtends staan in de
+        # tegenwoordige tijd, terwijl de omvormer alweer draaide.
         verwacht=LOG_EVENT_SOURCE_UNAVAILABLE,
+        verwacht_afgesloten=True,
+    ),
+    _Situatie(
+        naam="de bron blijft weg, en dan is er niets af te sluiten",
+        eerst_levend=True,
+        toestand=STATE_UNAVAILABLE,
+        verwacht=LOG_EVENT_SOURCE_UNAVAILABLE,
+        verwacht_afgesloten=False,
     ),
     _Situatie(
         naam="de installateur koppelde iets onbruikbaars",
@@ -1231,10 +1242,169 @@ async def test_which_failed_reads_reach_the_logbook(
             await hass.async_block_till_done()
             await _flush_debouncer(hass)
 
-    gemeld = [
-        entry.event_type
-        for entry in entry.runtime_data.store.config.logs
-        if entry.event_type
+    bronregels = [
+        log
+        for log in entry.runtime_data.store.config.logs
+        if log.event_type
         in (LOG_EVENT_SOURCE_UNAVAILABLE, LOG_EVENT_INVALID_MEASUREMENT)
     ]
-    assert gemeld == ([situatie.verwacht] if situatie.verwacht else [])
+    assert [log.event_type for log in bronregels] == (
+        [situatie.verwacht] if situatie.verwacht else []
+    )
+    if situatie.verwacht:
+        assert (bronregels[0].resolved_at is not None) is situatie.verwacht_afgesloten
+
+
+async def test_a_silenced_failure_does_not_look_like_a_repair(
+    hass: HomeAssistant, hass_storage: dict[str, Any], freezer: FrozenDateTimeFactory
+) -> None:
+    """De regressie van 0.28.0, en waarom zij nu pas telt (SPEC.md §63.6).
+
+    Sinds 0.28.0 filtert de coordinator de stille meldingen weg vóór de storage
+    ze ziet. De vergeet-lus daar kon een gefilterde melding niet onderscheiden
+    van een herstel, dus een bron die van `unavailable` naar `unknown` ging en
+    uren later terugviel kreeg een tweede regel voor dezelfde storing.
+
+    Erger wordt het met het afsluiten erbij: dan zou er ook nog "opgelost" komen
+    te staan op het moment dat de bron juist stiller werd. Daarom hoort deze
+    reparatie in dezelfde ronde en niet erna.
+    """
+    hass.states.async_set(GRID_ENTITY, "1150", {"unit_of_measurement": UNIT_W})
+    entry = await _setup(
+        hass,
+        hass_storage,
+        StoredConfiguration(home=HomeProfile(), sources=[_grid_source()]),
+    )
+    coordinator = entry.runtime_data.coordinator
+
+    async def toestand(state: str) -> None:
+        hass.states.async_set(GRID_ENTITY, state)
+        await coordinator.async_refresh()
+        await hass.async_block_till_done()
+
+    await toestand(STATE_UNAVAILABLE)
+    await toestand(STATE_UNKNOWN)
+    freezer.tick(timedelta(hours=8))
+    await toestand(STATE_UNAVAILABLE)
+
+    regels = [
+        log
+        for log in entry.runtime_data.store.config.logs
+        if log.event_type == LOG_EVENT_SOURCE_UNAVAILABLE
+    ]
+
+    assert len(regels) == 1
+    # En zeker geen einde: er is niets hersteld, de bron werd alleen stiller.
+    assert regels[0].resolved_at is None
+
+
+async def test_a_repaired_source_that_breaks_again_reopens_its_entry(
+    hass: HomeAssistant, hass_storage: dict[str, Any]
+) -> None:
+    """Binnen het kwartier is het één situatie, met een teller (SPEC.md §63.6).
+
+    Het eerste ontwerp verbood samenvouwen in een afgesloten regel, zodat een
+    vastgelegd einde niet gewist kon worden. Dat maakte van een bron die elke
+    minuut flikkert één regel per cyclus — precies de schrijfamplificatie
+    waarvoor het samenvouwen bestaat. Binnen het venster hoort het dus één
+    regel te blijven, die haar einde weer loslaat zolang de storing duurt.
+    """
+    hass.states.async_set(GRID_ENTITY, "1150", {"unit_of_measurement": UNIT_W})
+    entry = await _setup(
+        hass,
+        hass_storage,
+        StoredConfiguration(home=HomeProfile(), sources=[_grid_source()]),
+    )
+    coordinator = entry.runtime_data.coordinator
+    store = entry.runtime_data.store
+
+    async def toestand(state: str) -> None:
+        hass.states.async_set(GRID_ENTITY, state)
+        await coordinator.async_refresh()
+        await hass.async_block_till_done()
+
+    def bronregels() -> list[Any]:
+        return [
+            log
+            for log in store.config.logs
+            if log.event_type == LOG_EVENT_SOURCE_UNAVAILABLE
+        ]
+
+    await toestand(STATE_UNAVAILABLE)
+    await toestand("1200")
+    assert bronregels()[0].resolved_at is not None
+
+    await toestand(STATE_UNAVAILABLE)
+
+    assert len(bronregels()) == 1
+    assert bronregels()[0].count == 2
+    assert bronregels()[0].resolved_at is None
+
+
+async def test_an_entry_from_before_this_process_is_still_closed(
+    hass: HomeAssistant, hass_storage: dict[str, Any]
+) -> None:
+    """**De aanname die geen unittest kan weerleggen** (achtste variant).
+
+    De anti-spamledger staat in het geheugen. Gaat Home Assistant om drie uur
+    's nachts opnieuw op terwijl de omvormer weg is, dan weet niets meer van de
+    openstaande regel — en zou die voor altijd open blijven staan, een nieuw
+    soort liegende regel in plaats van het oude.
+
+    Het afsluiten hangt daarom aan de gebeurtenis en niet aan de ledger: een
+    bron die schoon leest sluit haar nieuwste open regel, ook als dit proces
+    haar nooit heeft zien ontstaan. Deze test zet zo'n regel in de opslag vóór
+    het opstarten, wat precies is wat een herstart achterlaat.
+    """
+    config = StoredConfiguration(home=HomeProfile(), sources=[_grid_source()])
+    config.logs.append(
+        LogEntry(
+            event_type=LOG_EVENT_SOURCE_UNAVAILABLE,
+            title="Bron niet bereikbaar",
+            message="Van vóór de herstart.",
+            severity=SEVERITY_WARNING,
+            subject="grid",
+        )
+    )
+    hass.states.async_set(GRID_ENTITY, "1150", {"unit_of_measurement": UNIT_W})
+    entry = await _setup(hass, hass_storage, config)
+
+    logs = entry.runtime_data.store.config.logs
+    oud = next(log for log in logs if log.message == "Van vóór de herstart.")
+
+    assert oud.resolved_at is not None
+
+
+async def test_a_stored_warning_does_not_claim_the_present(
+    hass: HomeAssistant, hass_storage: dict[str, Any]
+) -> None:
+    """Een blijvend register mag niet over *nu* spreken (SPEC.md §63.6).
+
+    Svens klacht in één zin: de regel van 23:00 stond er om 09:00 nog steeds,
+    met "er is op dit moment geen meting" erin, terwijl de omvormer alweer twee
+    uur draaide. Het tijdstip staat al op de regel; de zin hoort over dat moment
+    te gaan en niet over het lezen ervan.
+
+    **Zonder tijdstip in de tekst**, en dat is geen stijlkeuze: het samenvouwen
+    matcht op de berichttekst, dus een zin met een klok erin zou nooit meer
+    samenvallen en elke herberekening een nieuwe regel schrijven.
+    """
+    hass.states.async_set(GRID_ENTITY, "1150", {"unit_of_measurement": UNIT_W})
+    entry = await _setup(
+        hass,
+        hass_storage,
+        StoredConfiguration(home=HomeProfile(), sources=[_grid_source()]),
+    )
+
+    hass.states.async_set(GRID_ENTITY, STATE_UNAVAILABLE)
+    await entry.runtime_data.coordinator.async_refresh()
+    await hass.async_block_till_done()
+
+    bericht = next(
+        log.message
+        for log in entry.runtime_data.store.config.logs
+        if log.event_type == LOG_EVENT_SOURCE_UNAVAILABLE
+    )
+
+    assert "op dit moment" not in bericht
+    assert ":" not in bericht.replace("'", "")

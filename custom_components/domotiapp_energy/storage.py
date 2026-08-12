@@ -22,6 +22,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Callable, Sequence
+from collections.abc import Set as AbstractSet
 from datetime import timedelta
 from typing import Any
 
@@ -43,6 +44,7 @@ from .const import (
     MAX_LOG_ENTRIES,
     SEVERITY_INFO,
     SEVERITY_WARNING,
+    SOURCE_FAILURE_LOG_EVENTS,
     STORAGE_KEY,
     STORAGE_MINOR_VERSION,
     STORAGE_VERSION,
@@ -210,9 +212,23 @@ class ConfigurationStore:
         return self._config
 
     async def async_report_invalid_rows(
-        self, failures: Sequence[SourceFailure] = ()
+        self,
+        failures: Sequence[SourceFailure] = (),
+        *,
+        still_failing: AbstractSet[str] = frozenset(),
+        readable: AbstractSet[str] = frozenset(),
     ) -> None:
         """Report every row the engine refuses to use, and every failed read.
+
+        Three collections, because the caller knows three different things and
+        this method must not re-derive any of them (SPEC.md §63.6):
+
+        ``failures`` are the ones worth a logbook line. ``still_failing`` is
+        every subject that failed, **including the ones the coordinator chose
+        not to report** — without it a silenced failure is indistinguishable
+        from a repair, which is the 0.28.0 regression this fixes. ``readable``
+        is every source that produced a usable value on this pass, and it is
+        what closes an open entry.
 
         Call this where the problems become functionally relevant: at the
         moment the engine has read the configuration to calculate with it. A
@@ -229,7 +245,10 @@ class ConfigurationStore:
         each of them forget the other's subjects on every pass.
         """
         config = self.config
-        still_invalid: set[str] = set()
+        # Seeded with everything that is still broken, reported or not. A
+        # failure the coordinator silenced is still a failure; leaving it out
+        # here made the forget loop below read "silent" as "repaired" (0.28.0).
+        still_invalid: set[str] = set(still_failing)
 
         for source_type, rows in config.duplicate_exclusive_sources.items():
             # Reported per type rather than per row: the problem is that there
@@ -299,6 +318,8 @@ class ConfigurationStore:
         for subject in self._reported_invalid.keys() - still_invalid:
             del self._reported_invalid[subject]
 
+        await self._async_close_resolved_entries(readable)
+
     async def _async_report_failures(
         self, failures: Sequence[SourceFailure], still_invalid: set[str]
     ) -> None:
@@ -350,17 +371,17 @@ class ConfigurationStore:
                 # follows is to look at that integration — not at our source row.
                 title = "Bron niet bereikbaar"
                 message = (
-                    f"De energiebron '{name}' is niet bereikbaar. De integratie "
-                    f"achter '{failure.entity_id}' meldt de entiteit als niet "
-                    f"beschikbaar, dus er is op dit moment geen meting."
+                    f"De energiebron '{name}' was niet bereikbaar. De integratie "
+                    f"achter '{failure.entity_id}' meldde de entiteit als niet "
+                    f"beschikbaar, dus er was geen meting."
                 )
             elif failure.reason_code == REASON_ENTITY_STALE:
                 title = "Bron is stilgevallen"
                 message = (
-                    f"De energiebron '{name}' is stilgevallen. De entiteit "
-                    f"'{failure.entity_id}' bestaat nog en meldt geen storing, maar "
-                    f"heeft te lang geen nieuwe waarde gerapporteerd om nog als "
-                    f"meting van nu te gelden."
+                    f"De energiebron '{name}' was stilgevallen. De entiteit "
+                    f"'{failure.entity_id}' bestond nog en meldde geen storing, maar "
+                    f"had te lang geen nieuwe waarde gerapporteerd om nog als een "
+                    f"meting te gelden."
                 )
             elif failure.reason_code == REASON_ENTITY_MISSING:
                 title = "Bron niet gevonden"
@@ -373,7 +394,7 @@ class ConfigurationStore:
                 title = "Bron heeft nog geen waarde"
                 message = (
                     f"De energiebron '{name}' is gekoppeld aan '{failure.entity_id}', "
-                    f"en die entiteit bestaat wel maar draagt nog geen meetwaarde."
+                    f"en die entiteit bestond wel maar droeg geen meetwaarde."
                 )
             else:
                 title = "Ongeldige meting"
@@ -391,6 +412,44 @@ class ConfigurationStore:
                 severity=SEVERITY_WARNING,
                 subject=subject,
             )
+
+    async def _async_close_resolved_entries(self, readable: AbstractSet[str]) -> None:
+        """Record that the situation an open entry describes is over.
+
+        **Not driven by the anti-spam ledger, and that is the whole point**
+        (SPEC.md §63.6). The ledger lives in memory, so a restart while a source
+        is down would leave its entry open for good — a logbook that lies in a
+        new way instead of the old one. This hangs on the event itself: a source
+        that reads cleanly closes its newest open entry, whether or not this
+        process saw that entry being written.
+
+        Only the newest open entry per subject, because an older one describes
+        an earlier episode that had its own end, recorded or not.
+        """
+        if not readable:
+            return
+
+        closed = False
+        now = dt_util.utcnow()
+        seen: set[str] = set()
+        for entry in self.config.logs:
+            subject = entry.subject
+            if (
+                subject is None
+                or subject in seen
+                or subject not in readable
+                or entry.resolved_at is not None
+                or entry.event_type not in SOURCE_FAILURE_LOG_EVENTS
+            ):
+                continue
+            # Newest first, so the first match per subject is the current one.
+            seen.add(subject)
+            entry.resolved_at = now
+            closed = True
+
+        if closed:
+            async with self._lock:
+                await self._async_write(bump_revision=False)
 
     def _source_name(self, source_id: str) -> str:
         """Return the configured name of a source, or its id as a fallback."""
@@ -530,6 +589,15 @@ class ConfigurationStore:
             entry.title = title
             entry.message = message
             entry.severity = severity
+            # **A closed entry that happens again re-opens** (SPEC.md §63.6).
+            # The first design forbade collapsing into a resolved entry, so its
+            # recorded end could not be erased — and that turned a source
+            # flickering every minute into one entry per cycle, which is exactly
+            # the write amplification this collapsing exists to prevent. Inside
+            # the window it is one situation with a counter, and the end of its
+            # previous occurrence is not worth a line per flicker. Beyond the
+            # window it is a new entry anyway, so last night's ending survives.
+            entry.resolved_at = None
             if index:
                 logs.insert(0, logs.pop(index))
             return True
