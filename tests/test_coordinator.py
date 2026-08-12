@@ -14,6 +14,7 @@ indistinguishable from a healthy installation.
 """
 
 import asyncio
+from dataclasses import dataclass
 from datetime import timedelta
 from typing import Any
 from unittest.mock import patch
@@ -21,7 +22,11 @@ from unittest.mock import patch
 import pytest
 from freezegun.api import FrozenDateTimeFactory
 from homeassistant.config_entries import ConfigEntryState
-from homeassistant.const import EVENT_HOMEASSISTANT_STARTED, STATE_UNAVAILABLE
+from homeassistant.const import (
+    EVENT_HOMEASSISTANT_STARTED,
+    STATE_UNAVAILABLE,
+    STATE_UNKNOWN,
+)
 from homeassistant.core import CoreState, HomeAssistant
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import (
@@ -47,6 +52,7 @@ from custom_components.domotiapp_energy.const import (
     SEVERITY_WARNING,
     SOURCE_TYPE_GRID_METER,
     SOURCE_TYPE_SOLAR,
+    STALE_AFTER_MINUTES_MEASUREMENT,
     STORAGE_KEY,
     STORAGE_VERSION,
     UNIT_W,
@@ -56,9 +62,6 @@ from custom_components.domotiapp_energy.coordinator import (
     tracked_entity_ids,
 )
 from custom_components.domotiapp_energy.engine.calculator import Calculator
-from custom_components.domotiapp_energy.engine.reason_codes import (
-    REASON_INVALID_ENTITY_STATE,
-)
 from custom_components.domotiapp_energy.models import (
     CoachResult,
     DeviceProfile,
@@ -515,18 +518,50 @@ async def test_a_solar_surplus_is_recorded_in_the_logbook(
     assert surplus_logs[0].count == 2
 
 
-async def test_an_entity_that_disappeared_is_reported_as_unavailable(
+async def test_an_entity_that_disappeared_is_not_a_logbook_verdict(
     hass: HomeAssistant, hass_storage: dict[str, Any]
 ) -> None:
-    """A linked entity that is gone produces one source_unavailable entry.
+    """A linked entity that is not there produces no logbook line at all.
 
-    The entry names the source and the entity and carries the reason code, but
-    never the raw state (SPEC.md §8 and §13).
+    **The judgement changed in 0.28.0** (SPEC.md §63.5). "Not in the state
+    machine" is what every restart and every integration reload looks like from
+    the inside, so it cannot carry the meaning "this installation has a broken
+    source". A wrong entity id looks identical from here and is not lost: the
+    source row and the data quality figure show it within a second, which is the
+    channel an installer is actually looking at while he works.
     """
     # No state is set at all, so the entity does not exist.
     entry = await _setup(
         hass, hass_storage, StoredConfiguration(sources=[_grid_source()])
     )
+
+    events = {log.event_type for log in entry.runtime_data.store.config.logs}
+
+    assert LOG_EVENT_SOURCE_UNAVAILABLE not in events
+    assert LOG_EVENT_INVALID_MEASUREMENT not in events
+
+
+async def test_an_unavailable_entity_is_reported_as_unavailable(
+    hass: HomeAssistant, hass_storage: dict[str, Any]
+) -> None:
+    """A source that worked and then goes unavailable is a verdict.
+
+    This is the 23:00 case from Svens production log: an inverter that had been
+    delivering all evening drops off the network. It has to keep reaching the
+    logbook, and it is the reason the repair for the restarts could not be a
+    reporting delay (SPEC.md §63.5).
+
+    The entry names the source and the entity, but never the raw state
+    (SPEC.md §8 and §13).
+    """
+    hass.states.async_set(GRID_ENTITY, "1200")
+    entry = await _setup(
+        hass, hass_storage, StoredConfiguration(sources=[_grid_source()])
+    )
+
+    hass.states.async_set(GRID_ENTITY, STATE_UNAVAILABLE)
+    await entry.runtime_data.coordinator.async_refresh()
+    await hass.async_block_till_done()
 
     logs = [
         log
@@ -539,22 +574,9 @@ async def test_an_entity_that_disappeared_is_reported_as_unavailable(
     assert logs[0].subject == "grid"
     assert "Netmeter" in logs[0].message
     assert GRID_ENTITY in logs[0].message
-    assert REASON_INVALID_ENTITY_STATE in logs[0].message
-
-
-async def test_an_unavailable_entity_is_reported_as_unavailable(
-    hass: HomeAssistant, hass_storage: dict[str, Any]
-) -> None:
-    """An entity carrying no measurement is unavailable, not a bad reading."""
-    hass.states.async_set(GRID_ENTITY, STATE_UNAVAILABLE)
-    entry = await _setup(
-        hass, hass_storage, StoredConfiguration(sources=[_grid_source()])
-    )
-
-    events = {log.event_type for log in entry.runtime_data.store.config.logs}
-
-    assert LOG_EVENT_SOURCE_UNAVAILABLE in events
-    assert LOG_EVENT_INVALID_MEASUREMENT not in events
+    assert LOG_EVENT_INVALID_MEASUREMENT not in {
+        log.event_type for log in entry.runtime_data.store.config.logs
+    }
 
 
 async def test_a_non_numeric_state_is_reported_as_an_invalid_measurement(
@@ -596,12 +618,17 @@ async def test_a_failing_source_is_reported_once_then_again_after_recovery(
     logbook; without the second half a source that breaks again after being
     repaired would stay silent forever.
     """
-    hass.states.async_set(GRID_ENTITY, STATE_UNAVAILABLE)
+    # Alive first: "broken" presumes we saw it work (SPEC.md §63.5).
+    hass.states.async_set(GRID_ENTITY, "1200")
     entry = await _setup(
         hass, hass_storage, StoredConfiguration(sources=[_grid_source()])
     )
     store = entry.runtime_data.store
     coordinator = entry.runtime_data.coordinator
+
+    hass.states.async_set(GRID_ENTITY, STATE_UNAVAILABLE)
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
 
     def _unavailable_entries() -> list[Any]:
         return [
@@ -639,11 +666,15 @@ async def test_a_source_that_changes_failure_mode_is_reported_again(
     hass: HomeAssistant, hass_storage: dict[str, Any]
 ) -> None:
     """Going from unavailable to unreadable is a new finding, not a repeat."""
-    hass.states.async_set(GRID_ENTITY, STATE_UNAVAILABLE)
+    hass.states.async_set(GRID_ENTITY, "1200")
     entry = await _setup(
         hass, hass_storage, StoredConfiguration(sources=[_grid_source()])
     )
     store = entry.runtime_data.store
+
+    hass.states.async_set(GRID_ENTITY, STATE_UNAVAILABLE)
+    await entry.runtime_data.coordinator.async_refresh()
+    await hass.async_block_till_done()
 
     hass.states.async_set(GRID_ENTITY, "kapot")
     await entry.runtime_data.coordinator.async_refresh()
@@ -1013,31 +1044,6 @@ async def test_a_source_that_does_not_exist_yet_is_not_reported(
     ]
 
 
-async def test_the_same_source_is_reported_once_home_assistant_has_started(
-    hass: HomeAssistant, hass_storage: dict[str, Any]
-) -> None:
-    """De andere helft: zwijgen tijdens het opstarten is geen zwijgen.
-
-    Zodra de installatie er helemaal is, is een bron die niet gelezen kan
-    worden wél een uitspraak over die installatie — en dan hoort zij in het
-    logboek, zoals altijd.
-    """
-    hass.set_state(CoreState.starting)
-    entry = await _setup(
-        hass,
-        hass_storage,
-        StoredConfiguration(home=HomeProfile(), sources=[_grid_source()]),
-    )
-
-    hass.set_state(CoreState.running)
-    hass.bus.async_fire(EVENT_HOMEASSISTANT_STARTED)
-    await hass.async_block_till_done()
-    await _flush_debouncer(hass)
-
-    logs = entry.runtime_data.store.config.logs
-    assert [entry for entry in logs if entry.event_type == LOG_EVENT_SOURCE_UNAVAILABLE]
-
-
 async def test_the_start_signal_recalculates_by_itself(
     hass: HomeAssistant, hass_storage: dict[str, Any]
 ) -> None:
@@ -1071,3 +1077,146 @@ async def test_the_start_signal_recalculates_by_itself(
     await _flush_debouncer(hass)
 
     assert coordinator.data.generated_at > eerste
+
+
+# --- Wanneer een mislukte lezing een oordeel is (SPEC.md §63.5) --------------
+
+
+@dataclass(frozen=True)
+class _Situatie:
+    """Eén toestand van de wereld, met de uitkomst die erbij hoort.
+
+    **De vraag staat met opzet om** (de zesde variant in CLAUDE.md): niet
+    "welke wereld levert deze logregel op", maar "gegeven deze situatie, wat
+    hoort er te gebeuren". Zo wordt elke rij een oordeel over de keuze in plaats
+    van een bevestiging dat een tak rendeert, en dwingt de tabel de gevallen af
+    die je anders niet bedenkt.
+    """
+
+    naam: str
+    # Gaf de bron eerst een bruikbare waarde? Dat is het verschil tussen "deze
+    # installatie heeft een kapotte bron" en "wij weten het nog niet".
+    eerst_levend: bool
+    # De toestand op het moment van oordelen. ``None`` betekent: de entiteit is
+    # er niet (meer).
+    toestand: str | None
+    # Laat de klok voorbij het verouderingsvenster lopen in plaats van de
+    # toestand te wijzigen (SPEC.md §47).
+    verouder: bool = False
+    # De toestand van Home Assistant zelf op het moment van oordelen.
+    kern: CoreState = CoreState.running
+    # Het logboekevent dat hierbij hoort, of ``None`` voor stilte.
+    verwacht: str | None = None
+
+
+_SITUATIES: tuple[_Situatie, ...] = (
+    _Situatie(
+        naam="opstart: de meter bestaat nog niet",
+        eerst_levend=False,
+        toestand=None,
+    ),
+    _Situatie(
+        naam="opstart: de meter leeft en heeft nog geen waarde",
+        eerst_levend=False,
+        toestand=STATE_UNKNOWN,
+    ),
+    _Situatie(
+        naam="opstart: de omvormer meldt zichzelf onbereikbaar",
+        eerst_levend=False,
+        toestand=STATE_UNAVAILABLE,
+    ),
+    _Situatie(
+        naam="23:00 — de omvormer valt uit nadat hij geleverd heeft",
+        eerst_levend=True,
+        toestand=STATE_UNAVAILABLE,
+        verwacht=LOG_EVENT_SOURCE_UNAVAILABLE,
+    ),
+    _Situatie(
+        naam="afbraak: de entiteit verdwijnt terwijl hij werkte",
+        eerst_levend=True,
+        toestand=None,
+    ),
+    _Situatie(
+        naam="afbraak: Home Assistant gaat uit terwijl de bron wegvalt",
+        eerst_levend=True,
+        toestand=STATE_UNAVAILABLE,
+        kern=CoreState.stopping,
+    ),
+    _Situatie(
+        naam="de installateur koppelde iets onbruikbaars",
+        eerst_levend=False,
+        toestand="kapot",
+        verwacht=LOG_EVENT_INVALID_MEASUREMENT,
+    ),
+    _Situatie(
+        naam="§47 — de bron valt stil terwijl alles eromheen doordraait",
+        eerst_levend=True,
+        toestand="1150",
+        verouder=True,
+        verwacht=LOG_EVENT_SOURCE_UNAVAILABLE,
+    ),
+)
+
+
+@pytest.mark.parametrize("situatie", _SITUATIES, ids=lambda s: s.naam)
+async def test_which_failed_reads_reach_the_logbook(
+    hass: HomeAssistant,
+    hass_storage: dict[str, Any],
+    freezer: FrozenDateTimeFactory,
+    situatie: _Situatie,
+) -> None:
+    """Welke mislukte lezing een uitspraak over de installatie is.
+
+    **Deze tabel verving een assertie die het defect vastlegde.** Tot 0.28.0
+    eiste ``test_the_same_source_is_reported_once_home_assistant_has_started``
+    dat een onleesbare bron gemeld werd op het moment dat Home Assistant op
+    ``running`` sprong. Op Svens installatie is dat precies het moment waarop de
+    P1 zijn eerste telegram nog niet stuurde en de omvormer nog niet gepolld
+    had: op 2026-08-11 leverde dat acht keer op één dag drie waarschuwingen op
+    die niets betekenden.
+
+    De twee criteria die de rijen uit elkaar houden zijn allebei tijdloos —
+    **welk woord de integratie schreef**, en **of wij deze bron ooit hebben zien
+    werken**. Er zit nergens een wachttijd in, want de race werd bij die acht
+    herstarts beslist door 0,2 tot 4,3 seconden en bij de achtste wonnen de
+    bronnen hem: elk getal verschuift zo'n race in plaats van haar op te heffen.
+    """
+    hass.set_state(CoreState.starting)
+    if situatie.eerst_levend:
+        hass.states.async_set(GRID_ENTITY, "1150", {"unit_of_measurement": UNIT_W})
+    elif situatie.toestand is not None:
+        hass.states.async_set(GRID_ENTITY, situatie.toestand)
+
+    entry = await _setup(
+        hass,
+        hass_storage,
+        StoredConfiguration(home=HomeProfile(), sources=[_grid_source()]),
+    )
+
+    hass.set_state(CoreState.running)
+    hass.bus.async_fire(EVENT_HOMEASSISTANT_STARTED)
+    await hass.async_block_till_done()
+    await _flush_debouncer(hass)
+
+    if situatie.eerst_levend:
+        # Nu pas breekt hij, en dat is het hele verschil met de rijen erboven.
+        hass.set_state(situatie.kern)
+        if situatie.verouder:
+            freezer.tick(
+                timedelta(minutes=STALE_AFTER_MINUTES_MEASUREMENT + 1),
+            )
+            async_fire_time_changed(hass)
+        elif situatie.toestand is None:
+            hass.states.async_remove(GRID_ENTITY)
+        else:
+            hass.states.async_set(GRID_ENTITY, situatie.toestand)
+        await hass.async_block_till_done()
+        await _flush_debouncer(hass)
+
+    gemeld = [
+        entry.event_type
+        for entry in entry.runtime_data.store.config.logs
+        if entry.event_type
+        in (LOG_EVENT_SOURCE_UNAVAILABLE, LOG_EVENT_INVALID_MEASUREMENT)
+    ]
+    assert gemeld == ([situatie.verwacht] if situatie.verwacht else [])

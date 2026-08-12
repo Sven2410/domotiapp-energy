@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "domotiapp-energy"
-version = "0.27.1"
+version = "0.28.0"
 description = "DomotiApp Energy - a manually configured energy coach for Home Assistant"
 # The test tooling, not the integration. Home Assistant 2026.8 requires
 # Python >= 3.14.2 and pytest-homeassistant-custom-component follows it, so a

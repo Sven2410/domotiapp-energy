@@ -12,11 +12,21 @@ from typing import Final
 
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 
+# The one import this module makes from our own code. `reason_codes` imports
+# nothing, so there is no cycle, and the alternative — repeating the code
+# strings here — is exactly the "never inline the string" that module forbids.
+from .engine.reason_codes import (
+    REASON_ENTITY_MISSING,
+    REASON_ENTITY_STALE,
+    REASON_ENTITY_UNAVAILABLE,
+    REASON_ENTITY_WITHOUT_VALUE,
+)
+
 # --- Identity (SPEC.md §3) --------------------------------------------------
 
 DOMAIN: Final = "domotiapp_energy"
 INTEGRATION_NAME: Final = "DomotiApp Energy"
-VERSION: Final = "0.27.1"
+VERSION: Final = "0.28.0"
 
 MANUFACTURER: Final = "DomotiApp"
 DEVICE_MODEL: Final = "Energy Coach"
@@ -756,11 +766,32 @@ MINUTES_PER_DAY: Final = MINUTES_PER_HOUR * HOURS_PER_DAY
 MAX_HOUR: Final = HOURS_PER_DAY - 1
 MAX_MINUTE: Final = MINUTES_PER_HOUR - 1
 
-# States that carry no measurement. A state is refused rather than treated as
-# zero: a heat pump that is unavailable is not a heat pump using 0 W.
-UNUSABLE_ENTITY_STATES: Final[frozenset[str]] = frozenset(
-    {STATE_UNKNOWN, STATE_UNAVAILABLE, "none", ""}
-)
+# States that carry no measurement, split by *what Home Assistant is saying*
+# (SPEC.md §63.5). Either way the state is refused rather than treated as zero:
+# a heat pump that is unavailable is not a heat pump using 0 W.
+#
+# **The split is not ours; it is Home Assistant's own contract.** An entity is
+# written as `unavailable` when its integration sets `available = False`, which
+# is a deliberate statement that the device cannot be reached. It is written as
+# `unknown` when the entity is available and its value is `None` — alive, no
+# measurement yet. Reading both as one thing is what made a P1 meter that had
+# not sent its first telegram look exactly like an inverter that had dropped
+# off the network.
+#
+# The assumption underneath, in the form §47 asks for: **every integration uses
+# these two words the way Home Assistant defines them.** An integration that
+# writes `unknown` for a device it cannot reach would be silenced by this
+# design. That is a real risk and it is accepted, because the alternative —
+# reading a word as if it might mean its opposite — would put us back to having
+# no distinction at all.
+UNAVAILABLE_ENTITY_STATES: Final[frozenset[str]] = frozenset({STATE_UNAVAILABLE})
+# `none` and the empty string are here rather than beside `unavailable` because
+# both mean "there is nothing in this field", which is what `unknown` means.
+VALUELESS_ENTITY_STATES: Final[frozenset[str]] = frozenset({STATE_UNKNOWN, "none", ""})
+# **There is deliberately no union of the two here.** It would be the obvious
+# thing to keep for "can this be used as a measurement at all", and nothing asks
+# that question any more: every caller wants to know *which* of the two it is.
+# A constant nobody reads is the shortest road back to reading them as one.
 
 # --- Validation (SPEC.md §15) -----------------------------------------------
 
@@ -823,6 +854,48 @@ LOG_EVENT_TYPES: Final[tuple[str, ...]] = (
     LOG_EVENT_PEAK_RISK_DETECTED,
     LOG_EVENT_SOLAR_SURPLUS_DETECTED,
     LOG_EVENT_INVALID_CONFIGURATION,
+)
+
+# --- When a failed read is worth a logbook line (SPEC.md §63.5) --------------
+#
+# **The logbook records a verdict about the installation; the screen shows a
+# fact about the moment.** A source row that cannot be read shows up on the
+# Energiebronnen tab and in the data quality figure either way — that never
+# changes and must not, because it is how an installer sees his own mistake
+# within a second. What these three groups decide is only whether the same
+# situation also earns a permanent line.
+#
+# There is deliberately **no waiting time anywhere in this decision**. Sven's
+# eight restarts of 2026-08-11 were decided by between 0,2 and 4,3 seconds, and
+# at the eighth the sources happened to win: any delay moves that race rather
+# than ending it, and the number would have no honest "this holds because…".
+
+# Never a logbook line. Both mean "there is nothing here yet", which is what
+# every restart looks like from the inside, and what an integration being torn
+# down looks like too. They go to the debug log, where a developer can see them.
+SILENT_SOURCE_REASON_CODES: Final[tuple[str, ...]] = (
+    REASON_ENTITY_MISSING,
+    REASON_ENTITY_WITHOUT_VALUE,
+)
+# A logbook line, but only for a source this Home Assistant has already read
+# successfully at least once. "This installation has a broken source" presumes
+# we know it once worked; straight after a restart we do not, and saying it
+# anyway is what filled a customer's logbook eight times in one day.
+#
+# The other two sources in that incident had no recovery measurement at all, so
+# this group exists precisely so the design does not rest on the state word of
+# the one source that could be measured.
+SEEN_ALIVE_REQUIRED_REASON_CODES: Final[tuple[str, ...]] = (
+    REASON_ENTITY_UNAVAILABLE,
+    REASON_ENTITY_STALE,
+)
+# Which of the two logbook events a failure becomes. Everything about reaching
+# the entity is `source_unavailable`; everything about what it reported once
+# reached is `invalid_measurement`, because those ask different things of the
+# installer.
+SOURCE_UNAVAILABLE_REASON_CODES: Final[tuple[str, ...]] = (
+    *SILENT_SOURCE_REASON_CODES,
+    *SEEN_ALIVE_REQUIRED_REASON_CODES,
 )
 
 SEVERITY_INFO: Final = "info"
@@ -1151,6 +1224,14 @@ ATTR_ADVICE_TITLE: Final = "advice_title"
 # point in every Home Assistant, which is neither rare nor actionable, and the
 # attributes went on quoting the advice. Whatever lights this sensor must also
 # supply its sentence, so this tuple is the whole of it (SPEC.md §45.6).
+#
+# **The same holds for the four codes that took its place in 0.28.0** —
+# `entity_missing`, `entity_without_value`, `entity_unavailable` and
+# `entity_stale` (SPEC.md §63.5). `entity_unavailable` is the tempting one,
+# because it is the only one of the four that names a real fault. It still does
+# not belong here: the advisor never produces these codes at all, so adding one
+# would light a tile whose text comes from somewhere else entirely — exactly the
+# contradiction 0.11.0 shipped.
 ATTENTION_ADVICE_REASON_CODES: Final[tuple[str, ...]] = (
     "missing_required_data",
     "high_grid_load",

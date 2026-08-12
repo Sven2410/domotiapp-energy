@@ -60,9 +60,9 @@ from .const import (
     SOURCE_TYPE_CURRENT_PRICE,
     SOURCE_TYPE_FEED_IN_PRICE,
     SOURCE_TYPE_GRID_METER,
+    UNAVAILABLE_ENTITY_STATES,
     UNIT_CONVERSION_FACTORS,
     UNITS,
-    UNUSABLE_ENTITY_STATES,
     VALIDATION_ABOVE_THEORETICAL_MAXIMUM,
     VALIDATION_CAPABILITY_MISSING,
     VALIDATION_CONTROL_FORBIDDEN,
@@ -74,8 +74,13 @@ from .const import (
     VALIDATION_UNIT_MISMATCH,
     VALIDATION_UNKNOWN_TYPE,
     VALUE_SOURCE_ATTRIBUTE,
+    VALUELESS_ENTITY_STATES,
 )
 from .engine.reason_codes import (
+    REASON_ENTITY_MISSING,
+    REASON_ENTITY_STALE,
+    REASON_ENTITY_UNAVAILABLE,
+    REASON_ENTITY_WITHOUT_VALUE,
     REASON_INVALID_ENTITY_STATE,
     REASON_MISSING_REQUIRED_DATA,
 )
@@ -105,18 +110,17 @@ class ReadResult:
     the offending row without looking it up again; it is an empty string when
     the binding had no entity linked at all.
 
-    ``unavailable`` separates the two ways a read can fail, because they need
-    different logbook entries (SPEC.md §8): the entity is gone or reports no
-    value at all, versus the entity is there and reports something unusable.
-    The distinction is made here because this is the only place that knows
-    which of the two happened.
+    **There is no separate ``unavailable`` flag, and there used to be** (SPEC.md
+    §63.5). It answered "which logbook event does this become", which is a
+    question the reason code already answers — and once the code split into
+    five, the flag became a second, coarser opinion about the same failure. Two
+    fields answering one question is how they come to disagree.
     """
 
     ok: bool
     value: float | None
     reason_code: str | None
     entity_id: str
-    unavailable: bool = False
 
     @classmethod
     def succeeded(cls, value: float, entity_id: str) -> ReadResult:
@@ -124,16 +128,13 @@ class ReadResult:
         return cls(ok=True, value=value, reason_code=None, entity_id=entity_id)
 
     @classmethod
-    def failed(
-        cls, reason_code: str, entity_id: str, *, unavailable: bool = False
-    ) -> ReadResult:
+    def failed(cls, reason_code: str, entity_id: str) -> ReadResult:
         """Return a refusal. There is deliberately no fallback value."""
         return cls(
             ok=False,
             value=None,
             reason_code=reason_code,
             entity_id=entity_id,
-            unavailable=unavailable,
         )
 
 
@@ -163,24 +164,18 @@ def read_entity_value(
     if entity_id is None:
         return ReadResult.failed(REASON_MISSING_REQUIRED_DATA, "")
 
-    state = _live_state(hass, entity_id, stale_after_minutes)
+    state = hass.states.get(entity_id)
     if state is None:
-        # Removed, renamed or gone quiet. All three are "unavailable" rather
-        # than "unreadable": nothing is wrong with how this source is
-        # configured, there is simply no current measurement behind it.
-        return ReadResult.failed(
-            REASON_INVALID_ENTITY_STATE, entity_id, unavailable=True
-        )
+        # Not in the state machine. Normal while an integration is setting up
+        # or being torn down, and also what a wrong entity id looks like — the
+        # three are indistinguishable from here, and they do not need telling
+        # apart, because none of them is a verdict about a working installation
+        # (SPEC.md §63.5).
+        return ReadResult.failed(REASON_ENTITY_MISSING, entity_id)
 
-    raw, reason_code = _select_raw_value(state, binding)
+    raw, reason_code = _raw_value_or_reason(state, binding, stale_after_minutes)
     if reason_code is not None:
         return ReadResult.failed(reason_code, entity_id)
-
-    if _is_unusable(raw):
-        # The entity exists but is carrying no measurement at all.
-        return ReadResult.failed(
-            REASON_INVALID_ENTITY_STATE, entity_id, unavailable=True
-        )
 
     number = as_finite_float(raw)
     if number is None:
@@ -200,6 +195,62 @@ def read_entity_value(
     return ReadResult.succeeded(without_negative_zero(number), entity_id)
 
 
+def _raw_value_or_reason(
+    state: State, binding: EntityBinding, stale_after_minutes: int | None
+) -> tuple[Any, str | None]:
+    """Return the raw value to convert, or why there is nothing to convert.
+
+    **Five outcomes where there used to be one** (SPEC.md §63.5). Until 0.28.0
+    every one of these came back as ``invalid_entity_state``, so a source that
+    had not spoken yet, a source whose integration reported it unreachable, a
+    source that had gone quiet and a source that was linked to nothing all
+    arrived at the logbook wearing the same face. Only two of the four are a
+    statement about the installation, and the caller cannot tell which without
+    being told.
+
+    The order is the one SPEC.md §15 fixes, with one thing made explicit: the
+    state word is read **before** the age. An entity that is `unavailable` has
+    no attributes to select from and no meaningful timestamp to judge, so asking
+    how old it is would answer a question about the wrong subject.
+    """
+    state_reason = _unusable_field_reason(state.state)
+    if state_reason == REASON_ENTITY_UNAVAILABLE:
+        # An unavailable entity is unavailable whatever the binding points at:
+        # its attributes are gone too.
+        return None, state_reason
+    if state_reason is not None and binding.value_source != VALUE_SOURCE_ATTRIBUTE:
+        return None, state_reason
+
+    if _is_stale(state, stale_after_minutes):
+        return None, REASON_ENTITY_STALE
+
+    raw, reason_code = _select_raw_value(state, binding)
+    if reason_code is not None:
+        return None, reason_code
+
+    # The same two words again, now for the field the binding actually reads.
+    # An attribute can be `unknown` on an entity whose own state is a number.
+    raw_reason = _unusable_field_reason(raw)
+    if raw_reason is not None:
+        return None, raw_reason
+
+    return raw, None
+
+
+def _unusable_field_reason(raw: Any) -> str | None:
+    """Return why this field carries no measurement, or ``None`` when it does.
+
+    The two words Home Assistant uses, kept apart (SPEC.md §63.5):
+    ``unavailable`` is a statement the integration made about the device,
+    ``unknown`` is an empty field on a healthy entity.
+    """
+    if _is_declared_unavailable(raw):
+        return REASON_ENTITY_UNAVAILABLE
+    if _is_valueless(raw):
+        return REASON_ENTITY_WITHOUT_VALUE
+    return None
+
+
 def _select_raw_value(state: State, binding: EntityBinding) -> tuple[Any, str | None]:
     """Return the raw value the binding points at, or why there is none."""
     if binding.value_source != VALUE_SOURCE_ATTRIBUTE:
@@ -214,15 +265,27 @@ def _select_raw_value(state: State, binding: EntityBinding) -> tuple[Any, str | 
     return state.attributes[binding.attribute_name], None
 
 
-def _is_unusable(raw: Any) -> bool:
-    """Return whether a raw state or attribute carries no measurement."""
-    return isinstance(raw, str) and raw.strip().lower() in UNUSABLE_ENTITY_STATES
+def _is_declared_unavailable(raw: Any) -> bool:
+    """Return whether the integration declared this entity unreachable.
+
+    A statement someone else made on purpose, and the only one in this group
+    that is about the device rather than about the moment (SPEC.md §63.5).
+    """
+    return isinstance(raw, str) and raw.strip().lower() in UNAVAILABLE_ENTITY_STATES
 
 
-def _live_state(
-    hass: HomeAssistant, entity_id: str, stale_after_minutes: int | None
-) -> State | None:
-    """Return the entity's state when it is present and recent enough.
+def _is_valueless(raw: Any) -> bool:
+    """Return whether this field is alive but holds no value yet."""
+    return isinstance(raw, str) and raw.strip().lower() in VALUELESS_ENTITY_STATES
+
+
+def _is_stale(state: State, stale_after_minutes: int | None) -> bool:
+    """Return whether the last report is older than this source may be quiet.
+
+    Split out of the old ``_live_state`` so that "too old" and "not there" stop
+    sharing an answer (SPEC.md §63.5). A source that went quiet at noon is a
+    verdict about the installation; a source that does not exist a second after
+    a restart is not, and the two used to arrive as the same reason code.
 
     **``last_reported``, and neither of the other two.** A house drawing a steady
     load makes its meter report the same number over and over, and Home Assistant
@@ -242,19 +305,15 @@ def _live_state(
     stops moving and a healthy value was refused. The caller passes the window
     that belongs to what it is reading (SPEC.md §47).
     """
-    state = hass.states.get(entity_id)
-    if state is None:
-        return None
     if stale_after_minutes is None:
         # No window at all, for a value that stays true however old it is: a
         # forecast made this morning is still this morning's forecast tonight.
         # The obligation that comes with it lives in the panel — show the age
         # (SPEC.md §47.4).
-        return state
-    age = dt_util.utcnow() - state.last_reported
-    if age > timedelta(minutes=stale_after_minutes):
-        return None
-    return state
+        return False
+    return dt_util.utcnow() - state.last_reported > timedelta(
+        minutes=stale_after_minutes
+    )
 
 
 # --- Validating stored configuration ----------------------------------------

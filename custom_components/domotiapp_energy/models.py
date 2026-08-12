@@ -97,6 +97,7 @@ from .const import (
     SEVERITIES,
     SEVERITY_INFO,
     SOURCE_TYPES,
+    SOURCE_UNAVAILABLE_REASON_CODES,
     UNIT_NONE,
     UNITS,
     VALUE_SOURCE_STATE,
@@ -1570,10 +1571,17 @@ class SourceFailure:
     source_id: str
     entity_id: str
     reason_code: str
-    # True when the entity is gone or carries no measurement at all, False when
-    # it is present and reporting something we cannot use. The two need
-    # different logbook events: source_unavailable versus invalid_measurement.
-    unavailable: bool = False
+
+    @property
+    def unavailable(self) -> bool:
+        """Return whether this is about reaching the entity at all.
+
+        **Derived, where it used to be stored** (SPEC.md §63.5). It picks the
+        logbook event — ``source_unavailable`` versus ``invalid_measurement`` —
+        and the reason code already knows the answer, so keeping a field beside
+        it would be a second opinion that can drift from the first.
+        """
+        return self.reason_code in SOURCE_UNAVAILABLE_REASON_CODES
 
     def to_dict(self) -> dict[str, Any]:
         """Return the failure as a JSON-serialisable mapping."""
@@ -1586,13 +1594,17 @@ class SourceFailure:
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> Self:
-        """Build a failure from a mapping, filling in defaults."""
+        """Build a failure from a mapping, filling in defaults.
+
+        ``unavailable`` in the mapping is ignored: it is derived from the reason
+        code on the way out, so a payload that disagrees with its own code
+        cannot smuggle the disagreement back in.
+        """
         data = _as_mapping(data)
         return cls(
             source_id=_as_str(data.get("source_id"), ""),
             entity_id=_as_str(data.get("entity_id"), ""),
             reason_code=_as_str(data.get("reason_code"), ""),
-            unavailable=_as_bool(data.get("unavailable"), False),
         )
 
 

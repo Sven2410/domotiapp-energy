@@ -20,46 +20,47 @@ is dit de invoer en niet de uitvoer.
 - **Engelse regels staan apart**, onderaan. Een Engelse zin in dit product is
   een fout tenzij zij een identifier is: de UI is Nederlands (CLAUDE.md).
 
-**925 Nederlandse teksten**, waarvan 127 op meer dan één plek. En 14 Engelse regels om na te lopen.
+**936 Nederlandse teksten**, waarvan 126 op meer dan één plek. En 15 Engelse regels om na te lopen.
 
 
 ## `custom_components/domotiapp_energy/const.py`
 
 | Tekst | Waar | Regel |
 |---|---|---|
-| Attention | module | 1111 |
-| Current advice | module | 1108 |
-| Data quality | module | 1105 |
-| DomotiApp | module | 21 |
-| DomotiApp Energy ↔ | module | 18 |
-| DomotiApp Energy ↔ | module | 39 |
-| Energy Coach | module | 22 |
-| Grid power | module | 1106 |
-| Home consumption | module | 1110 |
-| Mijn woning | module | 29 |
-| Peak risk | module | 1109 |
-| Score | module | 1104 |
-| Self consumption | module | 1112 |
-| Solar surplus | module | 1107 |
+| Attention | module | 1184 |
+| Current advice | module | 1181 |
+| Data quality | module | 1178 |
+| DomotiApp | module | 31 |
+| DomotiApp Energy ↔ | module | 28 |
+| DomotiApp Energy ↔ | module | 49 |
+| Energy Coach | module | 32 |
+| Grid power | module | 1179 |
+| Home consumption | module | 1183 |
+| Mijn woning | module | 39 |
+| Peak risk | module | 1182 |
+| Score | module | 1177 |
+| Self consumption | module | 1185 |
+| Solar surplus | module | 1180 |
 
 ## `custom_components/domotiapp_energy/coordinator.py`
 
 | Tekst | Waar | Regel |
 |---|---|---|
-| Advies opnieuw berekend | async_recalculate | 267 |
-| De woning {...} {...}% van het ingestelde maximale netvermogen. Dat ligt op of boven de waarschuwingsgrens van {...}%. | _async_log_findings | 569 |
-| Er is {...} W zonneoverschot beschikbaar. | _async_log_findings | 588 |
-| Het energieadvies is opnieuw berekend. | async_recalculate | 268 |
-| Linked entity %s changed | _handle_tracked_state_event | 278 |
-| No linked entities to watch | async_rebuild_state_listener | 241 |
-| Not reporting %s source failures yet: Home Assistant is %s | _async_update_data | 363 |
-| Piekbelasting gesignaleerd | _async_log_findings | 568 |
-| Watching %s linked entities | async_rebuild_state_listener | 244 |
-| Zonneoverschot beschikbaar ↔ | _async_log_findings | 587 |
-| levert terug met ↔ | _async_log_findings | 565 |
-| {...} forget ready flags of deleted appliances | _handle_configuration_change | 323 |
-| {...} recalculate after configuration change | _handle_configuration_change | 328 |
-| {...} safety recalculation | async_start | 224 |
+| Advies opnieuw berekend | async_recalculate | 289 |
+| De woning {...} {...}% van het ingestelde maximale netvermogen. Dat ligt op of boven de waarschuwingsgrens van {...}%. | _async_log_findings | 655 |
+| Er is {...} W zonneoverschot beschikbaar. | _async_log_findings | 674 |
+| Het energieadvies is opnieuw berekend. | async_recalculate | 290 |
+| Linked entity %s changed | _handle_tracked_state_event | 300 |
+| No linked entities to watch | async_rebuild_state_listener | 263 |
+| Not reporting %s source failures: Home Assistant is %s | _failures_worth_reporting | 405 |
+| Not reporting source %s (%s): %s | _failures_worth_reporting | 415 |
+| Piekbelasting gesignaleerd | _async_log_findings | 654 |
+| Watching %s linked entities | async_rebuild_state_listener | 266 |
+| Zonneoverschot beschikbaar ↔ | _async_log_findings | 673 |
+| levert terug met ↔ | _async_log_findings | 651 |
+| {...} forget ready flags of deleted appliances | _handle_configuration_change | 346 |
+| {...} recalculate after configuration change | _handle_configuration_change | 351 |
+| {...} safety recalculation | async_start | 246 |
 
 ## `custom_components/domotiapp_energy/engine/advisor.py`
 
@@ -194,29 +195,33 @@ is dit de invoer en niet de uitvoer.
 
 | Tekst | Waar | Regel |
 |---|---|---|
-| Buiten het toegestane tijdvenster | labels | 13 |
-| De besparing is te klein om te melden | labels | 16 |
-| De energieprijs is hoog | labels | 11 |
-| De energieprijs is laag | labels | 10 |
-| De netbelasting is hoog | labels | 8 |
-| De situatie vraagt niet om een aanpassing | labels | 17 |
-| De teruglevering is hoog | labels | 9 |
-| De uiterste starttijd komt in zicht | labels | 15 |
+| Buiten het toegestane tijdvenster | labels | 17 |
+| De besparing is te klein om te melden | labels | 20 |
+| De energieprijs is hoog | labels | 15 |
+| De energieprijs is laag | labels | 14 |
+| De netbelasting is hoog | labels | 12 |
+| De situatie vraagt niet om een aanpassing | labels | 21 |
+| De teruglevering is hoog | labels | 13 |
+| De uiterste starttijd komt in zicht | labels | 19 |
+| Een gekoppelde entiteit bestaat niet | labels | 7 |
+| Een gekoppelde entiteit heeft nog geen waarde | labels | 8 |
+| Een gekoppelde entiteit is niet bereikbaar | labels | 9 |
+| Een gekoppelde entiteit is stilgevallen | labels | 10 |
 | Een gekoppelde entiteit levert geen bruikbare waarde | labels | 6 |
-| Er is een verplaatsbaar apparaat beschikbaar | labels | 12 |
-| Er is zonneoverschot | labels | 7 |
+| Er is een verplaatsbaar apparaat beschikbaar | labels | 16 |
+| Er is zonneoverschot | labels | 11 |
 | Er ontbreken gegevens | labels | 5 |
-| Het is nu stille uren | labels | 14 |
-| all-in prijs in €/kWh ↔ | labels | 32 |
-| de woninggegevens ↔ | labels | 22 |
-| een compleet apparaatprofiel ↔ | labels | 26 |
-| een geldige netbron ↔ | labels | 23 |
-| een geldige zonnebron ↔ | labels | 24 |
-| netbelasting in % ↔ | labels | 33 |
-| netvermogen in W ↔ | labels | 34 |
-| ontbrekende onderdelen ↔ | labels | 36 |
-| tijdvensters voor flexibele apparaten ↔ | labels | 27 |
-| zonneoverschot in W ↔ | labels | 35 |
+| Het is nu stille uren | labels | 18 |
+| all-in prijs in €/kWh ↔ | labels | 36 |
+| de woninggegevens ↔ | labels | 26 |
+| een compleet apparaatprofiel ↔ | labels | 30 |
+| een geldige netbron ↔ | labels | 27 |
+| een geldige zonnebron ↔ | labels | 28 |
+| netbelasting in % ↔ | labels | 37 |
+| netvermogen in W ↔ | labels | 38 |
+| ontbrekende onderdelen ↔ | labels | 40 |
+| tijdvensters voor flexibele apparaten ↔ | labels | 31 |
+| zonneoverschot in W ↔ | labels | 39 |
 
 ## `custom_components/domotiapp_energy/frontend/core/roles.js`
 
@@ -616,7 +621,7 @@ is dit de invoer en niet de uitvoer.
 | Apparaat toegevoegd ↔ | logbook | 19 |
 | Apparaat verwijderd ↔ | logbook | 20 |
 | Bezig met wissen… | logbook | 158 |
-| Bron niet beschikbaar ↔ | logbook | 22 |
+| Bron niet beschikbaar | logbook | 22 |
 | Configuratie gewijzigd | logbook | 18 |
 | Configuratieprobleem | logbook | 26 |
 | Fout ↔ | logbook | 34 |
@@ -961,69 +966,75 @@ is dit de invoer en niet de uitvoer.
 
 | Tekst | Waar | Regel |
 |---|---|---|
-| Bron niet beschikbaar ↔ | _async_report_failures | 335 |
-| De energiebron '{...}' heeft een onbekend type ('{...}') en is uitgeschakeld. Kies een geldig type om de bron weer te gebruiken. | async_report_invalid_rows | 264 |
-| De energiebron '{...}' kon niet worden uitgelezen: de entiteit '{...}' bestaat niet of levert op dit moment geen waarde. (reden: {...}) | _async_report_failures | 337 |
-| De energiebron '{...}' leverde geen bruikbare meetwaarde. Controleer bij de entiteit '{...}' de gekozen waardebron, het attribuut en de eenheid. (reden: {...}) | _async_report_failures | 344 |
-| Er zijn {...} ingeschakelde bronnen van het type '{...}'. Deze waarden zijn niet op te tellen en er is niet te bepalen welke de juiste is, dus geen van beide wordt gebruikt. Schakel er één uit of verwijder er één. | async_report_invalid_rows | 242 |
-| Het apparaat '{...}' heeft een onbekend type ('{...}') en is uitgeschakeld. Kies een geldig type om het apparaat weer te gebruiken. | async_report_invalid_rows | 283 |
-| Meerdere bronnen van hetzelfde type | async_report_invalid_rows | 241 |
-| Multiple enabled sources of type %r; none of them is used ↔ | async_report_invalid_rows | 236 |
-| Onbekend apparaattype | async_report_invalid_rows | 282 |
-| Onbekend brontype | async_report_invalid_rows | 263 |
-| Ongeldige meting ↔ | _async_report_failures | 342 |
+| Bron heeft nog geen waarde | _async_report_failures | 373 |
+| Bron is stilgevallen | _async_report_failures | 358 |
+| Bron niet bereikbaar | _async_report_failures | 351 |
+| Bron niet gevonden | _async_report_failures | 366 |
+| De energiebron '{...}' heeft een onbekend type ('{...}') en is uitgeschakeld. Kies een geldig type om de bron weer te gebruiken. | async_report_invalid_rows | 270 |
+| De energiebron '{...}' is gekoppeld aan '{...}', en die entiteit bestaat wel maar draagt nog geen meetwaarde. | _async_report_failures | 375 |
+| De energiebron '{...}' is niet bereikbaar. De integratie achter '{...}' meldt de entiteit als niet beschikbaar, dus er is op dit moment geen meting. | _async_report_failures | 353 |
+| De energiebron '{...}' is stilgevallen. De entiteit '{...}' bestaat nog en meldt geen storing, maar heeft te lang geen nieuwe waarde gerapporteerd om nog als meting van nu te gelden. | _async_report_failures | 360 |
+| De energiebron '{...}' leverde geen bruikbare meetwaarde. Controleer bij de entiteit '{...}' de gekozen waardebron, het attribuut en de eenheid. (reden: {...}) | _async_report_failures | 381 |
+| De energiebron '{...}' verwijst naar de entiteit '{...}', en die bestaat niet in deze Home Assistant. Controleer of de entiteit hernoemd of verwijderd is. | _async_report_failures | 368 |
+| Er zijn {...} ingeschakelde bronnen van het type '{...}'. Deze waarden zijn niet op te tellen en er is niet te bepalen welke de juiste is, dus geen van beide wordt gebruikt. Schakel er één uit of verwijder er één. | async_report_invalid_rows | 248 |
+| Het apparaat '{...}' heeft een onbekend type ('{...}') en is uitgeschakeld. Kies een geldig type om het apparaat weer te gebruiken. | async_report_invalid_rows | 289 |
+| Meerdere bronnen van hetzelfde type | async_report_invalid_rows | 247 |
+| Multiple enabled sources of type %r; none of them is used ↔ | async_report_invalid_rows | 242 |
+| Onbekend apparaattype | async_report_invalid_rows | 288 |
+| Onbekend brontype | async_report_invalid_rows | 269 |
+| Ongeldige meting ↔ | _async_report_failures | 379 |
 
 ## `custom_components/domotiapp_energy/validators.py`
 
 | Tekst | Waar | Regel |
 |---|---|---|
-| Begin en einde van de stille uren mogen niet gelijk zijn. | validate_preferences | 1015 |
-| De begin- en eindtijd van het gereed-venster mogen niet gelijk zijn. | _validate_time_window | 858 |
-| De begin- en eindtijd van het verbod mogen niet gelijk zijn. | _validate_no_run_window | 913 |
-| De duur | validate_device_profile | 704 |
-| De energiebelasting kan niet negatief zijn. | validate_home_profile | 393 |
-| De hoge prijsgrens moet boven de lage prijsgrens liggen. | _validate_price_thresholds | 461 |
-| De hoofdzekering moet tussen {...} en {...} ampère liggen. | validate_home_profile | 347 |
-| De minimale besparing kan niet negatief zijn. | validate_preferences | 994 |
-| De prijsbron levert de kale marktprijs. Vul de energiebelasting en de opslag van de leverancier per kWh in; zonder die twee is de all-in prijs niet te berekenen en wordt de prijs niet gebruikt. | _validate_price_components | 1078 |
-| De schaalfactor moet groter zijn dan 0. | validate_energy_source | 539 |
-| De terugleverprijsbron levert de kale marktprijs. Vul in wat de leverancier per teruggeleverde kWh inhoudt; zonder dat bedrag is de vergoeding niet te berekenen en wordt de bron niet gebruikt. Vul 0 in als de leverancier niets inhoudt. | _validate_feed_in_components | 1114 |
-| De waarschuwingsgrens moet tussen {...} en {...} procent liggen. | validate_home_profile | 364 |
-| Deze bron levert een prijs, maar de eenheid staat op '{...}'. Kies EUR/kWh of ct/kWh. | _validate_unit_matches_type | 499 |
-| Deze bron meet vermogen, maar de eenheid staat op '{...}'. Kies W of kW. Let op: veel slimme-meterintegraties tonen vooral de meterstand in kWh; die is een totaal en geen vermogen, en levert een netbelasting die honderden keren te hoog is. | _validate_unit_matches_type | 485 |
-| Deze twee eisen zijn niet allebei te halen: het apparaat mag niet draaien op het moment dat het zou moeten starten om op tijd klaar te zijn. Verruim het verbod, of verzet de tijd waarop het klaar moet zijn. | _validate_no_run_window | 922 |
-| Dit bedieningsniveau vraagt om aansturing, maar er is geen besturingsmogelijkheid aangevinkt. Controleer wat deze apparatuur werkelijk ondersteunt. | _validate_control | 754 |
-| Een cyclus van 24 uur of langer is niet te combineren met een gereed-venster: er is dan geen starttijd op de klok te bepalen. | _validate_time_window | 840 |
-| Gebruik een adres binnen deze Home Assistant, beginnend met een schuine streep — bijvoorbeeld /lovelace/0. | _validate_dashboard_paths | 320 |
-| Gebruik een geldige tijd in de vorm uu:mm. ↔ | _validate_time_window | 814 |
-| Gebruik een geldige tijd in de vorm uu:mm. ↔ | _validate_no_run_window | 892 |
-| Gebruik een geldige tijd in de vorm uu:mm. ↔ | validate_preferences | 1005 |
-| Geef aan of een positieve waarde afname of teruglevering betekent. | _validate_grid_meter | 642 |
-| Geef aan wat deze bron levert: de kale marktprijs of de all-in prijs die de klant betaalt. Zonder die keuze wordt de prijs niet gebruikt. | _validate_price_source | 601 |
-| Geef aan wat deze bron levert: de kale marktprijs of de vergoeding die de klant werkelijk krijgt. Zonder die keuze wordt de terugleververgoeding niet gebruikt. | _validate_price_source | 595 |
-| Het apparaattype '{...}' is niet bekend. Kies een geldig type. | validate_device_profile | 674 |
-| Het brontype '{...}' is niet bekend. Kies een geldig type. | validate_energy_source | 517 |
-| Het btw-percentage moet tussen {...} en {...} liggen. | validate_home_profile | 383 |
-| Het energieverbruik per cyclus | validate_device_profile | 702 |
-| Het ingevulde netvermogen ligt boven het theoretische maximum van {...} W ({...} x 230 V x {...} A). Controleer de hoofdzekering. | _validate_max_grid_power | 435 |
-| Het maximale netvermogen moet groter zijn dan 0 W. | _validate_max_grid_power | 423 |
-| Het minimale zonneoverschot kan niet negatief zijn. | validate_home_profile | 402 |
-| Het nominale vermogen | validate_device_profile | 698 |
-| Kies 1 of 3 fasen. | validate_home_profile | 336 |
-| Kies een geldig bedieningsniveau. | validate_device_profile | 693 |
-| Kies een geldige eenheid. | validate_energy_source | 528 |
-| Kies een geldige prioriteit. | validate_device_profile | 684 |
-| Kies een vast of dynamisch contract. | validate_home_profile | 374 |
-| Kies hoe de netmeter meet: één ondertekende waarde of gescheiden afname en teruglevering. | _validate_grid_meter | 621 |
-| Koppel de entiteit die de afname meet. | _validate_grid_meter | 652 |
-| Koppel de entiteit die de teruglevering meet. | _validate_grid_meter | 660 |
-| Koppel een entiteit aan deze bron. ↔ | validate_energy_source | 566 |
-| Koppel een entiteit aan deze bron. ↔ | _validate_grid_meter | 634 |
-| Noteer waarom aansturing hier is uitgesloten, zodat de reden later terug te vinden is. | _validate_control | 768 |
-| Toon minimaal {...} en maximaal {...} adviezen. | validate_preferences | 984 |
-| Voor deze installatie is aansturing uitgesloten. Kies 'alleen monitoren' of 'alleen adviseren'. | _validate_control | 741 |
-| Vul de naam in van het attribuut dat uitgelezen moet worden. | validate_energy_source | 551 |
-| {...} kan niet negatief zijn. | validate_device_profile | 711 |
+| Begin en einde van de stille uren mogen niet gelijk zijn. | validate_preferences | 1074 |
+| De begin- en eindtijd van het gereed-venster mogen niet gelijk zijn. | _validate_time_window | 917 |
+| De begin- en eindtijd van het verbod mogen niet gelijk zijn. | _validate_no_run_window | 972 |
+| De duur | validate_device_profile | 763 |
+| De energiebelasting kan niet negatief zijn. | validate_home_profile | 452 |
+| De hoge prijsgrens moet boven de lage prijsgrens liggen. | _validate_price_thresholds | 520 |
+| De hoofdzekering moet tussen {...} en {...} ampère liggen. | validate_home_profile | 406 |
+| De minimale besparing kan niet negatief zijn. | validate_preferences | 1053 |
+| De prijsbron levert de kale marktprijs. Vul de energiebelasting en de opslag van de leverancier per kWh in; zonder die twee is de all-in prijs niet te berekenen en wordt de prijs niet gebruikt. | _validate_price_components | 1137 |
+| De schaalfactor moet groter zijn dan 0. | validate_energy_source | 598 |
+| De terugleverprijsbron levert de kale marktprijs. Vul in wat de leverancier per teruggeleverde kWh inhoudt; zonder dat bedrag is de vergoeding niet te berekenen en wordt de bron niet gebruikt. Vul 0 in als de leverancier niets inhoudt. | _validate_feed_in_components | 1173 |
+| De waarschuwingsgrens moet tussen {...} en {...} procent liggen. | validate_home_profile | 423 |
+| Deze bron levert een prijs, maar de eenheid staat op '{...}'. Kies EUR/kWh of ct/kWh. | _validate_unit_matches_type | 558 |
+| Deze bron meet vermogen, maar de eenheid staat op '{...}'. Kies W of kW. Let op: veel slimme-meterintegraties tonen vooral de meterstand in kWh; die is een totaal en geen vermogen, en levert een netbelasting die honderden keren te hoog is. | _validate_unit_matches_type | 544 |
+| Deze twee eisen zijn niet allebei te halen: het apparaat mag niet draaien op het moment dat het zou moeten starten om op tijd klaar te zijn. Verruim het verbod, of verzet de tijd waarop het klaar moet zijn. | _validate_no_run_window | 981 |
+| Dit bedieningsniveau vraagt om aansturing, maar er is geen besturingsmogelijkheid aangevinkt. Controleer wat deze apparatuur werkelijk ondersteunt. | _validate_control | 813 |
+| Een cyclus van 24 uur of langer is niet te combineren met een gereed-venster: er is dan geen starttijd op de klok te bepalen. | _validate_time_window | 899 |
+| Gebruik een adres binnen deze Home Assistant, beginnend met een schuine streep — bijvoorbeeld /lovelace/0. | _validate_dashboard_paths | 379 |
+| Gebruik een geldige tijd in de vorm uu:mm. ↔ | _validate_time_window | 873 |
+| Gebruik een geldige tijd in de vorm uu:mm. ↔ | _validate_no_run_window | 951 |
+| Gebruik een geldige tijd in de vorm uu:mm. ↔ | validate_preferences | 1064 |
+| Geef aan of een positieve waarde afname of teruglevering betekent. | _validate_grid_meter | 701 |
+| Geef aan wat deze bron levert: de kale marktprijs of de all-in prijs die de klant betaalt. Zonder die keuze wordt de prijs niet gebruikt. | _validate_price_source | 660 |
+| Geef aan wat deze bron levert: de kale marktprijs of de vergoeding die de klant werkelijk krijgt. Zonder die keuze wordt de terugleververgoeding niet gebruikt. | _validate_price_source | 654 |
+| Het apparaattype '{...}' is niet bekend. Kies een geldig type. | validate_device_profile | 733 |
+| Het brontype '{...}' is niet bekend. Kies een geldig type. | validate_energy_source | 576 |
+| Het btw-percentage moet tussen {...} en {...} liggen. | validate_home_profile | 442 |
+| Het energieverbruik per cyclus | validate_device_profile | 761 |
+| Het ingevulde netvermogen ligt boven het theoretische maximum van {...} W ({...} x 230 V x {...} A). Controleer de hoofdzekering. | _validate_max_grid_power | 494 |
+| Het maximale netvermogen moet groter zijn dan 0 W. | _validate_max_grid_power | 482 |
+| Het minimale zonneoverschot kan niet negatief zijn. | validate_home_profile | 461 |
+| Het nominale vermogen | validate_device_profile | 757 |
+| Kies 1 of 3 fasen. | validate_home_profile | 395 |
+| Kies een geldig bedieningsniveau. | validate_device_profile | 752 |
+| Kies een geldige eenheid. | validate_energy_source | 587 |
+| Kies een geldige prioriteit. | validate_device_profile | 743 |
+| Kies een vast of dynamisch contract. | validate_home_profile | 433 |
+| Kies hoe de netmeter meet: één ondertekende waarde of gescheiden afname en teruglevering. | _validate_grid_meter | 680 |
+| Koppel de entiteit die de afname meet. | _validate_grid_meter | 711 |
+| Koppel de entiteit die de teruglevering meet. | _validate_grid_meter | 719 |
+| Koppel een entiteit aan deze bron. ↔ | validate_energy_source | 625 |
+| Koppel een entiteit aan deze bron. ↔ | _validate_grid_meter | 693 |
+| Noteer waarom aansturing hier is uitgesloten, zodat de reden later terug te vinden is. | _validate_control | 827 |
+| Toon minimaal {...} en maximaal {...} adviezen. | validate_preferences | 1043 |
+| Voor deze installatie is aansturing uitgesloten. Kies 'alleen monitoren' of 'alleen adviseren'. | _validate_control | 800 |
+| Vul de naam in van het attribuut dat uitgelezen moet worden. | validate_energy_source | 610 |
+| {...} kan niet negatief zijn. | validate_device_profile | 770 |
 
 ## `custom_components/domotiapp_energy/websocket_api.py`
 
@@ -1069,16 +1080,17 @@ is dit de invoer en niet de uitvoer.
 | Tekst | Waar |
 |---|---|
 | DomotiApp Energy has been removed. The energy configuration is kept in %s under .storage/, so adding the integration again restores it. Delete that file to start over | `custom_components/domotiapp_energy/__init__.py:145` |
-| Home Assistant has started: recalculating | `custom_components/domotiapp_energy/coordinator.py:288` |
-| Clearing ready flag for %r: %s reports %r | `custom_components/domotiapp_energy/coordinator.py:448` |
+| Home Assistant has started: recalculating | `custom_components/domotiapp_energy/coordinator.py:310` |
+| Not reporting source %s (%s): %s, and it has not been read successfully since Home Assistant started | `custom_components/domotiapp_energy/coordinator.py:426` |
+| Clearing ready flag for %r: %s reports %r | `custom_components/domotiapp_energy/coordinator.py:534` |
 | No recorder: skipping the history | `custom_components/domotiapp_energy/engine/history.py:287` |
 | Could not read the %s statistics | `custom_components/domotiapp_energy/engine/history.py:311` |
 | No alternative coach provider is available in this release | `custom_components/domotiapp_energy/engine/providers.py:250` |
 | Dropping ready flag for %r: %r is not a timestamp | `custom_components/domotiapp_energy/runtime_store.py:83` |
-| Migrating %s from schema %s.%s to %s.%s | `custom_components/domotiapp_energy/storage.py:102` |
-| Configuration accessed before it was loaded | `custom_components/domotiapp_energy/storage.py:149` |
-| Could not read %s, continuing with a default configuration | `custom_components/domotiapp_energy/storage.py:197` |
-| Energy source %s has unrecognised type %r and is disabled | `custom_components/domotiapp_energy/storage.py:257` |
-| Device profile %s has unrecognised type %r and is disabled | `custom_components/domotiapp_energy/storage.py:276` |
-| Energy source %s could not be read from %s (%s) | `custom_components/domotiapp_energy/storage.py:327` |
+| Migrating %s from schema %s.%s to %s.%s | `custom_components/domotiapp_energy/storage.py:108` |
+| Configuration accessed before it was loaded | `custom_components/domotiapp_energy/storage.py:155` |
+| Could not read %s, continuing with a default configuration | `custom_components/domotiapp_energy/storage.py:203` |
+| Energy source %s has unrecognised type %r and is disabled | `custom_components/domotiapp_energy/storage.py:263` |
+| Device profile %s has unrecognised type %r and is disabled | `custom_components/domotiapp_energy/storage.py:282` |
+| Energy source %s could not be read from %s (%s) | `custom_components/domotiapp_energy/storage.py:340` |
 | Could not persist a configuration change | `custom_components/domotiapp_energy/websocket_api.py:316` |

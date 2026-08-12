@@ -47,6 +47,12 @@ from .const import (
     STORAGE_MINOR_VERSION,
     STORAGE_VERSION,
 )
+from .engine.reason_codes import (
+    REASON_ENTITY_MISSING,
+    REASON_ENTITY_STALE,
+    REASON_ENTITY_UNAVAILABLE,
+    REASON_ENTITY_WITHOUT_VALUE,
+)
 from .models import LogEntry, SourceFailure, StoredConfiguration
 
 _LOGGER = logging.getLogger(__name__)
@@ -304,6 +310,13 @@ class ConfigurationStore:
         ``invalid_measurement`` when it is there and reporting something this
         source cannot use, which is normally the unit, the value source or the
         attribute being wrong.
+
+        **Whether a failure gets here at all is not decided here.** The
+        coordinator holds the single predicate for that (SPEC.md §63.5); this
+        method phrases and writes whatever it is handed. Every reason code
+        therefore has whole words of its own, including the two the coordinator
+        normally filters out: a mapping with a hole would put the wrong sentence
+        under the right event the first time the two disagree.
         """
         for failure in failures:
             subject = failure.source_id
@@ -331,12 +344,36 @@ class ConfigurationStore:
             )
 
             name = self._source_name(failure.source_id)
-            if failure.unavailable:
-                title = "Bron niet beschikbaar"
+            if failure.reason_code == REASON_ENTITY_UNAVAILABLE:
+                # **Its own whole sentence, not the old one with a word swapped.**
+                # This says what another integration decided, and the action that
+                # follows is to look at that integration — not at our source row.
+                title = "Bron niet bereikbaar"
                 message = (
-                    f"De energiebron '{name}' kon niet worden uitgelezen: de "
-                    f"entiteit '{failure.entity_id}' bestaat niet of levert op dit "
-                    f"moment geen waarde. (reden: {failure.reason_code})"
+                    f"De energiebron '{name}' is niet bereikbaar. De integratie "
+                    f"achter '{failure.entity_id}' meldt de entiteit als niet "
+                    f"beschikbaar, dus er is op dit moment geen meting."
+                )
+            elif failure.reason_code == REASON_ENTITY_STALE:
+                title = "Bron is stilgevallen"
+                message = (
+                    f"De energiebron '{name}' is stilgevallen. De entiteit "
+                    f"'{failure.entity_id}' bestaat nog en meldt geen storing, maar "
+                    f"heeft te lang geen nieuwe waarde gerapporteerd om nog als "
+                    f"meting van nu te gelden."
+                )
+            elif failure.reason_code == REASON_ENTITY_MISSING:
+                title = "Bron niet gevonden"
+                message = (
+                    f"De energiebron '{name}' verwijst naar de entiteit "
+                    f"'{failure.entity_id}', en die bestaat niet in deze Home "
+                    f"Assistant. Controleer of de entiteit hernoemd of verwijderd is."
+                )
+            elif failure.reason_code == REASON_ENTITY_WITHOUT_VALUE:
+                title = "Bron heeft nog geen waarde"
+                message = (
+                    f"De energiebron '{name}' is gekoppeld aan '{failure.entity_id}', "
+                    f"en die entiteit bestaat wel maar draagt nog geen meetwaarde."
                 )
             else:
                 title = "Ongeldige meting"

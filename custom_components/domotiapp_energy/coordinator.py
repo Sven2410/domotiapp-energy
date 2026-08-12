@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import timedelta
 
@@ -56,15 +57,24 @@ from .const import (
     READY_DONE_BINDINGS,
     RECALCULATE_DEBOUNCE_SECONDS,
     SAFETY_RECALCULATE_INTERVAL_MINUTES,
+    SEEN_ALIVE_REQUIRED_REASON_CODES,
     SEVERITY_INFO,
     SEVERITY_WARNING,
+    SILENT_SOURCE_REASON_CODES,
     SOLAR_SURPLUS_RELEASE_FRACTION,
 )
 from .engine.advisor import Advisor, advice_rank
 from .engine.calculator import Calculator
 from .engine.hysteresis import Latch, PrimaryAdviceGate
 from .engine.providers import CoachProvider
-from .models import CoachResult, EnergyMetrics, ReadyFlag, StoredConfiguration
+from .models import (
+    CoachResult,
+    EnergyMetrics,
+    EnergySnapshot,
+    ReadyFlag,
+    SourceFailure,
+    StoredConfiguration,
+)
 from .runtime_store import (
     RuntimeStore,
     can_see_finished,
@@ -192,6 +202,18 @@ class EnergyCoordinator(DataUpdateCoordinator[CoachResult]):
         # untrue. The one edit that does invalidate it is a different power
         # entity, and that is why the entity travels with the figure.
         self._lowest_running_power: dict[str, tuple[str, float]] = {}
+        # The sources this Home Assistant has read successfully at least once
+        # since it started (SPEC.md §63.5). Memory only, by the same rule as the
+        # latches above, and that is the point: after a restart we genuinely do
+        # not know whether a source ever worked here, so we do not claim it did.
+        #
+        # Cleared on a configuration change, like the latches and unlike
+        # `_lowest_running_power`. An edit can change which entity a source
+        # reads, and carrying the mark over would let the old entity's health
+        # vouch for the new one. The installer is not left in the dark by that:
+        # a source he has just mislinked reports `invalid_measurement`, which
+        # never waits for this mark.
+        self._sources_seen_alive: set[str] = set()
 
     @callback
     def async_start(self) -> None:
@@ -310,6 +332,7 @@ class EnergyCoordinator(DataUpdateCoordinator[CoachResult]):
         self._peak_latch.reset()
         self._surplus_latch.reset()
         self._advice_gate.reset()
+        self._sources_seen_alive.clear()
         self.async_rebuild_state_listener()
         # A flag whose appliance was deleted can never be cleared by the
         # resident and never expires anywhere anyone can see, so it would sit
@@ -328,6 +351,88 @@ class EnergyCoordinator(DataUpdateCoordinator[CoachResult]):
             name=f"{DOMAIN} recalculate after configuration change",
         )
 
+    # --- Which failed reads are worth a logbook line (SPEC.md §63.5) ---------
+
+    def _remember_sources_that_answered(
+        self, config: StoredConfiguration, snapshot: EnergySnapshot
+    ) -> None:
+        """Mark every source that produced a usable value on this pass.
+
+        A source is "alive" when the calculator did *not* record it as invalid;
+        that list is the calculator's own account of what it could not use, so
+        there is no second opinion about what counts as a good read.
+        """
+        self._sources_seen_alive |= {source.id for source in config.sources} - set(
+            snapshot.invalid_source_ids
+        )
+
+    def _failures_worth_reporting(
+        self, failures: Sequence[SourceFailure]
+    ) -> list[SourceFailure]:
+        """Return the failures that are a verdict about the installation.
+
+        **One predicate, and deliberately not three gates** (SPEC.md §63.5).
+        Until 0.28.0 a single check — is Home Assistant running — stood beside
+        the reporting call, and it let eight restarts through in one day at a
+        customer's house on 2026-08-11. It was not too narrow; it answered a
+        different question than the message it guarded. `CoreState.running`
+        means "Home Assistant finished booting", while the logbook line claims
+        "this source is broken", and those two came apart in the seconds after
+        every restart, when the entities exist and have not spoken yet.
+
+        The three reasons a failure is withheld, in the order they are asked:
+
+        1. **Home Assistant is not running.** Kept from §63, because during
+           start-up and shutdown everything is in motion and nothing that is
+           read then is a statement about the installation. It is folded in here
+           rather than left beside the call so that one place, and only one,
+           answers "is this worth saying".
+        2. **The entity is absent or has no value yet.** Not a fault: an
+           unanswered question. This is what a restart looks like from the
+           inside, and it is also what a P1 meter looks like before its first
+           telegram.
+        3. **We have never read this source successfully.** "Broken" presumes it
+           once worked, and straight after a restart we do not know that.
+
+        Everything else is reported immediately. That matters most for a
+        mislinked entity — wrong unit, wrong attribute — which is a standing
+        configuration error rather than a moment, and which an installer needs
+        to hear about on the first pass rather than after some recovery.
+        """
+        if self.hass.state is not CoreState.running:
+            if failures:
+                _LOGGER.debug(
+                    "Not reporting %s source failures: Home Assistant is %s",
+                    len(failures),
+                    self.hass.state,
+                )
+            return []
+
+        worth_reporting: list[SourceFailure] = []
+        for failure in failures:
+            if failure.reason_code in SILENT_SOURCE_REASON_CODES:
+                _LOGGER.debug(
+                    "Not reporting source %s (%s): %s",
+                    failure.source_id,
+                    failure.entity_id,
+                    failure.reason_code,
+                )
+                continue
+            if (
+                failure.reason_code in SEEN_ALIVE_REQUIRED_REASON_CODES
+                and failure.source_id not in self._sources_seen_alive
+            ):
+                _LOGGER.debug(
+                    "Not reporting source %s (%s): %s, and it has not been read "
+                    "successfully since Home Assistant started",
+                    failure.source_id,
+                    failure.entity_id,
+                    failure.reason_code,
+                )
+                continue
+            worth_reporting.append(failure)
+        return worth_reporting
+
     # --- Calculation --------------------------------------------------------
 
     async def _async_update_data(self) -> CoachResult:
@@ -341,29 +446,10 @@ class EnergyCoordinator(DataUpdateCoordinator[CoachResult]):
             # moment the quarantined rows become functionally relevant — the
             # engine is about to skip them.
             snapshot = self._calculator.build_snapshot(config)
-            # **Niet melden zolang Home Assistant nog opstart** (SPEC.md §63).
-            #
-            # Wij worden opgezet zodra onze eigen afhankelijkheden klaar zijn,
-            # en dat kan ruim vóór de integraties die de bronnen leveren: HA
-            # zet ze parallel op. Op dat moment bestaan `sensor.solaredge_…` en
-            # zijn buren nog niet, dus alle bronnen falen tegelijk — feitelijk
-            # juist en praktisch onzin, want een seconde later bestaan ze wel.
-            #
-            # Een klant kreeg zo bij elke update drie waarschuwingen die niets
-            # betekenden, en dat is erger dan ruis: het leert hem
-            # waarschuwingen negeren (dezelfde afweging als §43.2).
-            #
-            # Een leesfout is dus pas een uitspraak over de installatie zodra
-            # de installatie er helemaal is. Tot dan alleen naar het debuglog,
-            # waar hij een ontwikkelaar wel iets zegt.
-            if self.hass.state is CoreState.running:
-                await self._store.async_report_invalid_rows(snapshot.source_failures)
-            elif snapshot.source_failures:
-                _LOGGER.debug(
-                    "Not reporting %s source failures yet: Home Assistant is %s",
-                    len(snapshot.source_failures),
-                    self.hass.state,
-                )
+            self._remember_sources_that_answered(config, snapshot)
+            await self._store.async_report_invalid_rows(
+                self._failures_worth_reporting(snapshot.source_failures)
+            )
 
             # Before the advice, because a programme that has just finished
             # must not produce one more "start nu" (SPEC.md §32.6).

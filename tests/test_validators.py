@@ -70,6 +70,10 @@ from custom_components.domotiapp_energy.const import (
 from custom_components.domotiapp_energy.engine.completeness import is_advisable
 from custom_components.domotiapp_energy.engine.reason_codes import (
     REASON_CODES,
+    REASON_ENTITY_MISSING,
+    REASON_ENTITY_STALE,
+    REASON_ENTITY_UNAVAILABLE,
+    REASON_ENTITY_WITHOUT_VALUE,
     REASON_INVALID_ENTITY_STATE,
     REASON_MISSING_REQUIRED_DATA,
 )
@@ -193,26 +197,52 @@ async def test_a_binding_without_an_entity_is_missing_data(
     assert result.entity_id == ""
 
 
-async def test_an_unknown_entity_is_refused(hass: HomeAssistant) -> None:
-    """An entity that does not exist yields no value at all."""
+async def test_an_entity_that_does_not_exist_is_refused(hass: HomeAssistant) -> None:
+    """An entity that is not in the state machine yields no value at all.
+
+    Its own reason code since 0.28.0 (SPEC.md §63.5): "not there" is what every
+    restart and every integration reload looks like from the inside, and it used
+    to arrive wearing the same face as a broken device.
+    """
     result = read_entity_value(hass, _binding(entity_id="sensor.does_not_exist"))
 
     assert result.ok is False
     assert result.value is None
-    assert result.reason_code == REASON_INVALID_ENTITY_STATE
+    assert result.reason_code == REASON_ENTITY_MISSING
     assert result.entity_id == "sensor.does_not_exist"
 
 
-@pytest.mark.parametrize("state", ["unknown", "unavailable", "none", "", "  "])
-async def test_unusable_states_are_refused(hass: HomeAssistant, state: str) -> None:
-    """unknown, unavailable, none and empty are never treated as zero."""
+@pytest.mark.parametrize(
+    ("state", "expected"),
+    [
+        # The one word another integration writes on purpose: it declares the
+        # device unreachable.
+        ("unavailable", REASON_ENTITY_UNAVAILABLE),
+        # The three that mean "this field is empty" on a healthy entity.
+        ("unknown", REASON_ENTITY_WITHOUT_VALUE),
+        ("none", REASON_ENTITY_WITHOUT_VALUE),
+        ("", REASON_ENTITY_WITHOUT_VALUE),
+        ("  ", REASON_ENTITY_WITHOUT_VALUE),
+    ],
+)
+async def test_unusable_states_are_refused(
+    hass: HomeAssistant, state: str, expected: str
+) -> None:
+    """None of these is ever treated as zero, and they say different things.
+
+    **The split is Home Assistant's own** (SPEC.md §63.5). Reading `unknown` and
+    `unavailable` as one thing made a meter that had not sent its first telegram
+    indistinguishable from an inverter that had dropped off the network — and on
+    2026-08-11 that put three meaningless warnings in a customer's logbook after
+    each of eight restarts.
+    """
     hass.states.async_set(ENTITY_ID, state)
 
     result = read_entity_value(hass, _binding(unit=UNIT_W))
 
     assert result.ok is False
     assert result.value is None
-    assert result.reason_code == REASON_INVALID_ENTITY_STATE
+    assert result.reason_code == expected
 
 
 @pytest.mark.parametrize("state", ["nonsense", "1,5", "12 W", "NaN", "inf"])
@@ -267,7 +297,11 @@ async def test_attribute_source_without_an_attribute_name(
 async def test_an_unavailable_attribute_value_is_refused(
     hass: HomeAssistant,
 ) -> None:
-    """An attribute holding "unavailable" is as unusable as such a state."""
+    """An attribute holding "unavailable" says the same as such a state.
+
+    The entity's own state is "on", so the word is judged where the binding
+    actually reads (SPEC.md §63.5).
+    """
     hass.states.async_set(ENTITY_ID, "on", {"current_power": "unavailable"})
 
     result = read_entity_value(
@@ -276,7 +310,7 @@ async def test_an_unavailable_attribute_value_is_refused(
     )
 
     assert result.ok is False
-    assert result.reason_code == REASON_INVALID_ENTITY_STATE
+    assert result.reason_code == REASON_ENTITY_UNAVAILABLE
 
 
 async def test_a_meter_that_went_quiet_is_refused(
@@ -297,10 +331,10 @@ async def test_a_meter_that_went_quiet_is_refused(
 
     assert result.ok is False
     assert result.value is None
-    # Unavailable, not unreadable: nothing is wrong with how the source is
-    # configured, the entity simply stopped reporting.
-    assert result.unavailable is True
-    assert result.reason_code == REASON_INVALID_ENTITY_STATE
+    # Its own code, and not "there is nothing here": the entity exists, reports
+    # no fault, and went quiet anyway. That is a statement about the
+    # installation, which is why it still reaches the logbook (SPEC.md §63.5).
+    assert result.reason_code == REASON_ENTITY_STALE
 
 
 async def test_a_steady_reading_is_not_stale(
@@ -1730,7 +1764,7 @@ async def test_a_price_that_really_stopped_is_still_refused(
     )
 
     assert result.ok is False
-    assert result.unavailable is True
+    assert result.reason_code == REASON_ENTITY_STALE
 
 
 # --- The no-run window (SPEC.md §51) ----------------------------------------
