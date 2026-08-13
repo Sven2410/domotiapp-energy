@@ -1,5 +1,50 @@
 # Changelog
 
+## 0.31.0
+
+Compleet ingevuld is niet hetzelfde als bruikbaar. SPEC §64.
+
+**Deze versie bevat ook 0.30.0**, dat wel op `main` stond maar nooit getagd is.
+
+### Fixed
+
+- **De bronrij zei "Compleet." over een bron die de motor zojuist geweigerd had.**
+  `statusOf()` las alleen de configuratie — type bekend, ingeschakeld, geen veldfouten —
+  en concludeerde daaruit dat de rij in orde was. Op datzelfde moment schreef het logboek
+  er een waarschuwing over. De rij zegt nu *"Compleet ingevuld, maar op dit moment niet
+  uit te lezen."*
+
+  Een onvoltooide rij houdt haar eigen boodschap: die wordt door de motor óók geweigerd,
+  dus de volgorde van de statusregels is het mechanisme.
+
+- **Het Overzicht zei "Alle gegevens zijn ingevuld" terwijl een bron niet meedeed.** De
+  checklist telt onderdelen, en niet elke bron is er een: een thuisbatterij, een tweede
+  verbruiksmeter of een terugleverprijs die geweigerd wordt laat het cijfer op 100 staan.
+  Er staat nu bij dat er een bron buiten het cijfer valt, met een verwijzing naar
+  Energiebronnen — waar per rij staat wát eraan schort.
+
+### Docs
+
+- **SPEC §47.5** schrijft op welke aanname de negentig minuten voor een prijsbron draagt:
+  *elke prijsbron schrijft haar entiteit minstens elke negentig minuten opnieuw.* Gemeten
+  op één woning is dat elk uur, dus dertig minuten marge. Een semantische toets in plaats
+  van een temporele is onderzocht en afgewezen: het geldigheidsvenster staat bij elke
+  integratie ergens anders of nergens, en het beantwoordt bovendien een andere vraag —
+  of de gegevens het heden beschrijven, niet of de integratie nog leeft.
+
+- **SPEC §63.6.6 is voorwaardelijk gemaakt in plaats van geschrapt.** De vijftien punten
+  gelden voor een omvormer die 's nachts onbereikbaar wordt; op de enige gemeten woning
+  blijft de poort open en meldt hij 0 W. Voor een omvormer die wél dichtgaat is het
+  ongemeten, en daarom is `sun.is_up` een onbekende en geen opgelost punt.
+
+- **SPEC §64** legt vast waarom de twee zinnen met opzet niet hetzelfde claimen.
+
+### Tests
+
+- **Een geldige 0 W vinkt het zonne-item af**, en dat stond nergens vast. Het gedrag
+  klopte per constructie; de test legt het onderscheid vast tussen een omvormer die netjes
+  nul meldt en een omvormer die niets meldt.
+
 ## 0.30.0
 
 Eén schone lezing sluit de hele stapel, en het logboek belooft minder. SPEC §63.6.4.

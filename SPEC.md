@@ -4761,7 +4761,7 @@ voordat stilte verdacht is?**
 | Venster | Minuten | Voor | Waarom dit getal |
 |---|---|---|---|
 | **Meting** | 15 | netmeter, zonnepanelen, algemeen verbruik, apparaatvermogen | vermogen beweegt continu; een kwartier oud is geen meting van nu, en daarop handelen is precies het veiligheidsprobleem waarvoor deze regel bestaat |
-| **Prijs** | 90 | actuele prijs, terugleververgoeding, prijsprognose, zonprognose | een marktprijs wordt per uur gepubliceerd en staat daarna per definitie stil; één uur plus een half uur marge voor een late publicatie |
+| **Prijs** | 90 | actuele prijs, terugleververgoeding, prijsprognose, zonprognose | een marktprijs wordt per uur gepubliceerd en staat daarna stil; één uur plus een half uur marge voor een late publicatie. **Dit getal draagt een aanname — zie §47.5** |
 | **Rustend** | 240 | thuisbatterij, en de terugleverhelft van een gescheiden meter | mag legitiem uren dezelfde waarde houden — een batterij die niets doet, een windstille nacht. Vier uur vangt een entiteit die echt gestorven is, zonder een rustige nacht een storing te noemen |
 
 **Waarom niet één constante met uitzonderingen:** dan verdwijnt de reden. Het getal 15
@@ -4790,6 +4790,60 @@ past hij bij een meting, bij een prijs, of bij iets dat mag rusten? Past hij bij
 drieën, dan is dat het bewijs dat er een vierde venster nodig is — met zijn eigen
 verdediging in de tabel hierboven. Wat níét mag: hem stil laten erven van een getal dat
 voor iets anders gekozen is. Dat is precies hoe dit ontstond.
+
+### 47.5 Welke aanname de negentig minuten draagt
+
+**Verplicht op grond van §47.3 zelf**, en het stond er niet. Elk venster hoort te
+zeggen *"dit geldt omdat …"* en niet *"dit is zo"*; bij de prijs stond het als
+een definitie geformuleerd, en een definitie is niet te weerleggen.
+
+> **De aanname: elke gekoppelde prijsbron schrijft haar entiteit minstens elke
+> negentig minuten opnieuw.**
+
+**Wat ervan gemeten is, en waar.** Op één woning, 2026-08-13:
+`frank_energie` schrijft `sensor.current_electricity_price_all_in` precies op
+het hele uur en verder niets — negen metingen over vijf minuten lieten
+`last_reported` stilstaan, en tien dagen recorderhistorie bevat 257
+wijzigingen, alle op minuut 0, zonder één `unknown` of `unavailable`.
+
+**Zestig minuten stilte tegen een venster van negentig is dus dertig minuten
+marge.** Een prijsintegratie die per twee uur schrijft — bijvoorbeeld omdat zij
+de prijzen van morgen in blokken publiceert — loopt hier opnieuw tegenaan, op
+exact dezelfde manier als de vijftien minuten dat deden: 103 logboekregels op
+één klok, negentien uur achtereen, terwijl er niets aan de hand was.
+
+**Waarom er geen semantische toets voor in de plaats komt.** Het lag voor de
+hand: een prijsentiteit die de prijs van het *huidige uur* draagt is actueel,
+hoe lang geleden zij ook geschreven is. Nagekeken op wat er werkelijk te zien
+is:
+
+| integratie | draagt een geldigheidsvenster? |
+|---|---|
+| `frank_energie` (custom) | ja — `prices: [{from, till, price}]`, 24 uurblokken, en het blok dat nu geldt draagt exact de state |
+| `nordpool` (kern) | ja, maar elders — `block_prices` met `start`/`end`, plus een eigen `updated_at`-sensor |
+| `tibber` (kern) | nee — alleen statistieken (`max_price`, `avg_price`, `min_price`, `peak`, `off_peak_1/2`) |
+| ENTSO-e | niet te zeggen; die integratie draait hier niet en is niet ingezien |
+
+Drie redenen om het niet te doen, en de derde is de zwaarste:
+
+1. **De vorm verschilt per integratie** — een ander attribuut, andere sleutels,
+   soms een andere entiteit. Erop lezen betekent een tabel per merk, en dat is
+   precies wat `HARDWARE.md` regel 2 verbiedt.
+2. **De installateur kan het niet aanwijzen.** De bronvorm kent wel
+   `value_source: attribute`, maar dat wijst een *waarde* aan, geen
+   geldigheidsvenster. Daar een vraag voor toevoegen vraagt iets wat de meeste
+   installateurs niet weten.
+3. **Het beantwoordt een andere vraag.** *"Dekt deze waarde het huidige uur?"*
+   toetst of de **gegevens** het heden beschrijven; *"heeft deze entiteit
+   recent iets gezegd?"* toetst of de **integratie** nog leeft. Een prijslijst
+   die vandaag dekt maar waarvan de integratie om 03:00 gestorven is, komt
+   glansrijk door de eerste toets. De semantische toets kan de veroudering dus
+   niet vervangen — hooguit aanvullen, als extra reden om een waarde tóch te
+   accepteren.
+
+**Wat er daarom geldt:** de negentig blijft, met deze aanname erbij geschreven
+zodat iemand haar kan tegenspreken. De eerste klant met een prijsbron die
+minder vaak dan elk anderhalf uur schrijft, weerlegt haar.
 
 ### 47.4 Een prognose verloopt niet, maar toont zijn ouderdom
 
@@ -7500,11 +7554,30 @@ las tot er gedrag aan hing.
 
 #### 63.6.6 Wat hier niet in zit
 
-Het nachtelijke zwijgen zelf. Een omvormer die 's nachts slaapt levert nog
-steeds een melding op, en de datakwaliteit zakt er nog steeds vijftien punten
-van. Dat is een eigen beslissing (`sun.is_up` voor de toepasselijkheid van het
-zonne-item) en zij komt in een eigen ronde, samen met de bronrij die vandaag
-*"Compleet."* zegt over een bron die de motor zojuist geweigerd heeft.
+Het nachtelijke zwijgen zelf. Een omvormer die 's nachts **onbereikbaar wordt**
+levert nog steeds een melding op, en de datakwaliteit zakt er vijftien punten
+van — vijftien wanneer alle zes checklistitems van toepassing zijn, en meer
+wanneer er minder items meetellen (bij vier is het twintig).
+
+> **Voorwaardelijk gemaakt op 2026-08-13, en dat is een correctie op de vorm van
+> deze zin.** Hier stond dit als een eigenschap van de nacht. Het is een
+> eigenschap van *sommige omvormers*.
+>
+> **Gemeten, één woning:** een SolarEdge via `solaredge_modbus_multi` houdt zijn
+> modbuspoort 's nachts open en meldt gewoon 0 W. Een geldige nul vinkt het
+> zonne-item af — het item is `snapshot.solar_power_w is not None` — dus daar
+> zakt er niets. Vastgelegd in
+> `test_a_nightly_zero_still_ticks_the_solar_item`.
+>
+> **Ongemeten:** een omvormer die zijn poort wél sluit. Die klant bestaat
+> vermoedelijk en wij hebben hem niet gezien. Voor hem geldt de zin hierboven
+> onverkort, elke nacht opnieuw.
+>
+> **Daarom is `sun.is_up` geen opgelost punt maar een onbekende**, en staat het
+> niet meer in de eerstvolgende ronde. Het wachten is op een installatie die het
+> verschijnsel werkelijk vertoont; een mechanisme bouwen voor een geval dat
+> niemand heeft gezien is wat §38 hier heeft opgeruimd. Zie `HARDWARE.md` voor
+> wat er per merk wél waargenomen is.
 
 ### 63.7 Een meting die één tel lang onmogelijk is, en waar zij kantelt
 
@@ -7556,3 +7629,49 @@ piek van 499 W ligt onder het huisverbruik van ~520 W, en er is een netmeter.
 **Dat is een meting aan één woning, geen weerlegging.** Voor een woning zonder
 netmeter, met een lagere overschotdrempel, met laag sluipverbruik of met een
 apparaat zonder ingevuld vermogen is dit **ongemeten**.
+
+## 64. Compleet ingevuld is niet hetzelfde als bruikbaar
+
+Twee plekken zeiden dat het goed zat terwijl de motor de bron zojuist geweigerd
+had. Eén payload, twee lezers, en beide lazen alleen de configuratie.
+
+### 64.1 Wat er te zien was
+
+**De bronrij zei "Compleet."** `statusOf()` liep de configuratie langs — type
+bekend, ingeschakeld, geen veldfouten — en concludeerde daaruit dat de rij in
+orde was. Of de motor de entiteit een seconde eerder had kunnen lezen, kwam er
+niet in voor. Dus stond er *"Compleet."* op een rij waarover het logboek op
+datzelfde moment een waarschuwing schreef.
+
+**En het Overzicht zei "Alle gegevens zijn ingevuld."** De checklist telt
+*onderdelen*, en niet elke bron is er een. Een thuisbatterij, een tweede
+verbruiksmeter of een terugleverprijs die geweigerd wordt laat het cijfer op 100
+staan: geen enkel item ontbreekt, en toch doet er een rij niet mee.
+
+### 64.2 De twee zinnen claimen met opzet niet hetzelfde
+
+**Het Overzicht claimt het minst:** *dát* er een bron buiten het cijfer valt.
+Meer kan het niet dragen, want `invalid_items` bevat zowel een onvoltooide rij
+als een onbereikbare, en die vragen om verschillende dingen van de lezer.
+
+**De bronrij claimt het precieze**, en kan dat omdat zij per rij oordeelt en
+haar volgorde dat afdwingt: onbekend type, uitgeschakeld, vervallen type en
+veldfouten komen eerst. Wie die zeef passeert en tóch geweigerd is, is compleet
+ingevuld en op dit moment niet uit te lezen.
+
+**De volgorde is het hele mechanisme.** Een onvoltooide rij wordt door de motor
+óók geweigerd en staat dus óók in `invalid_items`. Zou de nieuwe tak vóór de
+veldfouten komen, dan kreeg een installateur *"niet uit te lezen"* te zien op
+een rij waar hij domweg nog een veld moet invullen — een tekortkoming die niet
+van toepassing is, gepresenteerd als storing, voor de zesde keer.
+
+### 64.3 Waarom niet één van de twee volstaat
+
+Het scherm toont een feit over het moment, het logboek legt een oordeel vast
+(§63.5). Deze ronde voegt daar niets aan toe; zij haalt alleen weg dat het
+scherm het feit **tegensprak**. Het Overzicht wijst door naar Energiebronnen, en
+daar staat per rij wat eraan schort — zodat de vraag *"welke dan?"* een antwoord
+heeft op de plek waar hij gesteld wordt.
+
+Zolang er nog geen berekening is geweest, zwijgen beide: er is dan niets
+waargenomen, en "in orde" of "kapot" beweren zou allebei een gok zijn.

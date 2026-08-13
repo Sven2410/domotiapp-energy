@@ -1213,6 +1213,37 @@ def test_solar_panels_and_a_meter_but_no_appliances_can_reach_a_hundred() -> Non
     }
 
 
+def test_a_nightly_zero_still_ticks_the_solar_item() -> None:
+    """Nul watt is een meting, geen gat (SPEC.md §16).
+
+    **Dit gedrag klopte al per constructie en niets legde het vast.** Het item is
+    ``snapshot.solar_power_w is not None``, en 0.0 is niet None — de hele
+    leesketen laat een nul ongeschonden door. Maar er stond geen enkele test op,
+    terwijl er een ronde in voorbereiding was die precies dit predicaat zou
+    aanraken.
+
+    Het onderscheid dat hier vastligt is dat tussen *een omvormer die netjes nul
+    meldt* en *een omvormer die niets meldt*. Het eerste is een woning waar de zon
+    onder is; het tweede is een gat. Zij zien er in het cijfer verschillend uit,
+    en dat moeten ze blijven doen: de test hieronder eist 100, de test daaronder
+    eist dat een onleesbare zonnebron wél punten kost.
+
+    Gemeten op een echte installatie op 2026-08-13: bij die klant blijft de
+    modbuspoort 's nachts open en meldt de omvormer 0 W, dus zakt zijn cijfer
+    niet. Voor een omvormer die 's nachts zijn poort sluit is dat **ongemeten**
+    (SPEC.md §63.6.6).
+    """
+    config = _config(contract_type=CONTRACT_TYPE_FIXED, fixed_import_price_eur_kwh=0.28)
+    config.sources.append(_source(SOURCE_TYPE_SOLAR, "sensor.solar"))
+    snapshot = EnergySnapshot(grid_power_w=1000.0, solar_power_w=0.0)
+
+    result = evaluate_completeness(config, snapshot)
+
+    assert COMPLETENESS_ITEM_SOLAR in result.completed_items
+    assert COMPLETENESS_ITEM_SOLAR not in result.missing_items
+    assert result.score == 100
+
+
 def test_a_home_without_solar_is_not_held_to_the_solar_item() -> None:
     """No solar row means nobody said this home has panels, so it is not asked.
 
