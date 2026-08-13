@@ -82,6 +82,9 @@ lijkt, is bewolking: verspreid over de dag, met basislijnen van 38 tot 3712 W.
 `unavailable`.** Direct waargenomen op 2026-08-13 om 11:05:54: twee seconden later
 schreef ons logboek terecht één `source_unavailable`, om 11:06:10 weer dicht.
 
+Dit is **het enige merk waarvan we een kortstondige blanco hebben gezien.** De
+prijsbron leek hetzelfde te doen en doet het niet; zie Frank Energie hieronder.
+
 ## Afgeleid
 
 - **Een vermogensbron kan één meting lang een fysiek onmogelijke waarde melden.**
@@ -95,6 +98,19 @@ schreef ons logboek terecht één `source_unavailable`, om 11:06:10 weer dicht.
   inflatie vraagt teruglevering op het moment van de piek, vals zonneadvies
   vraagt `P_piek ≥ verbruik + min_solar_surplus_w`. Bij deze woning wordt geen van
   beide gehaald.
+- **Een blanco tijdens een reload is te onderscheiden van een echte uitval,
+  zonder tijdgrens.** Home Assistant weet zelf of de integratie op dat moment
+  tussen twee levens in zit: `ConfigEntry.state` draagt onder meer
+  `SETUP_IN_PROGRESS`, `UNLOAD_IN_PROGRESS` en `NOT_LOADED`, en de
+  entiteitenregistratie geeft via `config_entry_id` welke entry bij een entiteit
+  hoort (geverifieerd op HA 2026.8.1). Dat is een feit op dat moment, geen
+  wachttijd.
+
+  **Dit is bewust niet gebouwd.** Eén merk, één mechanisme, en de enige keer dat
+  het vuurde was de melding waar: de bron *was* onleesbaar, en juist die regel
+  bracht Svens 07:00-automatisering aan het licht. Zou dit gebouwd worden, dan
+  mag `SETUP_RETRY` er nooit onder vallen — een integratie die blijft mislukken
+  op te starten is wél een storing.
 
 ## Niet gemeten
 
@@ -102,6 +118,51 @@ Andere firmware, een andere omvormergrootte, een ander aantal strings, en het
 gedrag bij zonsondergang: er is één waarneming (2026-08-04 20:32, 191 W op een
 basislijn van 38 W) die mogelijk hetzelfde verschijnsel bij het uitschakelen is,
 maar zij ligt niet op het 633 s-raster en staat alleen.
+
+---
+
+# Frank Energie — `frank_energie`
+
+Woning Sven, `sensor.current_electricity_price_all_in`
+(`unique_id: frank_energie.elec_markup`), gemeten op 2026-08-13.
+
+## Waargenomen
+
+**De entiteit gaat nooit blanco.** Tien dagen recorderhistorie, 257 wijzigingen,
+**nul** `unknown` of `unavailable`. Zij verandert precies op het hele uur, elke
+dag, zonder uitzondering — 25 wijzigingen per dag, allemaal op minuut 0.
+
+**En zij herhaalt zich niet tussendoor.** Negen metingen over vijf minuten:
+`last_reported` bleef staan op `11:00:00Z` terwijl de waarde 0,1346 bleef. Frank
+schrijft één keer per uur en verder niets.
+
+**Wat het logboek 103 keer meldde, was daarom onze eigen veroudering.** Van 7
+augustus 21:29 tot 10 augustus 00:34 stond er onafgebroken een klok in het
+logboek — negentien uur lang elk uur op `:29:42`, daarna op `:15` en `:45`. Dat
+ritme is het veiligheidsinterval dat een bron aantreft die legitiem een uur
+zwijgt, niet een bron die uitvalt.
+
+## Afgeleid
+
+- **Een prijsbron zwijgt een uur aan één stuk, en dat is geen storing.** Onder
+  het oude venster van 15 minuten was deze bron 45 van elke 60 minuten
+  onleesbaar, permanent. Sinds 0.12.0 (SPEC §47) geldt 90 minuten voor
+  prijsbronnen en is zij altijd leesbaar.
+- **De marge is 30 minuten.** 60 minuten stilte tegen een venster van 90. Een
+  prijsintegratie die per twee uur schrijft — bijvoorbeeld omdat zij de prijzen
+  van morgen in blokken publiceert — loopt hier opnieuw tegenaan, op precies
+  dezelfde manier. Dat is de aanname die nog staat.
+- Niets hiervan zit merkgebonden in de motor: `SOURCE_STALE_MINUTES` kiest per
+  **brontype**, niet per merk, en een guard-test dwingt af dat een nieuw type
+  zijn eigen keuze maakt.
+
+## Niet gemeten
+
+Wanneer Frank vóór 10 augustus precies schreef. Uit de logboekregels valt af te
+leiden dat het toen op ongeveer `:14` was en later op `:00`/`:30`, maar de
+recorder bewaart alleen wijzigingen en geen herhalingen, dus dat is een gevolg-
+trekking en geen meting. Ook niet gemeten: of de cadans verandert rond het
+moment dat de prijzen voor de volgende dag bekend worden.
 
 ---
 
