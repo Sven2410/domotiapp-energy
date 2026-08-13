@@ -312,6 +312,13 @@ def _render(texts: list[Text]) -> str:
         "indeling op zichtbaarheid komt terug wanneer het herschrijven begint — dan",
         "is dit de invoer en niet de uitvoer.",
         "",
+        "**Geen regelnummers.** Die stonden hier tot 0.32.0 en maakten van deze",
+        "inventaris iets dat onderhouden moest worden in plaats van andersom: één",
+        "toegevoegde commentaarregel verschoof tientallen nummers en liet",
+        "`tests/test_texts.py` rood worden om een wijziging die geen tekst raakte.",
+        "Dat gebeurde tweemaal in één week. Een zin is met zijn eigen woorden te",
+        "vinden; het bestand en de context zeggen genoeg.",
+        "",
         "- **`{...}`** is een waarde die wordt ingevuld: een getal, een naam,",
         "  een bedrag.",
         "- **↔** staat achter een tekst die op meer dan één plek in de broncode staat.",
@@ -335,17 +342,18 @@ def _render(texts: list[Text]) -> str:
                     "",
                     f"## `{source_file}`",
                     "",
-                    "| Tekst | Waar | Regel |",
-                    "|---|---|---|",
+                    "| Tekst | Waar |",
+                    "|---|---|",
                 ]
             )
         mark = " ↔" if item.text in duplicated else ""
         text = item.text.replace("|", "\\|")
-        lines.append(f"| {text}{mark} | {item.context} | {item.where.split(':')[1]} |")
+        lines.append(f"| {text}{mark} | {item.context} |")
 
     lines.extend(["", "", "## Engelse regels", "", "| Tekst | Waar |", "|---|---|"])
-    for item in sorted(english, key=lambda t: (t.where, t.text)):
-        lines.append(f"| {item.text.replace('|', chr(92) + '|')} | `{item.where}` |")
+    for item in sorted(english, key=lambda t: (t.where.split(":")[0], t.text)):
+        source_file = item.where.split(":")[0]
+        lines.append(f"| {item.text.replace('|', chr(92) + '|')} | `{source_file}` |")
 
     lines.append("")
     return "\n".join(lines)

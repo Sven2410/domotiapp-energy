@@ -1,5 +1,49 @@
 # Changelog
 
+## 0.32.0
+
+De tekstronde. Zeven punten, en het zevende maakte de andere zes mogelijk.
+
+### Changed
+
+- **De datakwaliteit noemt wat er ontbreekt in plaats van het te tellen.** Er stond *"1 van
+  de 6 onderdelen is nog niet compleet"* naast een cijfer van 75%, en die twee beschrijven
+  verschillende dingen: de zin telt, het cijfer weegt (de netbron telt 25 punten, een
+  tijdvenster 10). Beide op het scherm kan niet. Er staat nu *"Nog ontbrekend voor een
+  betrouwbaar advies: een geldige netbron."* — dat zegt meer dan de twee getallen samen en
+  vraagt geen rekensom.
+
+  De verwijzing naar het tabblad Energiecoach is daarmee vervallen: die beloofde te laten
+  zien wélke, en dat staat er nu zelf.
+
+- **Een storing die binnen een minuut voorbij is, noemt geen tijdstip meer.** *"Bron niet
+  bereikbaar 20:16 … Weer uitgelezen om 20:16"* was feitelijk juist en inhoudsloos. Er staat
+  nu *"Weer uitgelezen, binnen een minuut."*
+
+- **De coach en het Overzicht spreken elkaar niet meer tegen.** Sinds 0.31.0 meldt het
+  Overzicht dat een koppeling buiten het cijfer valt; de coach zei er onverstoorbaar naast dat
+  alle gegevens waren ingevuld. Twee renderers over één payload — de negende variant, hier
+  door onszelf gemaakt.
+
+### Fixed
+
+- **De hulptekst onder "Teken omdraaien" verwees naar een veld dat er niet was.** Bij een
+  netmeter met gescheiden afname en teruglevering stuurde hij de installateur naar *"een
+  positieve waarde betekent"*, een vraag die alleen bestaat bij één gesigneerde waarde.
+
+- **Een modulerend apparaat kreeg "dit is een gunstig moment" boven een negatief uurbedrag**
+  (SPEC §56.9). Nu zegt die tak wat de per-cyclus-tak al zei, in zijn eigen vorm: een
+  modulerend apparaat heeft geen cyclus en dus geen totaal, dus gaat de zin over doorlopen of
+  stoppen in plaats van over starten of wachten. Onbereikbaar zolang de saldering geldt.
+
+### Docs
+
+- **`TEKSTEN.md` draagt geen regelnummers meer.** Die maakten van de inventaris iets dat
+  onderhouden moest worden in plaats van andersom: één toegevoegde commentaarregel verschoof
+  tientallen nummers en liet de test rood worden om een wijziging die geen tekst raakte. Dat
+  gebeurde deze week tweemaal. Een guard-test legt vast dat dezelfde teksten op andere regels
+  dezelfde inventaris opleveren.
+
 ## 0.31.1
 
 ### Fixed

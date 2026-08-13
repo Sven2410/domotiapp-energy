@@ -163,10 +163,24 @@ export const logbookTab = {
           // dus deze zin staat ook onder regels waarvan het einde niet gezien
           // is. Juist daarom mag hij niet meer beweren dat iets opgelost is:
           // voor alles behalve de nieuwste regel is dit een bovengrens.
+          // **Een storing korter dan een minuut, weergegeven in minuten**
+          // (tekstronde, punt 3). Bij een reload om 20:16 stond er "Bron niet
+          // bereikbaar 20:16 … Weer uitgelezen om 20:16": feitelijk juist en
+          // inhoudsloos, want beide klokken tonen hetzelfde. Het criterium is
+          // niet een getal in seconden maar de weergave zelf — staan er twee
+          // gelijke tijden, dan is de tijd niet wat de lezer moet weten.
+          const zelfdeMinuut =
+            entry.resolved_at &&
+            formatTimeOfDay(entry.resolved_at) === formatTimeOfDay(entry.timestamp);
           const gelezen = entry.resolved_at
             ? formatTimeAgainstDay(entry.resolved_at, entry.timestamp)
             : null;
-          const opgelost = gelezen ? `Weer uitgelezen ${gelezen}.` : '';
+          let opgelost = '';
+          if (zelfdeMinuut) {
+            opgelost = 'Weer uitgelezen, binnen een minuut.';
+          } else if (gelezen) {
+            opgelost = `Weer uitgelezen ${gelezen}.`;
+          }
           resolved.textContent = opgelost;
           setVisible(resolved, Boolean(opgelost));
 

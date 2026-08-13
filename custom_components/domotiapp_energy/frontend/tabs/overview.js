@@ -18,10 +18,7 @@
  */
 
 import { createApi, describeError } from '../core/api.js';
-import {
-  asksSomethingOfTheResident,
-  describeReadyFlag,
-} from '../core/devices.js';
+import { asksSomethingOfTheResident, describeReadyFlag } from '../core/devices.js';
 import {
   adviceBlock,
   button,
@@ -35,6 +32,7 @@ import {
   setVisible,
   statRow,
 } from '../core/dom.js';
+import { checklistLabel } from '../core/labels.js';
 import { createRowList } from '../core/rows.js';
 import { onTap } from '../core/tap.js';
 
@@ -58,6 +56,19 @@ function partialDay(sentence, hoursKnown) {
   }
   const zin = `Gemeten over ${hoursKnown} van de 24 uur.`;
   return sentence ? `${sentence} ${zin}` : zin;
+}
+
+/**
+ * Een opsomming als Nederlandse zin: "a", "a en b", "a, b en c".
+ *
+ * Een kale komma-lijst leest als machine-uitvoer; het laatste voegwoord is wat
+ * er een zin van maakt. Puur opmaak, dus geen tabel en geen tekst van zichzelf.
+ */
+function listSentence(parts) {
+  if (parts.length <= 1) {
+    return parts.join('');
+  }
+  return `${parts.slice(0, -1).join(', ')} en ${parts[parts.length - 1]}`;
 }
 
 const EMPTY_NOT_CONFIGURED = 'Nog niet ingesteld';
@@ -414,7 +425,12 @@ export const overviewTab = {
     const energyPlain = el('span', {
       text: 'het Energie-dashboard van Home Assistant',
     });
-    energyPointer.append(energyLead, energyLink, energyPlain, document.createTextNode('.'));
+    energyPointer.append(
+      energyLead,
+      energyLink,
+      energyPlain,
+      document.createTextNode('.'),
+    );
     const historyNotice = notice('mdi:clock-outline');
     historyCard.body.append(
       surplusHoursRow.element,
@@ -826,7 +842,6 @@ export const overviewTab = {
       // is counted rather than assumed (engine/completeness.py).
       const quality = metrics.data_quality || {};
       const missingCount = quality.missing_items?.length ?? 0;
-      const applicable = missingCount + (quality.completed_items?.length ?? 0);
       // **Een bron die buiten het cijfer valt** (SPEC.md §64). De checklist
       // telt onderdelen, en niet elke bron ís een onderdeel: een thuisbatterij,
       // een tweede verbruiksmeter of een terugleverprijs die de motor weigert
@@ -842,10 +857,23 @@ export const overviewTab = {
       let qualityText;
       let qualityTone;
       if (missingCount > 0) {
-        qualityText =
-          `${missingCount} van de ${applicable} onderdelen van de ` +
-          'datakwaliteit is nog niet compleet. Het tabblad Energiecoach ' +
-          'laat zien welke.';
+        // **Noem het onderdeel, tel het niet** (tekstronde, punt 2). Hier stond
+        // "1 van de 6 onderdelen is nog niet compleet" naast een cijfer van 75%,
+        // en die twee beschrijven verschillende dingen: de zin telt, het cijfer
+        // weegt (net 25 punten, venster 10). Beide op het scherm kan niet, en de
+        // uitweg is geen van beide — "de netbron ontbreekt" zegt meer dan de twee
+        // getallen samen en vraagt geen rekensom van de lezer.
+        //
+        // De verwijzing naar het tabblad Energiecoach is daarmee vervallen: die
+        // beloofde te laten zien wélke, en dat staat er nu zelf. Twee plekken die
+        // hetzelfde zeggen in andere woorden is precies wat deze ronde opruimt.
+        const named = (quality.missing_items || [])
+          .map((key) => checklistLabel(key))
+          .filter(Boolean);
+        qualityText = named.length
+          ? `Nog ontbrekend voor een betrouwbaar advies: ${listSentence(named)}.`
+          : 'Er ontbreekt nog iets voor een betrouwbaar advies. Het tabblad ' +
+            'Energiecoach laat zien wat.';
         qualityTone = 'warning';
       } else if (unusable.length > 0) {
         qualityText =

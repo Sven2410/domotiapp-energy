@@ -424,6 +424,17 @@ function invertHelper(draft) {
     );
   }
   if (draft.type === 'grid_meter') {
+    // **Het veld waarnaar dit verwees bestaat niet altijd.** Bij een meter met
+    // gescheiden afname en teruglevering staat er geen "wat betekent een
+    // positieve waarde?" op het formulier — dat is er alleen bij één gesigneerde
+    // waarde. De hulptekst stuurde de installateur dan naar een vraag die hij
+    // nergens kon vinden.
+    if (draft.meter_mode === 'separate_import_export') {
+      return (
+        'Meestal niet nodig. Zet dit alleen aan wanneer beide entiteiten ' +
+        'hierboven hun waarde met een minteken melden.'
+      );
+    }
     return 'Meestal niet nodig: gebruik hierboven "een positieve waarde betekent".';
   }
   return 'Zet aan wanneer deze sensor het tegenovergestelde teken rapporteert.';
