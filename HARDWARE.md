@@ -129,6 +129,22 @@ Met **P** = piekwaarde, **b** = werkelijke opwek op dat moment, **V** = huisverb
 Op de gemeten woning (V ≈ 520 W, dageraadbasislijn b = 43–75 W, grootste P = 499 W, mét
 netmeter) wordt geen van beide grenzen gehaald. Dat is **die woning**, niet het product.
 
+### Het restrisico, en wie het draagt
+
+**"De schade is nul" geldt alleen mét netmeter, en zo hoort het niet te staan** (Sven,
+2026-08-13). Het blootgestelde geval is de woning **zonder** netmeter: daar komt het
+overschot uit `opwek − verbruik`, dus de piek wórdt overschot, en dan hangt er advies aan
+met een bedrag eronder.
+
+De mitigatie is vandaag: *een installateur telt het na met `scripts/solar_spikes.py`.* Dat
+werkt alleen als hij weet dát hij moet kijken. **Er is dus een restrisico dat de klant
+draagt, niet nul.**
+
+Klein in de praktijk — vrijwel elke woning van DomotiTech heeft een slimme meter, en dan
+leest de motor het overschot daaruit en raakt de zonnesensor het advies niet. Maar klein is
+iets anders dan afwezig, en het verschil hoort opgeschreven te staan op de plek waar iemand
+het zoekt.
+
 **En er zit een tweede rem op, gemeten:** de piek duurt ongeveer één seconde en de
 coordinator herberekent gedebounced per 15 s, dus van zeven pieken landde er **één** in een
 berekening. Ook waar de rekenkunde kantelt, is de verwachte frequentie laag.
