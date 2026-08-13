@@ -4,8 +4,6 @@
 
 Compleet ingevuld is niet hetzelfde als bruikbaar. SPEC §64.
 
-**Deze versie bevat ook 0.30.0**, dat wel op `main` stond maar nooit getagd is.
-
 ### Fixed
 
 - **De bronrij zei "Compleet." over een bron die de motor zojuist geweigerd had.**
