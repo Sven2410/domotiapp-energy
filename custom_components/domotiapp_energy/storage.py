@@ -414,36 +414,59 @@ class ConfigurationStore:
             )
 
     async def _async_close_resolved_entries(self, readable: AbstractSet[str]) -> None:
-        """Record that the situation an open entry describes is over.
+        """Record that every open entry of a readable subject is over.
 
         **Not driven by the anti-spam ledger, and that is the whole point**
         (SPEC.md §63.6). The ledger lives in memory, so a restart while a source
         is down would leave its entry open for good — a logbook that lies in a
         new way instead of the old one. This hangs on the event itself: a source
-        that reads cleanly closes its newest open entry, whether or not this
-        process saw that entry being written.
+        that reads cleanly closes its open entries, whether or not this process
+        saw them being written.
 
-        Only the newest open entry per subject, because an older one describes
-        an earlier episode that had its own end, recorded or not.
+        **All of them, not only the newest, and that is the repair of 0.30.0**
+        (SPEC.md §63.6.4). The first version closed one entry per pass, reasoning
+        that an older one described an earlier episode that had had its own end.
+        The writing side never guaranteed that. `_mark_reported` keys on the
+        subject *and* the reason, so a second entry appears with no recovery in
+        between along two routes:
+
+        * **the outage changes character** — stale to unavailable, or unavailable
+          to a non-numeric value, more than `LOG_DEDUPE_WINDOW_MINUTES` apart.
+          Inside that window the two collapse into one entry with a counter, so
+          the dedupe window is literally the line between one honest entry and
+          two of which one will lie;
+        * **a restart while a mislinked source keeps failing** — the ledger is
+          empty again, `invalid_measurement` needs no earlier successful read,
+          and there is never a clean read to close anything. Those stack without
+          limit, and closing one on repair left the rest asserting a broken
+          source forever: the very thing this method exists to prevent.
+
+        Two places were answering "what is one episode?" differently, and each
+        test only ever asked its own side. Measured on a customer instance on
+        2026-08-12: 112 entries closed one per recalculation over ten minutes,
+        each with its own stamp and none of them a repair — and under the panel's
+        day heading an entry written at 23:32 read "resolved at 12:49", eleven
+        hours before itself.
+
+        The stamp is what we saw, not when the source recovered: for anything
+        but the newest entry it is an upper bound, and the panel says "weer
+        uitgelezen" rather than "opgelost" for exactly that reason. One write
+        covers the whole stack instead of one write per entry.
         """
         if not readable:
             return
 
         closed = False
         now = dt_util.utcnow()
-        seen: set[str] = set()
         for entry in self.config.logs:
             subject = entry.subject
             if (
                 subject is None
-                or subject in seen
                 or subject not in readable
                 or entry.resolved_at is not None
                 or entry.event_type not in SOURCE_FAILURE_LOG_EVENTS
             ):
                 continue
-            # Newest first, so the first match per subject is the current one.
-            seen.add(subject)
             entry.resolved_at = now
             closed = True
 

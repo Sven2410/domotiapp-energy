@@ -1,5 +1,59 @@
 # Changelog
 
+## 0.30.0
+
+Eén schone lezing sluit de hele stapel, en het logboek belooft minder. SPEC §63.6.4.
+
+### Fixed
+
+- **Een bron die weer werkt sloot maar één open regel per herberekening.** Lagen er meer
+  open regels van dezelfde bron, dan kreeg elke regel een eigen "opgelost om", vijftien
+  seconden na de vorige — en geen van die momenten was een herstel. Op een klantinstallatie
+  gingen zo 112 regels dicht, tien minuten lang.
+
+  Onder de dagkop van het paneel las dat als onzin: een regel van 23:32 op 11 augustus
+  meldde "Opgelost om 12:49", want die 12:49 was de dag erna.
+
+  Eén schone lezing sluit nu álle open regels van die bron, in één pas en met één
+  schrijfactie in plaats van één per regel.
+
+- **De stapel kon ook zonder upgrade ontstaan, en dat is de reden dat dit een fix is.**
+  Twee routes waarbij er een tweede regel bij komt zonder dat er iets hersteld is: een
+  storing die van karakter verandert (stilgevallen → onbereikbaar, meer dan een kwartier
+  uit elkaar), en een verkeerd gekoppelde bron die na elke herstart opnieuw gemeld wordt en
+  nooit schoon leest. In dat tweede geval bleven de oudere regels ná de reparatie voor
+  altijd beweren dat de bron stuk was.
+
+### Changed
+
+- **"Opgelost om 16:32" heet nu "Weer uitgelezen om 16:32".** Wij weten niet wanneer een
+  bron het weer deed; wij weten wanneer een herberekening haar schoon las. Dat scheelt tot
+  vijf minuten, en over een herstart of upgrade heen willekeurig veel — voor elke regel
+  behalve de nieuwste van een stapel is het een bovengrens.
+
+- **De dag staat erbij zodra de sluiting op een andere dag valt** dan de regel zelf:
+  *"Weer uitgelezen op 12 augustus om 12:49."* Een kale kloktijd erfde de dagkop erboven,
+  en die klopte dan niet meer.
+
+### Docs
+
+- **`HARDWARE.md`** verzamelt wat we van merken en integraties hebben waargenomen, met per
+  merk gescheiden wat *waargenomen* is, wat *afgeleid* is en wat *niet gemeten* is. Twee
+  regels dragen het: elke waarneming noemt de installatie waar zij vandaan komt, en geen
+  code vertakt ooit op merk. Ingevuld voor SolarEdge en Easee.
+
+- **SPEC §63.6.3 gecorrigeerd.** Daar stond dat het samenvouwen "onder meer op de tekst"
+  matcht; het vergelijkt alleen `event_type` en `subject`. Het gedrag klopte, de vastgelegde
+  reden niet — en die reden verbood onbedoeld de datum in de zin hierboven.
+
+- **SPEC §63.7** legt vast waar een meting die één tel lang fysiek onmogelijk is werkelijk
+  kantelt, uit de formules afgeleid, en dat dit voor andere configuraties **ongemeten** is.
+
+- **`scripts/solar_spikes.py`** telt kortstondige pieken in een vermogensreeks uit de
+  recorder — alleen-lezen, geen onderdeel van de integratie. Het is het gereedschap waarmee
+  de SolarEdge-waarnemingen in `HARDWARE.md` gemeten zijn, zodat een tweede installateur ze
+  kan overdoen.
+
 ## 0.29.0
 
 Het logboek spreekt niet meer over nu. SPEC §63.6.

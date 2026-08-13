@@ -35,6 +35,7 @@ import {
   card,
   el,
   formatDayHeading,
+  formatTimeAgainstDay,
   formatTimeOfDay,
   notice,
   setVisible,
@@ -149,9 +150,23 @@ export const logbookTab = {
           // En geen tijdvak: een samengevouwen regel draagt het tijdstip van
           // haar *laatste* keer, dus "23:00 tot 07:02" zou een duur zijn die
           // niemand gemeten heeft.
-          const opgelost = entry.resolved_at
-            ? `Opgelost om ${formatTimeOfDay(entry.resolved_at)}.`
-            : '';
+          // **"Weer uitgelezen", niet "opgelost"** (SPEC.md §63.6.4). Wij weten
+          // niet wanneer de bron het weer deed; wij weten wanneer een
+          // herberekening haar schoon las. Dat scheelt tot vijf minuten via het
+          // veiligheidsinterval, en over een herstart of een upgrade heen
+          // willekeurig veel: op een klantinstallatie stond er "opgelost" boven
+          // regels die dagen eerder geschreven waren. Het werkwoord is dat van
+          // de storingszin ernaast — "kon niet worden uitgelezen" — zodat de
+          // twee over hetzelfde gaan.
+          //
+          // Sinds 0.30.0 sluit één schone lezing álle open regels van een bron,
+          // dus deze zin staat ook onder regels waarvan het einde niet gezien
+          // is. Juist daarom mag hij niet meer beweren dat iets opgelost is:
+          // voor alles behalve de nieuwste regel is dit een bovengrens.
+          const gelezen = entry.resolved_at
+            ? formatTimeAgainstDay(entry.resolved_at, entry.timestamp)
+            : null;
+          const opgelost = gelezen ? `Weer uitgelezen ${gelezen}.` : '';
           resolved.textContent = opgelost;
           setVisible(resolved, Boolean(opgelost));
 

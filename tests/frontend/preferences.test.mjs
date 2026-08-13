@@ -260,10 +260,32 @@ describe('het logboek als tijdlijn (SPEC.md §61.4)', () => {
 
     const rij = visibleText(tab.querySelector('.row-item'));
 
-    assert.match(rij, /Opgelost om 16:32/);
+    assert.match(rij, /Weer uitgelezen om 16:32/);
+    // **Niet "opgelost"** (SPEC.md §63.6.4). Wij weten wanneer wij de bron weer
+    // schoon lazen, niet wanneer zij het weer deed — en sinds 0.30.0 sluit één
+    // schone lezing álle open regels van die bron, dus deze zin staat ook onder
+    // regels waarvan niemand het einde gezien heeft.
+    assert.doesNotMatch(rij, /Opgelost/);
     // Geen span: een samengevouwen regel draagt het tijdstip van haar laatste
     // keer, dus "14:32 tot 16:32" zou een duur zijn die niemand gemeten heeft.
     assert.doesNotMatch(rij, /14:32\s*(tot|-|–|—)\s*16:32/);
+  });
+
+  it('zet de dag erbij zodra de sluiting op een andere dag valt', async () => {
+    // **Het geval dat op een klantinstallatie stond** (gemeten 2026-08-13). De
+    // regel hing onder de dagkop "dinsdag 11 augustus" en zei "Opgelost om
+    // 12:49" — een afloop elf uur vóór de storing, want die 12:49 was de dag
+    // erna. Een kale kloktijd erft de dagkop, en die klopt dan niet meer.
+    const { tab } = await openTab(
+      'Logboek',
+      'logbook',
+      hassWithLogs(logs({ timestamp: gisteren(23), resolved_at: vandaag(12) })),
+    );
+    await settle();
+
+    const rij = visibleText(tab.querySelector('.row-item'));
+
+    assert.match(rij, /Weer uitgelezen op \d+ \w+ om 12:32/);
   });
 
   it('zwijgt over een regel zonder einde, want dat kan ook "van vroeger" zijn', async () => {
@@ -276,7 +298,10 @@ describe('het logboek als tijdlijn (SPEC.md §61.4)', () => {
     );
     await settle();
 
-    assert.doesNotMatch(visibleText(tab.querySelector('.row-item')), /Opgelost/);
+    assert.doesNotMatch(
+      visibleText(tab.querySelector('.row-item')),
+      /Opgelost|Weer uitgelezen/,
+    );
   });
 
   it('herhaalt de kop niet binnen dezelfde dag', async () => {

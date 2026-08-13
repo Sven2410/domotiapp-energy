@@ -365,6 +365,48 @@ export function formatDayHeading(iso) {
   }).format(moment);
 }
 
+/**
+ * Een moment als tijdsbepaling, met de dag erbij zodra die afwijkt (SPEC.md §63.6.3).
+ *
+ * Levert *"om 12:49"* wanneer het moment op de referentiedag valt, en
+ * *"op 12 augustus om 12:49"* wanneer niet.
+ *
+ * **Waarom de dag er soms bij moet.** Het logboek groepeert onder een dagkop, en
+ * een kale kloktijd erft die kop. Voor een regel die op dezelfde dag afgesloten
+ * wordt klopt dat; voor een regel van 11 augustus die pas op 12 augustus om
+ * 12:49 weer gelezen werd, las een klant *"om 12:49"* onder de kop *"dinsdag 11
+ * augustus"* — een afloop elf uur vóór de storing zelf. Gemeten op een
+ * klantinstallatie op 2026-08-13.
+ *
+ * **Dit mag, en dat is een correctie op §63.6.3.** Die paragraaf verbood een klok
+ * in de tekst omdat het samenvouwen "onder meer op de tekst" zou matchen. Dat
+ * doet het niet: `_collapse_into_recent` vergelijkt alleen `event_type` en
+ * `subject`. De regel gaat over de *opgeslagen* zin, en dit is geen opgeslagen
+ * zin — het paneel maakt hem uit twee tijdstempels die er toch al staan.
+ */
+export function formatTimeAgainstDay(iso, referenceIso) {
+  const time = formatTimeOfDay(iso);
+  if (!time) {
+    return null;
+  }
+  const moment = new Date(iso);
+  const reference = referenceIso ? new Date(referenceIso) : null;
+  const sameDay =
+    reference !== null &&
+    !Number.isNaN(reference.getTime()) &&
+    moment.getFullYear() === reference.getFullYear() &&
+    moment.getMonth() === reference.getMonth() &&
+    moment.getDate() === reference.getDate();
+  if (sameDay) {
+    return `om ${time}`;
+  }
+  const day = new Intl.DateTimeFormat('nl-NL', {
+    day: 'numeric',
+    month: 'long',
+  }).format(moment);
+  return `op ${day} om ${time}`;
+}
+
 /** Alleen het tijdstip, voor een rij die al onder een dagkop staat. */
 export function formatTimeOfDay(iso) {
   if (!iso) {
