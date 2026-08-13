@@ -377,6 +377,23 @@ def _missing_data(metrics: EnergyMetrics) -> str:
     else:
         sentence = "Alle gegevens voor een betrouwbaar advies zijn ingevuld."
 
+    # **Dezelfde mededeling stond hier en op het Overzicht anders** (negende
+    # variant, gevonden in de tekstronde van 0.32.0). Sinds 0.31.0 meldt het
+    # Overzicht dat er een rij buiten het cijfer valt; deze zin bleef er
+    # onverstoorbaar naast zeggen dat alles ingevuld was. Twee renderers over één
+    # payload, en de lezer die beide schermen ziet moet kiezen wie hij gelooft.
+    #
+    # De claim is bewust net zo zwak als die van het Overzicht: *dat* er iets
+    # niet gebruikt kan worden. Waaróm verschilt per rij — onvoltooid,
+    # onbereikbaar, te lang stil — en dat staat waar de rij staat.
+    if quality.invalid_items:
+        count = len(quality.invalid_items)
+        what = "één koppeling" if count == 1 else f"{count} koppelingen"
+        sentence += (
+            f" De coach kan {what} op dit moment niet gebruiken; op de tabbladen "
+            f"Energiebronnen en Apparaten staat per rij wat eraan schort."
+        )
+
     if skipped:
         sentence += (
             f" Niet van toepassing op deze woning, en dus niet meegeteld: "

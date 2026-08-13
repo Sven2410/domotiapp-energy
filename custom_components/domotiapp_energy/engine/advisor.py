@@ -557,16 +557,32 @@ def _modulating_surplus_message(
 
     Two situations rather than five: the rate is there, or a term is missing.
 
-    **A negative rate is a third one, and it is not handled here** (SPEC.md
-    §56.9). Once feeding in pays better than self-consumption the margin goes
-    negative, and this sentence stays as cheerful as ever above a rate that is
-    below zero — exactly the contradiction the per-cycle branch has its own
-    sentence for. It cannot happen under net metering, where the margin is the
-    avoided feed-in cost and never negative, so it is a 2027 problem and it
-    needs its own wording rather than the per-cycle sentence with another unit.
+    **A negative rate is a third one** (SPEC.md §56.9), built in 0.32.0. Once
+    feeding in pays better than self-consumption the margin goes negative, and
+    this sentence used to stay as cheerful as ever above a rate below zero —
+    exactly the contradiction the per-cycle branch has its own sentence for.
+
+    It gets **its own wording rather than the per-cycle sentence with another
+    unit**, and the difference is not decoration: a modulating appliance has no
+    cycle and therefore no total, so there is no amount this costs. There is
+    only a rate, and a rate says "per hour you leave it running". The sentence
+    has to be about continuing or stopping, where the per-cycle one is about
+    starting or waiting.
+
+    It cannot happen under net metering, where the margin is the avoided
+    feed-in cost and never negative. That makes it unreachable for the homes we
+    have measured and reachable the day net metering ends.
     """
     opening = "Er is momenteel zonneoverschot beschikbaar."
     favourable = f"Dit is een gunstig moment om {device.name} te gebruiken."
+
+    if rate is not None and rate < 0:
+        return (
+            f"{opening} Terugleveren levert op dit moment echter meer op dan "
+            f"zelf verbruiken: {device.name} laten doorlopen kost naar "
+            f"schatting {_euro(-rate)} per uur ten opzichte van het overschot "
+            f"terugleveren."
+        )
 
     if rate is None:
         return f"{opening} {favourable} {_why_no_rate(context, device, surplus)}"

@@ -70,9 +70,7 @@ describe('the Voorkeuren tab', () => {
   it('carries every preference SPEC.md §8 lists', async () => {
     const { tab } = await openTab('Mijn voorkeuren', 'preferences');
 
-    const names = forms(tab).flatMap((form) =>
-      form.schema.map((field) => field.name),
-    );
+    const names = forms(tab).flatMap((form) => form.schema.map((field) => field.name));
 
     // `allow_advice_during_quiet_hours` is gone since 0.9.0: the quiet hours
     // defer the advice instead of suppressing it, so there is nothing left for
@@ -271,6 +269,23 @@ describe('het logboek als tijdlijn (SPEC.md §61.4)', () => {
     assert.doesNotMatch(rij, /14:32\s*(tot|-|–|—)\s*16:32/);
   });
 
+  it('noemt geen tijd wanneer begin en einde in dezelfde minuut vallen', async () => {
+    // "Bron niet bereikbaar 20:16 … Weer uitgelezen om 20:16" is feitelijk juist
+    // en inhoudsloos: beide klokken tonen hetzelfde. Het criterium is de
+    // weergave zelf, niet een getal in seconden.
+    const { tab } = await openTab(
+      'Logboek',
+      'logbook',
+      hassWithLogs(logs({ timestamp: vandaag(20), resolved_at: vandaag(20) })),
+    );
+    await settle();
+
+    const rij = visibleText(tab.querySelector('.row-item'));
+
+    assert.match(rij, /Weer uitgelezen, binnen een minuut\./);
+    assert.doesNotMatch(rij, /Weer uitgelezen om/);
+  });
+
   it('zet de dag erbij zodra de sluiting op een andere dag valt', async () => {
     // **Het geval dat op een klantinstallatie stond** (gemeten 2026-08-13). De
     // regel hing onder de dagkop "dinsdag 11 augustus" en zei "Opgelost om
@@ -314,7 +329,9 @@ describe('het logboek als tijdlijn (SPEC.md §61.4)', () => {
     );
     await settle();
 
-    const koppen = [...tab.querySelectorAll('.day-heading')].filter((n) => isVisible(n));
+    const koppen = [...tab.querySelectorAll('.day-heading')].filter((n) =>
+      isVisible(n),
+    );
 
     assert.equal(koppen.length, 1);
   });

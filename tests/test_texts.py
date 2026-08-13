@@ -81,3 +81,38 @@ def test_dutch_and_english_are_told_apart() -> None:
     # A label with no stop word at all falls to Dutch, which is the safe side:
     # it lands in the chapter somebody reads.
     assert extract._language("Zonneoverschot") == "nl"
+
+
+def test_moving_a_line_does_not_change_the_inventory() -> None:
+    """Een commentaarregel erbij mag deze inventaris niet raken (SPEC.md §41).
+
+    **Dit is de reparatie van punt 7 van de tekstronde.** De tabel droeg een
+    kolom met regelnummers, en die verschoof zodra er ergens boven een string een
+    regel bijkwam — commentaar, een import, wat dan ook. Twee keer in één week
+    werd `test_the_inventory_is_current` daardoor rood om een wijziging die geen
+    enkele tekst raakte, en de reflex is dan het script draaien zonder te kijken
+    wat er veranderde. Precies andersom als bedoeld: een inventaris die
+    onderhouden moet worden in plaats van andersom.
+
+    Dezelfde teksten uit dezelfde bestanden, alleen op andere regels, horen dus
+    dezelfde uitvoer te geven.
+    """
+    extract = _extractor()
+
+    def _texts(offset: int) -> list[object]:
+        return [
+            extract.Text(
+                text="Bron niet bereikbaar",
+                where=f"custom_components/x.py:{10 + offset}",
+                context="module",
+                language="nl",
+            ),
+            extract.Text(
+                text="Solar surplus",
+                where=f"custom_components/y.js:{99 + offset}",
+                context="module",
+                language="en",
+            ),
+        ]
+
+    assert extract._render(_texts(0)) == extract._render(_texts(500))

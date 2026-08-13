@@ -10,7 +10,14 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { fakeHass, sampleCoach, sampleConfig } from './fixtures.mjs';
-import { clickTab, isVisible, mountPanel, settle, tabPanels , visibleText } from './harness.mjs';
+import {
+  clickTab,
+  isVisible,
+  mountPanel,
+  settle,
+  tabPanels,
+  visibleText,
+} from './harness.mjs';
 
 async function openOverview(hass = fakeHass()) {
   const panel = await mountPanel(hass);
@@ -87,9 +94,7 @@ describe('de sectie bestaat op grond van de configuratie', () => {
     const { tab } = await openOverview(
       fakeHass({
         config: sampleConfig({
-          devices: [
-            dishwasher({ device_type: 'ev_charger', needs_ready_flag: false }),
-          ],
+          devices: [dishwasher({ device_type: 'ev_charger', needs_ready_flag: false })],
         }),
       }),
     );
@@ -126,9 +131,9 @@ describe('wat er in de sectie staat', () => {
   it('stuurt het commando zonder revision', async () => {
     const hass = fakeHass({ config: sampleConfig({ devices: [dishwasher()] }) });
     const { tab } = await openOverview(hass);
-    const button = [...card(tab, 'Wat je nu kunt doen').querySelectorAll('button')].find(
-      (node) => node.textContent.includes('Klaar / vol'),
-    );
+    const button = [
+      ...card(tab, 'Wat je nu kunt doen').querySelectorAll('button'),
+    ].find((node) => node.textContent.includes('Klaar / vol'));
 
     button.click();
     await settle();
@@ -356,7 +361,10 @@ describe('een bron die buiten het cijfer valt (SPEC.md §64)', () => {
 
     assert.match(tekst, /een bron die de coach op dit moment niet kan gebruiken/);
     assert.match(tekst, /Energiebronnen/);
-    assert.doesNotMatch(tekst, /Alle gegevens voor een betrouwbaar advies zijn ingevuld/);
+    assert.doesNotMatch(
+      tekst,
+      /Alle gegevens voor een betrouwbaar advies zijn ingevuld/,
+    );
   });
 
   it('telt alleen bronnen, niet elk geweigerd ding', async () => {
@@ -371,7 +379,10 @@ describe('een bron die buiten het cijfer valt (SPEC.md §64)', () => {
     );
   });
 
-  it('houdt de bestaande zin waar er wél onderdelen ontbreken', async () => {
+  it('noemt het ontbrekende onderdeel in plaats van het te tellen', async () => {
+    // **"1 van de 6" naast 75% beschreef twee verschillende dingen**: de zin
+    // telde, het cijfer woog (net 25 punten, venster 10). De uitweg is geen van
+    // beide getallen — de naam zegt meer dan allebei samen.
     const hass = fakeHass({
       coach: sampleCoach({
         metrics: {
@@ -379,7 +390,7 @@ describe('een bron die buiten het cijfer valt (SPEC.md §64)', () => {
             score: 60,
             missing_items: ['solar_source_valid'],
             completed_items: ['home_profile_complete'],
-            invalid_items: ['grid'],
+            invalid_items: [],
           },
         },
       }),
@@ -387,6 +398,33 @@ describe('een bron die buiten het cijfer valt (SPEC.md §64)', () => {
     const { tab } = await openOverview(hass);
     await settle();
 
-    assert.match(visibleText(tab), /1 van de 2 onderdelen/);
+    const tekst = visibleText(tab);
+
+    assert.match(
+      tekst,
+      /Nog ontbrekend voor een betrouwbaar advies: een geldige zonnebron\./,
+    );
+    assert.doesNotMatch(tekst, /1 van de/);
+    // De verwijzing beloofde te laten zien wélke; dat staat er nu zelf.
+    assert.doesNotMatch(tekst, /Energiecoach laat zien welke/);
+  });
+
+  it('maakt er een zin van bij meerdere ontbrekende onderdelen', async () => {
+    const hass = fakeHass({
+      coach: sampleCoach({
+        metrics: {
+          data_quality: {
+            score: 40,
+            missing_items: ['grid_source_valid', 'solar_source_valid'],
+            completed_items: [],
+            invalid_items: [],
+          },
+        },
+      }),
+    });
+    const { tab } = await openOverview(hass);
+    await settle();
+
+    assert.match(visibleText(tab), /een geldige netbron en een geldige zonnebron\./);
   });
 });
