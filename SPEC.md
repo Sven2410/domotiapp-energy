@@ -7184,6 +7184,46 @@ niets mis mee is.
 En bij de eerste installatie hoort het in de README, onder *Setting up your first
 home*, want dat is waar iemand kijkt die dit voor het eerst doet.
 
+### 62.8 De tablet toont de configuratie van gisteren
+
+**Gevonden op productie, 2026-08-13, en het hoort hier omdat het precies de
+wandtablet is.**
+
+Het paneel ververst **twee dingen ongelijk**:
+
+- **de live-uitkomst** — `_refreshLiveIfChanged()` merkt aan de `last_calculated`
+  van de adviessensor dat er herberekend is en haalt `coach/get` opnieuw op.
+  Gemeten: elke vijftien seconden, zonder dat iemand iets aanraakt;
+- **de configuratie** — die wordt precies twee keer geladen: bij de eerste
+  `hass`-toewijzing en in `connectedCallback` als zij er nog niet is. Daarna
+  verandert zij alleen wanneer **dit** paneel zelf schrijft.
+
+Een wijziging van een ander apparaat bereikt een openstaand paneel dus nooit.
+
+**Waarom dat op een wandtablet iets anders is dan elders.** Een installateur past
+een bron aan op zijn telefoon; de tablet in de meterkast staat dagen achtereen
+open en niemand herlaadt hem ooit. Die tablet toont dan een verwijderde bron
+alsof zij bestaat, een hernoemde bron onder haar oude naam, en een net
+toegevoegde bron helemaal niet — en **niets op het scherm verraadt dat**. Precies
+de asymmetrie waar §62 over gaat: dit is het scherm dat niemand bedient.
+
+**Gemeten geval:** om 20:58 werd een bron van buiten het paneel verwijderd. De zin
+op het Overzicht paste zich binnen enkele seconden aan — die leest de
+live-uitkomst — terwijl de rij zelf op de Energiebronnen-lijst bleef staan. Twee
+delen van hetzelfde scherm, één actueel en één van vóór de wijziging.
+
+**Wat er níét misgaat, en dat scheelt.** Schrijven blijft veilig: de
+revisiecontrole van §14 weigert een schrijfactie die op verouderde gegevens rust
+en geeft de verse configuratie terug, waarna het paneel zich bijwerkt. De tablet
+kan de wijziging van de telefoon dus niet overschrijven. Het risico zit volledig
+in het **lezen**.
+
+**Niet gebouwd, en één ding hoort erbij voor wie het oppakt:** er is vandaag geen
+signaal om op af te gaan. `coach/get` draagt geen revisie — alleen `config/get`
+doet dat — dus de goedkope truc van `last_calculated` heeft hier geen equivalent.
+Wie dit oplost kiest eerst waaraan een paneel *ziet* dat de configuratie is
+veranderd; pas daarna is de vraag hoe vaak het kijkt.
+
 ### 62.7 Wat dit voorstel niet doet
 
 - **Geen instelbare lijst van verwijzingen.** Dan wordt het paneel een launcher,
