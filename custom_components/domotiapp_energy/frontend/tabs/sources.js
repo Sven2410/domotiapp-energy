@@ -736,6 +736,25 @@ export const sourcesTab = {
           text: `Nog niet compleet: ${Object.values(errors)[0]}`,
         };
       }
+      // **Compleet ingevuld is niet hetzelfde als bruikbaar** (SPEC.md §64).
+      // Alles hierboven leest de configuratie; dit leest wat de motor er zojuist
+      // mee kon. Een bron waarvan de entiteit onbereikbaar is of te lang zweeg
+      // stond hier "Compleet." te zeggen op het moment dat zij geweigerd werd —
+      // terwijl het logboek er een waarschuwing over schreef en het cijfer zakte.
+      //
+      // **Ná de veldfouten, en dat is de volgorde die telt.** Een onvoltooide rij
+      // wordt door de motor óók geweigerd en staat dus óók in `invalid_items`;
+      // zou deze tak eerder komen, dan kreeg een installateur "niet uit te lezen"
+      // te zien op een rij waar hij simpelweg nog een veld moet invullen.
+      if (unusableNow().includes(source.id)) {
+        return {
+          icon: 'mdi:alert-outline',
+          tone: 'warning',
+          text:
+            'Compleet ingevuld, maar op dit moment niet uit te lezen. Het ' +
+            'logboek zegt sinds wanneer.',
+        };
+      }
       if (source.control_forbidden) {
         return {
           icon: 'mdi:lock-outline',
@@ -746,6 +765,16 @@ export const sourcesTab = {
         };
       }
       return { icon: 'mdi:check-circle-outline', tone: 'info', text: 'Compleet.' };
+    }
+
+    /**
+     * De rijen die de motor bij de laatste berekening niet heeft gebruikt.
+     *
+     * Leeg zolang er nog geen berekening is: dan is er niets waargenomen, en
+     * zwijgen is dan juister dan "in orde" of "kapot" beweren.
+     */
+    function unusableNow() {
+      return state.get().live?.metrics?.data_quality?.invalid_items || [];
     }
 
     function currentIssues() {

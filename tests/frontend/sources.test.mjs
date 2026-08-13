@@ -18,6 +18,7 @@ import {
   fakeHass,
   isVisible,
   mountPanel,
+  sampleCoach,
   sampleConfig,
   settle,
   tabPanels,
@@ -152,7 +153,10 @@ describe('the list of sources', () => {
     const { tab } = await openSourcesTab(hass);
 
     assert.equal(rows(tab).length, 0);
-    assert.match(tab.querySelector('.empty-text').textContent, /Nog geen energiebronnen/);
+    assert.match(
+      tab.querySelector('.empty-text').textContent,
+      /Nog geen energiebronnen/,
+    );
   });
 
   it('names an unknown type as unusable instead of hiding it', async () => {
@@ -507,7 +511,9 @@ describe('saving', () => {
 
     // In flight: locked, and nothing claiming success yet (SPEC.md §22).
     assert.ok(forms(panel).every((node) => node.disabled));
-    assert.ok(noticeTexts(formDialog(panel)).some((t) => t.includes('Bezig met opslaan')));
+    assert.ok(
+      noticeTexts(formDialog(panel)).some((t) => t.includes('Bezig met opslaan')),
+    );
     assert.ok(!noticeTexts(tab).some((t) => t.includes('toegevoegd')));
 
     release();
@@ -536,7 +542,9 @@ describe('saving', () => {
 
     assert.equal(isVisible(formDialog(panel)), true);
     assert.ok(
-      noticeTexts(formDialog(panel)).some((t) => t.includes('Aansturing is uitgesloten')),
+      noticeTexts(formDialog(panel)).some((t) =>
+        t.includes('Aansturing is uitgesloten'),
+      ),
     );
     assert.equal(form(panel).data.name, 'Slimme meter');
   });
@@ -547,13 +555,20 @@ describe('saving', () => {
     // so there is nothing to protect by throwing it away.
     const theirs = sampleConfig({
       revision: 9,
-      sources: [{ id: 'grid', name: 'Door iemand anders hernoemd', type: 'grid_meter' }],
+      sources: [
+        { id: 'grid', name: 'Door iemand anders hernoemd', type: 'grid_meter' },
+      ],
     });
     const hass = fakeHass();
     const original = hass.callWS;
     hass.callWS = async (message) => {
       if (message.type === 'domotiapp_energy/sources/create') {
-        throw { code: 'revision_conflict', message: 'stale', revision: 9, config: theirs };
+        throw {
+          code: 'revision_conflict',
+          message: 'stale',
+          revision: 9,
+          config: theirs,
+        };
       }
       return original(message);
     };
@@ -720,7 +735,6 @@ describe('unsaved changes', () => {
   });
 });
 
-
 describe('what the form hands to a selector', () => {
   it('never offers a select option whose value is not a string', async () => {
     // Same invariant as the device form: a numeric option value is dropped by
@@ -773,5 +787,72 @@ describe('helper texts that know what kind of source this is', () => {
 
     change(panel, { type: 'solar' });
     assert.match(form(panel).schema.find((f) => f.name === 'unit').helper, /W of kW/);
+  });
+});
+
+describe('een bron die compleet is en toch niet gebruikt wordt (SPEC.md §64)', () => {
+  const geweigerd = (invalidItems, extra = {}) =>
+    fakeHass({
+      coach: sampleCoach({
+        metrics: {
+          data_quality: {
+            score: 100,
+            missing_items: [],
+            completed_items: [],
+            invalid_items: invalidItems,
+          },
+        },
+      }),
+      ...extra,
+    });
+
+  it('zegt niet langer "Compleet." over een rij die de motor zojuist weigerde', async () => {
+    // De rij was compleet ingevuld en het logboek schreef er een waarschuwing
+    // over; het scherm sprak dat tegen.
+    const { tab } = await openSourcesTab(geweigerd(['grid']));
+    await settle();
+
+    const rij = visibleText(tab);
+
+    assert.match(rij, /op dit moment niet uit te lezen/);
+    assert.doesNotMatch(rij, /Compleet\.$/m);
+  });
+
+  it('zwijgt zolang er nog geen berekening is', async () => {
+    const { tab } = await openSourcesTab(geweigerd([]));
+    await settle();
+
+    const rij = visibleText(tab);
+
+    assert.match(rij, /Compleet\./);
+    assert.doesNotMatch(rij, /niet uit te lezen/);
+  });
+
+  it('laat een onvoltooide rij zijn eigen boodschap houden', async () => {
+    // **De volgorde is het mechanisme** (SPEC.md §64.2). Een onvoltooide rij
+    // wordt door de motor óók geweigerd en staat dus óók in `invalid_items`.
+    // Kwam de nieuwe tak eerder, dan kreeg de installateur "niet uit te lezen"
+    // te zien op een rij waar hij nog een veld moet invullen.
+    const { tab } = await openSourcesTab(
+      geweigerd(['grid'], {
+        config: sampleConfig({
+          issues: {
+            grid: [
+              {
+                field: 'meter_mode',
+                message: 'Kies een metermodus.',
+                severity: 'error',
+              },
+            ],
+          },
+        }),
+      }),
+    );
+    await settle();
+
+    const rij = visibleText(tab);
+
+    assert.match(rij, /Nog niet compleet: Kies een metermodus\./);
+    assert.doesNotMatch(rij, /niet uit te lezen/);
   });
 });

@@ -827,14 +827,38 @@ export const overviewTab = {
       const quality = metrics.data_quality || {};
       const missingCount = quality.missing_items?.length ?? 0;
       const applicable = missingCount + (quality.completed_items?.length ?? 0);
-      missingNotice.set(
-        missingCount > 0
-          ? `${missingCount} van de ${applicable} onderdelen van de ` +
-              'datakwaliteit is nog niet compleet. Het tabblad Energiecoach ' +
-              'laat zien welke.'
-          : 'Alle gegevens voor een betrouwbaar advies zijn ingevuld.',
-        { tone: missingCount > 0 ? 'warning' : 'success' },
-      );
+      // **Een bron die buiten het cijfer valt** (SPEC.md §64). De checklist
+      // telt onderdelen, en niet elke bron ís een onderdeel: een thuisbatterij,
+      // een tweede verbruiksmeter of een terugleverprijs die de motor weigert
+      // laat het cijfer op 100 staan. Dan stond hier "Alle gegevens zijn
+      // ingevuld" terwijl er een rij niet meedeed.
+      //
+      // De zin claimt met opzet mínder dan de bronrij: *dat* er een bron buiten
+      // valt. Waaróm verschilt per rij — onvoltooid, onbereikbaar, te lang stil
+      // — en dat staat op het tabblad Energiebronnen, waar het per rij te zien
+      // is. Eén payload, twee lezers, en de zwakste claim staat bovenaan.
+      const sourceIds = new Set((config?.sources || []).map((source) => source.id));
+      const unusable = (quality.invalid_items || []).filter((id) => sourceIds.has(id));
+      let qualityText;
+      let qualityTone;
+      if (missingCount > 0) {
+        qualityText =
+          `${missingCount} van de ${applicable} onderdelen van de ` +
+          'datakwaliteit is nog niet compleet. Het tabblad Energiecoach ' +
+          'laat zien welke.';
+        qualityTone = 'warning';
+      } else if (unusable.length > 0) {
+        qualityText =
+          'Alle onderdelen van de datakwaliteit zijn ingevuld. Er is wel ' +
+          `${unusable.length === 1 ? 'een bron die' : `${unusable.length} bronnen die`} ` +
+          'de coach op dit moment niet kan gebruiken; die telt niet mee in dit ' +
+          'cijfer. Op het tabblad Energiebronnen staat per bron wat eraan schort.';
+        qualityTone = 'warning';
+      } else {
+        qualityText = 'Alle gegevens voor een betrouwbaar advies zijn ingevuld.';
+        qualityTone = 'success';
+      }
+      missingNotice.set(qualityText, { tone: qualityTone });
 
       gridPowerRow.set(formatNumber(metrics.grid_power_w), {
         hint:

@@ -330,3 +330,63 @@ describe('navigatie uit het paneel (SPEC.md §62)', () => {
     );
   });
 });
+
+describe('een bron die buiten het cijfer valt (SPEC.md §64)', () => {
+  const metCijfer = (invalidItems) =>
+    fakeHass({
+      coach: sampleCoach({
+        metrics: {
+          data_quality: {
+            score: 100,
+            missing_items: [],
+            completed_items: ['home_profile_complete'],
+            invalid_items: invalidItems,
+          },
+        },
+      }),
+    });
+
+  it('zegt niet "alles ingevuld" terwijl een bron niet meedoet', async () => {
+    // De checklist telt onderdelen, en niet elke bron is er een: een
+    // thuisbatterij die geweigerd wordt laat het cijfer op 100 staan.
+    const { tab } = await openOverview(metCijfer(['grid']));
+    await settle();
+
+    const tekst = visibleText(tab);
+
+    assert.match(tekst, /een bron die de coach op dit moment niet kan gebruiken/);
+    assert.match(tekst, /Energiebronnen/);
+    assert.doesNotMatch(tekst, /Alle gegevens voor een betrouwbaar advies zijn ingevuld/);
+  });
+
+  it('telt alleen bronnen, niet elk geweigerd ding', async () => {
+    // `invalid_items` draagt ook apparaat-ids. Een apparaat met een onbekend
+    // type is geen bron, en deze zin gaat over bronnen.
+    const { tab } = await openOverview(metCijfer(['d1']));
+    await settle();
+
+    assert.match(
+      visibleText(tab),
+      /Alle gegevens voor een betrouwbaar advies zijn ingevuld/,
+    );
+  });
+
+  it('houdt de bestaande zin waar er wél onderdelen ontbreken', async () => {
+    const hass = fakeHass({
+      coach: sampleCoach({
+        metrics: {
+          data_quality: {
+            score: 60,
+            missing_items: ['solar_source_valid'],
+            completed_items: ['home_profile_complete'],
+            invalid_items: ['grid'],
+          },
+        },
+      }),
+    });
+    const { tab } = await openOverview(hass);
+    await settle();
+
+    assert.match(visibleText(tab), /1 van de 2 onderdelen/);
+  });
+});
