@@ -617,29 +617,29 @@ is dit de invoer en niet de uitvoer.
 
 | Tekst | Waar | Regel |
 |---|---|---|
-| Advies herberekend | logbook | 21 |
-| Apparaat toegevoegd ↔ | logbook | 19 |
-| Apparaat verwijderd ↔ | logbook | 20 |
-| Bezig met wissen… | logbook | 176 |
-| Bron niet beschikbaar | logbook | 22 |
-| Configuratie gewijzigd | logbook | 18 |
-| Configuratieprobleem | logbook | 26 |
-| Fout ↔ | logbook | 34 |
-| Gelukt | logbook | 32 |
-| Het logboek is gewist. | logbook | 180 |
-| Het logboek is leeg. Hier komt te staan wat DomotiApp Energy | logbook | 60 |
-| Info | logbook | 31 |
-| Logboek ↔ | logbook | 39 |
-| Logboek ↔ | logbook | 44 |
-| Logboek wissen ↔ | logbook | 47 |
-| Logboek wissen ↔ | logbook | 192 |
-| Ongeldige meting ↔ | logbook | 23 |
-| Piekrisico gesignaleerd | logbook | 24 |
-| Waarschuwing ↔ | logbook | 33 |
-| Weet je zeker dat je het logboek wilt wissen? De gebeurtenissen | logbook | 194 |
-| Wissen | logbook | 196 |
-| Zonneoverschot gesignaleerd | logbook | 25 |
-| zijn daarna weg. De configuratie zelf verandert niet. | logbook | 195 |
+| Advies herberekend | logbook | 22 |
+| Apparaat toegevoegd ↔ | logbook | 20 |
+| Apparaat verwijderd ↔ | logbook | 21 |
+| Bezig met wissen… | logbook | 191 |
+| Bron niet beschikbaar | logbook | 23 |
+| Configuratie gewijzigd | logbook | 19 |
+| Configuratieprobleem | logbook | 27 |
+| Fout ↔ | logbook | 35 |
+| Gelukt | logbook | 33 |
+| Het logboek is gewist. | logbook | 195 |
+| Het logboek is leeg. Hier komt te staan wat DomotiApp Energy | logbook | 61 |
+| Info | logbook | 32 |
+| Logboek ↔ | logbook | 40 |
+| Logboek ↔ | logbook | 45 |
+| Logboek wissen ↔ | logbook | 48 |
+| Logboek wissen ↔ | logbook | 207 |
+| Ongeldige meting ↔ | logbook | 24 |
+| Piekrisico gesignaleerd | logbook | 25 |
+| Waarschuwing ↔ | logbook | 34 |
+| Weet je zeker dat je het logboek wilt wissen? De gebeurtenissen | logbook | 209 |
+| Wissen | logbook | 211 |
+| Zonneoverschot gesignaleerd | logbook | 26 |
+| zijn daarna weg. De configuratie zelf verandert niet. | logbook | 210 |
 
 ## `custom_components/domotiapp_energy/frontend/tabs/overview.js`
 

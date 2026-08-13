@@ -3,6 +3,7 @@
 from collections.abc import Generator
 from contextlib import contextmanager
 from copy import deepcopy
+from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Any
 from unittest.mock import patch
@@ -36,8 +37,10 @@ from custom_components.domotiapp_energy.const import (
     LOG_EVENT_ADVICE_RECALCULATED,
     LOG_EVENT_CONFIG_CHANGED,
     LOG_EVENT_INVALID_CONFIGURATION,
+    LOG_EVENT_INVALID_MEASUREMENT,
     LOG_EVENT_PEAK_RISK_DETECTED,
     LOG_EVENT_SOLAR_SURPLUS_DETECTED,
+    LOG_EVENT_SOURCE_UNAVAILABLE,
     LOG_FLUSH_INTERVAL_SECONDS,
     MAX_ADVICE_COUNT,
     MAX_LOG_ENTRIES,
@@ -59,6 +62,9 @@ from custom_components.domotiapp_energy.const import (
     VALUE_SOURCE_ATTRIBUTE,
     VALUE_SOURCE_STATE,
 )
+from custom_components.domotiapp_energy.engine.reason_codes import (
+    REASON_INVALID_ENTITY_STATE,
+)
 from custom_components.domotiapp_energy.models import (
     AdviceItem,
     CoachResult,
@@ -68,6 +74,7 @@ from custom_components.domotiapp_energy.models import (
     EnergySnapshot,
     EnergySource,
     HomeProfile,
+    LogEntry,
     SourceFailure,
     StoredConfiguration,
 )
@@ -1659,3 +1666,193 @@ def test_an_unstated_basis_has_no_all_in_price() -> None:
     home = HomeProfile(energy_tax_eur_kwh=0.1088, supplier_markup_eur_kwh=0.02)
 
     assert home.all_in_price_eur_kwh(0.08, None) is None
+
+
+# --- Het afsluiten van open storingsregels (SPEC.md §63.6.4) -----------------
+
+
+@dataclass(frozen=True, slots=True)
+class _Stapel:
+    """Eén situatie: welke regels er liggen, en wat er schoon leest."""
+
+    naam: str
+    # Per regel: onderwerp, gebeurtenis, en of zij al een einde droeg.
+    regels: tuple[tuple[str, str, bool], ...]
+    leesbaar: frozenset[str]
+    # Per regel: hoort zij ná deze pas een einde te dragen?
+    verwacht_afgesloten: tuple[bool, ...]
+
+
+_STAPELS: tuple[_Stapel, ...] = (
+    _Stapel(
+        naam="één open regel sluit",
+        regels=(("bron", LOG_EVENT_SOURCE_UNAVAILABLE, False),),
+        leesbaar=frozenset({"bron"}),
+        verwacht_afgesloten=(True,),
+    ),
+    _Stapel(
+        naam="drie open regels van één bron sluiten allemaal",
+        regels=(
+            ("bron", LOG_EVENT_SOURCE_UNAVAILABLE, False),
+            ("bron", LOG_EVENT_INVALID_MEASUREMENT, False),
+            ("bron", LOG_EVENT_SOURCE_UNAVAILABLE, False),
+        ),
+        leesbaar=frozenset({"bron"}),
+        verwacht_afgesloten=(True, True, True),
+    ),
+    _Stapel(
+        naam="een regel die al een einde had houdt het hare",
+        regels=(
+            ("bron", LOG_EVENT_SOURCE_UNAVAILABLE, False),
+            ("bron", LOG_EVENT_SOURCE_UNAVAILABLE, True),
+        ),
+        leesbaar=frozenset({"bron"}),
+        verwacht_afgesloten=(True, True),
+    ),
+    _Stapel(
+        naam="een bron die niet schoon leest blijft open",
+        regels=(("bron", LOG_EVENT_SOURCE_UNAVAILABLE, False),),
+        leesbaar=frozenset(),
+        verwacht_afgesloten=(False,),
+    ),
+    _Stapel(
+        naam="alleen de bron die schoon leest",
+        regels=(
+            ("bron", LOG_EVENT_SOURCE_UNAVAILABLE, False),
+            ("andere", LOG_EVENT_SOURCE_UNAVAILABLE, False),
+            ("bron", LOG_EVENT_SOURCE_UNAVAILABLE, False),
+        ),
+        leesbaar=frozenset({"bron"}),
+        verwacht_afgesloten=(True, False, True),
+    ),
+    _Stapel(
+        naam="een gebeurtenis die geen storing is blijft ongemoeid",
+        regels=(("bron", LOG_EVENT_CONFIG_CHANGED, False),),
+        leesbaar=frozenset({"bron"}),
+        verwacht_afgesloten=(False,),
+    ),
+)
+
+
+@pytest.mark.parametrize("stapel", _STAPELS, ids=lambda s: s.naam)
+async def test_which_open_entries_a_clean_read_closes(
+    hass: HomeAssistant, stapel: _Stapel
+) -> None:
+    """Welke open regels een schone lezing afsluit (SPEC.md §63.6.4).
+
+    **De tabel bestaat omdat de test die hij vervangt zijn invoer uit de
+    verwachte uitkomst afleidde** (zesde variant). Er lag één open regel en er
+    werd getoetst dat er één sloot; de vraag *"gegeven een stapel, wat hoort er
+    te gebeuren"* is nooit gesteld. Precies die vraag ging op een klantinstallatie
+    mis: 112 regels kregen elk een eigen "opgelost om", tien minuten lang, één
+    per herberekening.
+
+    Elke rij is een situatie met haar uitkomst ernaast, niet een tak die
+    gerenderd wordt. Twee rijen dragen het geval dat de oude vorm niet kón
+    uitdrukken: meerdere open regels van één onderwerp, en een tweede onderwerp
+    dat er niets mee te maken heeft.
+    """
+    store = ConfigurationStore(hass)
+    config = await store.async_load()
+    eerder = dt_util.utcnow() - timedelta(days=2)
+    for subject, event_type, afgesloten in stapel.regels:
+        config.logs.append(
+            LogEntry(
+                timestamp=eerder,
+                event_type=event_type,
+                title="Bron niet bereikbaar",
+                message="Gebouwd door de test.",
+                severity=SEVERITY_WARNING,
+                subject=subject,
+                resolved_at=eerder if afgesloten else None,
+            )
+        )
+    gebouwd = list(config.logs[-len(stapel.regels) :])
+
+    await store.async_report_invalid_rows(readable=stapel.leesbaar)
+
+    assert [regel.resolved_at is not None for regel in gebouwd] == list(
+        stapel.verwacht_afgesloten
+    )
+
+    # Alles wat in deze pas dichtging draagt hetzelfde moment: het is één
+    # waarneming — wij lazen de bron schoon — en niet een reeks herstellen.
+    nieuw = [
+        regel.resolved_at
+        for regel, (_, _, was_afgesloten) in zip(gebouwd, stapel.regels, strict=True)
+        if regel.resolved_at is not None and not was_afgesloten
+    ]
+    assert len(set(nieuw)) <= 1
+    # En een regel die haar einde al had is niet opnieuw gestempeld.
+    for regel, (_, _, was_afgesloten) in zip(gebouwd, stapel.regels, strict=True):
+        if was_afgesloten:
+            assert regel.resolved_at == eerder
+
+
+async def test_a_mislinked_source_across_restarts_closes_its_whole_stack(
+    hass: HomeAssistant, hass_storage: dict[str, Any], freezer: FrozenDateTimeFactory
+) -> None:
+    """De installateur in een vreemde woning, en waarom dit niet Svens geval is.
+
+    **Route B, en zij heeft geen upgrade nodig.** Een verkeerd gekoppelde bron
+    meldt ``invalid_measurement``; die reden heeft geen eerdere geslaagde lezing
+    nodig, dus zij wordt onmiddellijk gemeld. De anti-spamledger staat in het
+    geheugen, dus elke herstart meldt haar opnieuw — en er is nooit een schone
+    lezing om iets af te sluiten, want de koppeling is fout en blijft fout.
+
+    Zo groeit de stapel zonder bovengrens. Sloot een reparatie er dan één van,
+    dan bleven de andere beweren dat de bron stuk was, voor altijd: precies de
+    liegende regel waarvoor het afsluiten gebouwd is.
+
+    De herstart is hier een nieuwe ``ConfigurationStore`` over dezelfde opslag,
+    want dat is wat een herstart werkelijk doet: de regels blijven op schijf, de
+    ledger niet.
+    """
+    hass_storage[STORAGE_KEY] = _stored(
+        {
+            "schema_version": SCHEMA_VERSION,
+            "revision": 1,
+            "home": {},
+            "sources": [
+                {
+                    "id": "bron",
+                    "type": SOURCE_TYPE_GRID_METER,
+                    "name": "Slimme meter",
+                    "entity_id": "sensor.verkeerd_gekoppeld",
+                }
+            ],
+            "devices": [],
+            "preferences": {},
+            "logs": [],
+        }
+    )
+    kapot = SourceFailure(
+        source_id="bron",
+        entity_id="sensor.verkeerd_gekoppeld",
+        reason_code=REASON_INVALID_ENTITY_STATE,
+    )
+
+    for _ in range(3):
+        store = ConfigurationStore(hass)
+        await store.async_load()
+        await store.async_report_invalid_rows(
+            [kapot], still_failing={"bron"}, readable=frozenset()
+        )
+        # Buiten het samenvouwvenster, zoals herstarts een uur uit elkaar.
+        freezer.tick(timedelta(minutes=LOG_DEDUPE_WINDOW_MINUTES + 1))
+
+    store = ConfigurationStore(hass)
+    config = await store.async_load()
+    storingen = [
+        regel
+        for regel in config.logs
+        if regel.event_type == LOG_EVENT_INVALID_MEASUREMENT
+    ]
+    assert len(storingen) == 3
+    assert all(regel.resolved_at is None for regel in storingen)
+
+    # De installateur herstelt de koppeling: één schone lezing.
+    await store.async_report_invalid_rows(readable=frozenset({"bron"}))
+
+    assert all(regel.resolved_at is not None for regel in storingen)
+    assert len({regel.resolved_at for regel in storingen}) == 1

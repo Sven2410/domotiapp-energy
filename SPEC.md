@@ -7396,11 +7396,26 @@ krijgt dan één regel per cyclus, wat precies de schrijfamplificatie is waarvoo
 het samenvouwen bestaat. Binnen het venster is het één situatie met een teller,
 en het einde van de vorige keer is geen regel per flikkering waard.
 
-**Geen tijdstip in de berichttekst.** Het samenvouwen matcht onder meer op de
-tekst. Een zin als *"was om 23:00 niet bereikbaar"* verschilt per keer, matcht
-nooit meer, en schrijft dan bij elke herberekening een nieuwe regel. De
-tegenwoordige tijd gaat er dus uit zonder dat er een klok voor in de plaats
-komt.
+**Geen tijdstip in de opgeslagen berichttekst.** De tegenwoordige tijd gaat
+eruit zonder dat er een klok voor in de plaats komt.
+
+> **Correctie, 0.30.0.** Hier stond dat het samenvouwen "onder meer op de tekst"
+> matcht en dat een zin met een klok erin daarom nooit meer zou samenvallen. Dat
+> is onjuist: `_collapse_into_recent` vergelijkt **alleen** `event_type` en
+> `subject`, en overschrijft titel en bericht juist met die van de nieuwe
+> gebeurtenis. De regel blijft staan, de reden was verkeerd.
+>
+> De juiste reden is dat de regel haar moment al als gegeven draagt
+> (`timestamp`, en sinds 0.29.0 `resolved_at`). Een klok in de zin bakken slaat
+> hetzelfde feit een tweede keer op, in de opmaak en de tijdzone van de
+> *backend*, terwijl het paneel de tijdstempel opmaakt voor wie hem leest. Twee
+> kopieën van één feit lopen uiteen; welke van de twee dan waar is, valt niet
+> meer uit te maken.
+>
+> **En daarom mag het paneel het wél.** Wat het paneel uit `timestamp` en
+> `resolved_at` opmaakt is geen opgeslagen zin. Deze paragraaf verbood
+> onbedoeld de reparatie van §63.6.4, waar de dag erbij hoort zodra de sluiting
+> op een andere dag valt.
 
 #### 63.6.4 Het afsluiten hangt aan de gebeurtenis, niet aan de ledger
 
@@ -7409,10 +7424,53 @@ dan laat een herstart om drie uur 's nachts — met de omvormer weg — een rege
 achter die niemand meer kan sluiten: **voor altijd open, een nieuw soort
 liegende regel in plaats van het oude.**
 
-Daarom sluit een bron die schoon leest haar nieuwste open regel, of dit proces
-haar nu heeft zien ontstaan of niet. Alleen de nieuwste per onderwerp: een
-oudere beschrijft een eerdere episode die haar eigen einde had, vastgelegd of
-niet.
+Daarom sluit een bron die schoon leest haar open regels, of dit proces ze nu
+heeft zien ontstaan of niet.
+
+##### Álle open regels van dat onderwerp, niet alleen de nieuwste (0.30.0)
+
+Hier stond: *"alleen de nieuwste per onderwerp: een oudere beschrijft een
+eerdere episode die haar eigen einde had, vastgelegd of niet."* **Die premisse
+wordt door de schrijfkant niet waargemaakt.** `_mark_reported` sleutelt op
+onderwerp én reden, dus er komt een tweede regel bij zonder dat er iets
+hersteld is. Twee routes, allebei bereikbaar:
+
+- **de storing verandert van karakter** — stilgevallen naar onbereikbaar, of
+  onbereikbaar naar een niet-numerieke waarde, meer dan
+  `LOG_DEDUPE_WINDOW_MINUTES` uit elkaar. Binnen dat venster vouwen ze samen tot
+  één regel met een teller, dus **het samenvouwvenster is letterlijk de grens
+  tussen één eerlijke regel en twee waarvan er één gaat liegen**;
+- **een herstart terwijl een verkeerd gekoppelde bron blijft falen** — de ledger
+  is leeg, `invalid_measurement` heeft geen eerdere geslaagde lezing nodig, en er
+  is nooit een schone lezing om iets te sluiten. Die stapel groeit zonder
+  bovengrens, en sloot een reparatie er dan één van, dan bleven de andere voor
+  altijd beweren dat de bron stuk was — precies de liegende regel waarvoor dit
+  afsluiten bestaat.
+
+Dit is de negende variant: twee plekken beantwoordden *"wat is één episode?"*
+verschillend, en elke test toetste zijn eigen kant.
+
+**Gemeten op een klantinstallatie, 2026-08-12:** 112 regels gingen dicht met één
+per herberekening, tien minuten lang, elk met een eigen stempel en geen enkele
+een herstel. Onder de dagkop van het paneel las een regel van 23:32 daardoor
+*"Opgelost om 12:49"* — elf uur vóór zichzelf, want die 12:49 was de dag erna.
+
+##### Het stempel is wat wij zagen, niet wat er gebeurde
+
+Wij weten niet wanneer een bron het weer deed; wij weten wanneer een
+herberekening haar schoon las. Dat scheelt tot vijf minuten via het
+veiligheidsinterval, en over een herstart of een upgrade heen willekeurig veel.
+Voor elke regel behalve de nieuwste van een stapel is het stempel dus een
+**bovengrens** en geen meting.
+
+Daarom zegt het paneel **"Weer uitgelezen"** en niet "Opgelost", met hetzelfde
+werkwoord als de storingszin ernaast (*"kon niet worden uitgelezen"*), en staat
+de dag erbij zodra de sluiting op een andere dag valt dan de regel zelf. Dat
+laatste is geen opgeslagen tekst maar opmaak van twee tijdstempels — zie de
+correctie in §63.6.3.
+
+Eén schone lezing sluit de hele stapel in één pas, dus ook met één schrijfactie
+in plaats van één per regel.
 
 #### 63.6.5 De regressie van 0.28.0, meegenomen
 
@@ -7447,3 +7505,54 @@ steeds een melding op, en de datakwaliteit zakt er nog steeds vijftien punten
 van. Dat is een eigen beslissing (`sun.is_up` voor de toepasselijkheid van het
 zonne-item) en zij komt in een eigen ronde, samen met de bronrij die vandaag
 *"Compleet."* zegt over een bron die de motor zojuist geweigerd heeft.
+
+### 63.7 Een meting die één tel lang onmogelijk is, en waar zij kantelt
+
+Vastgelegd op 2026-08-13. **Dit is een aantekening, geen bouwopdracht**: er komt
+geen drempel en geen filter, om de reden in HARDWARE.md regel 2.
+
+Een vermogensbron kan één meting lang een waarde melden die fysiek niet kan
+(waargenomen bij een SolarEdge, kort na de eerste opwek van de dag). Er is
+nergens in de motor een plausibiliteitsgrens: alleen NaN en oneindig worden
+geweigerd, en voor zon geldt `SOLAR_COMPONENT_MIN_PRODUCTION_W = 0.0`, dus één
+watt telt als opwek.
+
+**Wat er dan misgaat hangt af van de woning, en die grenzen volgen uit de
+formules — er is geen tweede woning voor nodig.**
+
+#### Score-inflatie, woning mét netmeter
+
+`zelfbenutting = (opwek − teruglevering) / opwek`, waarbij de **teruglevering van
+de netmeter** komt en de **opwek van de zonnesensor**. De spookwaarde zit dus
+alleen in de noemer.
+
+- Levert de woning op dat moment niets terug, dan is teller gelijk aan noemer en
+  is de uitkomst **100%, wat de piek ook doet**. Er beweegt niets.
+- Levert zij wél terug — dus echte opwek *b* > huisverbruik *V* — dan is de ware
+  waarde `V/b` en de vervuilde `(P − (b − V)) / P`, die naar 100% loopt naarmate
+  *P* groeit. **De richting is altijd omhoog.**
+
+**Kantelpunt: `V < b` op het moment van de piek.** Omdat een piek juist zichtbaar
+is bij een kleine basislijn, vraagt dit een woning die op dat moment onder enkele
+tientallen watt trekt.
+
+#### Vals zonneadvies, woning zónder netmeter
+
+Daar is `overschot = opwek − verbruik`, dus de spookwaarde komt er rechtstreeks
+in. Vier dingen moeten samenvallen:
+
+1. `P_piek − V ≥ min_solar_surplus_w` (standaard 500 W);
+2. een apparaat past — `nominal_power_w ≤ overschot`, of `min_power_w ≤ overschot`
+   bij modulatie, **of het vermogen is onbekend en dan passeert het ongetoetst**;
+3. `prefer_solar` aan, en geen batterij die het overschot onbetrouwbaar maakt;
+4. de herberekening moet die ene seconde raken.
+
+**Kantelpunt: `P_piek ≥ V + min_solar_surplus_w`.**
+
+#### Wat dit is en wat niet
+
+Op de enige woning waar dit gemeten is, wordt geen van beide grenzen gehaald: de
+piek van 499 W ligt onder het huisverbruik van ~520 W, en er is een netmeter.
+**Dat is een meting aan één woning, geen weerlegging.** Voor een woning zonder
+netmeter, met een lagere overschotdrempel, met laag sluipverbruik of met een
+apparaat zonder ingevuld vermogen is dit **ongemeten**.

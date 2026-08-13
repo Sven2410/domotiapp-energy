@@ -1385,9 +1385,15 @@ async def test_a_stored_warning_does_not_claim_the_present(
     uur draaide. Het tijdstip staat al op de regel; de zin hoort over dat moment
     te gaan en niet over het lezen ervan.
 
-    **Zonder tijdstip in de tekst**, en dat is geen stijlkeuze: het samenvouwen
-    matcht op de berichttekst, dus een zin met een klok erin zou nooit meer
-    samenvallen en elke herberekening een nieuwe regel schrijven.
+    **Zonder tijdstip in de opgeslagen tekst**, en dat is geen stijlkeuze — maar
+    de reden die hier stond was onjuist (gecorrigeerd in 0.30.0). Er stond dat
+    het samenvouwen op de berichttekst matcht; `_collapse_into_recent` vergelijkt
+    alleen `event_type` en `subject`.
+
+    De echte reden: de regel draagt haar moment al als gegeven. Een klok in de
+    zin bakken slaat hetzelfde feit een tweede keer op, in de tijdzone en opmaak
+    van de backend, terwijl het paneel de tijdstempel opmaakt voor wie hem leest
+    (SPEC.md §63.6.3).
     """
     hass.states.async_set(GRID_ENTITY, "1150", {"unit_of_measurement": UNIT_W})
     entry = await _setup(
