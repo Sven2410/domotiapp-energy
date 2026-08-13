@@ -814,7 +814,9 @@ describe('een bron die compleet is en toch niet gebruikt wordt (SPEC.md §64)', 
 
     const rij = visibleText(tab);
 
-    assert.match(rij, /op dit moment niet uit te lezen/);
+    assert.match(rij, /Compleet ingevuld, maar op dit moment niet uit te lezen\./);
+    // Geen verwijzing naar het logboek: dat schrijft lang niet altijd een regel.
+    assert.doesNotMatch(rij, /logboek/i);
     assert.doesNotMatch(rij, /Compleet\.$/m);
   });
 
