@@ -32,17 +32,9 @@ import {
 } from '../core/api.js';
 import { createConfirmDialog, createDialog } from '../core/dialog.js';
 import { button, card, el, notice, section, setVisible } from '../core/dom.js';
-import {
-  createForm,
-  describeOrphanedErrors,
-  splitFieldErrors,
-} from '../core/forms.js';
+import { createForm, describeOrphanedErrors, splitFieldErrors } from '../core/forms.js';
 import { createRowList } from '../core/rows.js';
-import {
-  MANAGED_NOTICE,
-  applyRole,
-  messageForRole,
-} from '../core/roles.js';
+import { MANAGED_NOTICE, applyRole, messageForRole } from '../core/roles.js';
 import { onTap } from '../core/tap.js';
 
 /** The key this tab stores its unsaved edits under. */
@@ -746,13 +738,19 @@ export const sourcesTab = {
       // wordt door de motor óók geweigerd en staat dus óók in `invalid_items`;
       // zou deze tak eerder komen, dan kreeg een installateur "niet uit te lezen"
       // te zien op een rij waar hij simpelweg nog een veld moet invullen.
+      //
+      // **En geen verwijzing naar het logboek** (0.31.1). Hier stond "Het logboek
+      // zegt sinds wanneer": geen Nederlandse zin — een bijzin met "sinds
+      // wanneer" heeft een werkwoord nodig — en bovendien een belofte die vaak
+      // niet waar is. Een ontbrekende entiteit en een entiteit zonder waarde
+      // schrijven per §63.5 juist géén logboekregel, en `unavailable` en `stale`
+      // pas nadat die bron ooit gelezen is. De rij zegt nu wat zij ziet en
+      // verwijst niet naar iets dat er niet hoeft te staan.
       if (unusableNow().includes(source.id)) {
         return {
           icon: 'mdi:alert-outline',
           tone: 'warning',
-          text:
-            'Compleet ingevuld, maar op dit moment niet uit te lezen. Het ' +
-            'logboek zegt sinds wanneer.',
+          text: 'Compleet ingevuld, maar op dit moment niet uit te lezen.',
         };
       }
       if (source.control_forbidden) {

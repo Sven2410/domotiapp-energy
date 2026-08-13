@@ -20,7 +20,7 @@ is dit de invoer en niet de uitvoer.
 - **Engelse regels staan apart**, onderaan. Een Engelse zin in dit product is
   een fout tenzij zij een identifier is: de UI is Nederlands (CLAUDE.md).
 
-**942 Nederlandse teksten**, waarvan 126 op meer dan één plek. En 15 Engelse regels om na te lopen.
+**941 Nederlandse teksten**, waarvan 126 op meer dan één plek. En 15 Engelse regels om na te lopen.
 
 
 ## `custom_components/domotiapp_energy/const.py`
@@ -802,165 +802,164 @@ is dit de invoer en niet de uitvoer.
 
 | Tekst | Waar | Regel |
 |---|---|---|
-| ${source.name \|\| ↔ | sources | 879 |
-| ${source.name \|\| ↔ | sources | 904 |
-| % — procent | sources | 100 |
-| A — ampère | sources | 95 |
-| Aan- en uitschakelen ↔ | sources | 106 |
-| Aansturing ↔ | sources | 460 |
-| Aansturing uitgesloten voor deze installatie ↔ | sources | 384 |
-| Aansturing uitsluiten | sources | 60 |
-| Actuele energieprijs ↔ | sources | 32 |
-| Actuele terugleververgoeding | sources | 33 |
-| Afname van het net | sources | 238 |
-| Algemeen verbruik | sources | 37 |
-| Alleen registreren: DomotiApp Energy stuurt in deze versie niets aan. | sources | 378 |
-| Annuleren ↔ | sources | 545 |
-| Annuleren ↔ | sources | 755 |
-| Bekijken | sources | 581 |
-| Bewerken ↔ | sources | 560 |
-| Bewerken ↔ | sources | 581 |
-| Bezig met opslaan… ↔ | sources | 804 |
-| Bezig met verwijderen… ↔ | sources | 871 |
-| Bron | sources | 441 |
-| Bron toevoegen | sources | 477 |
-| Compleet ingevuld, maar op dit moment niet uit te lezen. Het | sources | 648 |
-| Compleet. ↔ | sources | 661 |
-| De all-in prijs die de klant betaalt | sources | 180 |
-| De configuratie is intussen ergens anders gewijzigd. Er is niets ↔ | sources | 886 |
-| De eenheid waarin deze entiteit meet. | sources | 346 |
-| De entiteit die de actuele zonneproductie meldt, niet de dagopbrengst. | sources | 318 |
-| De entiteit die het laad- of ontlaadvermogen meldt, niet de laadtoestand. | sources | 329 |
-| De entiteit die het totale huishoudelijke verbruik meldt. | sources | 330 |
-| De entiteit met de prijs van dit moment. Hieronder geef je aan of dat | sources | 320 |
-| De entiteit met de prijzen van de komende uren. | sources | 326 |
-| De entiteit met de terugleververgoeding van dit moment. Gebruik dit | sources | 323 |
-| De entiteit met de verwachte opbrengst. | sources | 327 |
-| De entiteit waar deze bron uit gelezen wordt. | sources | 332 |
-| De kale marktprijs, exclusief belasting en opslag | sources | 186 |
-| De kale marktprijs, vóór inhouding van de leverancier | sources | 185 |
-| De status van de entiteit | sources | 273 |
-| De vergoeding die de klant werkelijk krijgt | sources | 179 |
-| Deze energiebron is intussen ergens anders verwijderd. Je invoer | sources | 782 |
-| Deze energiebron is intussen ook ergens anders gewijzigd. Je invoer | sources | 789 |
-| Dit brontype is nog niet in gebruik. DomotiApp Energy rekent alleen met | sources | 73 |
-| Een afspraak met de klant, los van wat deze bron zou kunnen. | sources | 385 |
-| Een attribuut van de entiteit | sources | 274 |
-| Een positieve waarde betekent | sources | 233 |
-| Een uitgeschakelde bron wordt nergens in meegerekend. | sources | 139 |
-| Eenheid ↔ | sources | 56 |
-| Eenheid ↔ | sources | 292 |
-| Energiebron | sources | 509 |
-| Energiebron bewerken | sources | 682 |
-| Energiebron toevoegen | sources | 682 |
-| Energiebron verwijderen | sources | 902 |
-| Energiebronnen ↔ | sources | 469 |
-| Energiebronnen ↔ | sources | 474 |
-| Entiteit ↔ | sources | 48 |
-| Entiteit ↔ | sources | 149 |
-| Entiteit ↔ | sources | 230 |
-| Entiteit voor afname ↔ | sources | 49 |
-| Entiteit voor afname ↔ | sources | 249 |
-| Entiteit voor teruglevering ↔ | sources | 50 |
-| Entiteit voor teruglevering ↔ | sources | 254 |
-| Er is intussen ergens anders iets aan de configuratie gewijzigd, maar ↔ | sources | 794 |
-| Eén waarde met een plus- en minteken | sources | 216 |
-| Geen eenheid | sources | 101 |
-| Gescheiden afname en teruglevering | sources | 220 |
-| Hoe meet deze meter? ↔ | sources | 51 |
-| Hoe meet deze meter? ↔ | sources | 208 |
-| Ingeschakeld ↔ | sources | 47 |
-| Ingeschakeld ↔ | sources | 138 |
-| Intern geldt voor een thuisbatterij: positief is laden — de woning | sources | 716 |
-| Je hebt wijzigingen die nog niet zijn opgeslagen. Verwerp je ze, ↔ | sources | 929 |
-| Kies expliciet. Zonder deze keuze wordt de prijs niet gebruikt, omdat | sources | 170 |
-| Kies expliciet. Zonder deze keuze wordt de vergoeding niet | sources | 167 |
-| Laadstroom instellen ↔ | sources | 108 |
-| Let op de tekenconventie: positief betekent hier laden — de woning | sources | 356 |
-| Meestal niet nodig: gebruik hierboven "een positieve waarde betekent". | sources | 362 |
-| Naam ↔ | sources | 45 |
-| Naam ↔ | sources | 127 |
-| Naam van het attribuut ↔ | sources | 55 |
-| Naam van het attribuut ↔ | sources | 284 |
-| Naamloze bron | sources | 577 |
-| Netmeter | sources | 30 |
-| Niets aanvinken betekent "niet opgegeven", niet "kan niets". | sources | 379 |
-| Nog geen energiebronnen. Koppel je slimme meter, omvormer, prijsbron | sources | 491 |
-| Noteer waarom, zodat dit later terug te vinden is. ↔ | sources | 396 |
-| Notities ↔ | sources | 62 |
-| Notities ↔ | sources | 196 |
-| Notities ↔ | sources | 464 |
-| Opslaan ↔ | sources | 544 |
-| Prijsverwachting | sources | 34 |
-| Reden ↔ | sources | 61 |
-| Reden ↔ | sources | 393 |
-| Schaalfactor ↔ | sources | 57 |
-| Schaalfactor ↔ | sources | 300 |
-| Sluiten ↔ | sources | 755 |
-| Soort bron ↔ | sources | 46 |
-| Soort bron ↔ | sources | 130 |
-| Teken omdraaien ↔ | sources | 58 |
-| Teken omdraaien ↔ | sources | 306 |
-| Terug naar het formulier ↔ | sources | 932 |
-| Teruglevering aan het net | sources | 239 |
-| Thuisbatterij ↔ | sources | 36 |
-| Uitgeschakeld — wordt niet meegerekend. | sources | 611 |
-| Uitlezen ↔ | sources | 105 |
-| Vermenigvuldiger vóór de eenheidsconversie. Standaard 1. | sources | 301 |
-| Vermogensgrens instellen ↔ | sources | 107 |
-| Verwerpen ↔ | sources | 931 |
-| Verwijderen ↔ | sources | 561 |
-| Voor een prijs: EUR/kWh of ct/kWh. ↔ | sources | 338 |
-| Voor een prijs: EUR/kWh of ct/kWh. ↔ | sources | 339 |
-| Voor een vermogen: W of kW. ↔ | sources | 340 |
-| Voor een vermogen: W of kW. ↔ | sources | 341 |
-| Voor een vermogen: W of kW. ↔ | sources | 342 |
-| Voor een verwachte opbrengst meestal Wh of kWh. | sources | 343 |
-| W — watt | sources | 93 |
-| Waarde uitlezen uit ↔ | sources | 54 |
-| Waarde uitlezen uit ↔ | sources | 268 |
-| Wat betekent een positieve waarde? | sources | 52 |
-| Wat er gemeten wordt | sources | 443 |
-| Wat kan deze bron behalve uitlezen? | sources | 376 |
-| Wat kan deze bron? | sources | 59 |
-| Wat levert deze bron? ↔ | sources | 53 |
-| Wat levert deze bron? ↔ | sources | 159 |
-| Wh — wattuur | sources | 96 |
-| Wijzigingen verwerpen? ↔ | sources | 927 |
-| Zet aan wanneer deze sensor het tegenovergestelde teken rapporteert. | sources | 364 |
-| Zoals jij hem vaststelt: de eenheid van de entiteit zelf wordt nooit | sources | 347 |
-| Zonder deze keuze wordt de netmeter niet gebruikt. | sources | 209 |
-| Zonnepanelen | sources | 31 |
-| Zonverwachting | sources | 35 |
-| alleen bij een dynamisch teruglevercontract; bij een vast bedrag vul | sources | 324 |
-| als je hem terug wilt. | sources | 784 |
-| bewaard, maar er wordt op dit moment niets mee gedaan. | sources | 75 |
-| ct/kWh — cent per kilowattuur | sources | 99 |
-| dan zijn ze weg. ↔ | sources | 930 |
-| de kale marktprijs of de all-in prijs is. | sources | 321 |
-| deze schakelaar dan aan. | sources | 358 |
-| die je bij Woning invult; er komt geen energiebelasting of btw bij. | sources | 169 |
-| een kale marktprijs en een all-in prijs sterk verschillen. | sources | 171 |
-| gebruikt om te converteren. | sources | 348 |
-| gebruikt. Een kale marktprijs wordt omgerekend met de inhouding | sources | 168 |
-| geen reden genoteerd ↔ | sources | 657 |
-| het huidige moment en leest geen verwachtingen. De koppeling blijft | sources | 74 |
-| je dat in bij Woning. | sources | 325 |
-| kW — kilowatt | sources | 94 |
-| kWh — kilowattuur | sources | 97 |
-| logboek zegt sinds wanneer. | sources | 649 |
-| niet aan deze bron. Je invoer staat er nog; druk opnieuw op Opslaan | sources | 795 |
-| of thuisbatterij om DomotiApp Energy iets te laten meten. | sources | 492 |
-| om hem te bewaren. | sources | 796 |
-| rapporteert en gebruik zo nodig "teken omdraaien". | sources | 718 |
-| staat er nog; als je nu opslaat, vervangt hij die andere wijziging. ↔ | sources | 790 |
-| staat hier nog, maar opslaan lukt niet meer; maak hem opnieuw aan | sources | 783 |
-| verbruikt — en negatief is ontladen. Controleer wat deze sensor | sources | 717 |
-| verbruikt — en negatief ontladen. Meldt deze sensor het andersom, zet | sources | 357 |
-| verwijderd; de lijst is opnieuw geladen. ↔ | sources | 887 |
-| verwijderen? De metingen van deze bron tellen daarna nergens meer mee. | sources | 905 |
-| zonder naam ↔ | sources | 814 |
-| €/kWh — euro per kilowattuur | sources | 98 |
+| ${source.name \|\| ↔ | sources | 877 |
+| ${source.name \|\| ↔ | sources | 902 |
+| % — procent | sources | 92 |
+| A — ampère | sources | 87 |
+| Aan- en uitschakelen ↔ | sources | 98 |
+| Aansturing ↔ | sources | 452 |
+| Aansturing uitgesloten voor deze installatie ↔ | sources | 376 |
+| Aansturing uitsluiten | sources | 52 |
+| Actuele energieprijs ↔ | sources | 24 |
+| Actuele terugleververgoeding | sources | 25 |
+| Afname van het net | sources | 230 |
+| Algemeen verbruik | sources | 29 |
+| Alleen registreren: DomotiApp Energy stuurt in deze versie niets aan. | sources | 370 |
+| Annuleren ↔ | sources | 537 |
+| Annuleren ↔ | sources | 753 |
+| Bekijken | sources | 573 |
+| Bewerken ↔ | sources | 552 |
+| Bewerken ↔ | sources | 573 |
+| Bezig met opslaan… ↔ | sources | 802 |
+| Bezig met verwijderen… ↔ | sources | 869 |
+| Bron | sources | 433 |
+| Bron toevoegen | sources | 469 |
+| Compleet ingevuld, maar op dit moment niet uit te lezen. | sources | 647 |
+| Compleet. ↔ | sources | 659 |
+| De all-in prijs die de klant betaalt | sources | 172 |
+| De configuratie is intussen ergens anders gewijzigd. Er is niets ↔ | sources | 884 |
+| De eenheid waarin deze entiteit meet. | sources | 338 |
+| De entiteit die de actuele zonneproductie meldt, niet de dagopbrengst. | sources | 310 |
+| De entiteit die het laad- of ontlaadvermogen meldt, niet de laadtoestand. | sources | 321 |
+| De entiteit die het totale huishoudelijke verbruik meldt. | sources | 322 |
+| De entiteit met de prijs van dit moment. Hieronder geef je aan of dat | sources | 312 |
+| De entiteit met de prijzen van de komende uren. | sources | 318 |
+| De entiteit met de terugleververgoeding van dit moment. Gebruik dit | sources | 315 |
+| De entiteit met de verwachte opbrengst. | sources | 319 |
+| De entiteit waar deze bron uit gelezen wordt. | sources | 324 |
+| De kale marktprijs, exclusief belasting en opslag | sources | 178 |
+| De kale marktprijs, vóór inhouding van de leverancier | sources | 177 |
+| De status van de entiteit | sources | 265 |
+| De vergoeding die de klant werkelijk krijgt | sources | 171 |
+| Deze energiebron is intussen ergens anders verwijderd. Je invoer | sources | 780 |
+| Deze energiebron is intussen ook ergens anders gewijzigd. Je invoer | sources | 787 |
+| Dit brontype is nog niet in gebruik. DomotiApp Energy rekent alleen met | sources | 65 |
+| Een afspraak met de klant, los van wat deze bron zou kunnen. | sources | 377 |
+| Een attribuut van de entiteit | sources | 266 |
+| Een positieve waarde betekent | sources | 225 |
+| Een uitgeschakelde bron wordt nergens in meegerekend. | sources | 131 |
+| Eenheid ↔ | sources | 48 |
+| Eenheid ↔ | sources | 284 |
+| Energiebron | sources | 501 |
+| Energiebron bewerken | sources | 680 |
+| Energiebron toevoegen | sources | 680 |
+| Energiebron verwijderen | sources | 900 |
+| Energiebronnen ↔ | sources | 461 |
+| Energiebronnen ↔ | sources | 466 |
+| Entiteit ↔ | sources | 40 |
+| Entiteit ↔ | sources | 141 |
+| Entiteit ↔ | sources | 222 |
+| Entiteit voor afname ↔ | sources | 41 |
+| Entiteit voor afname ↔ | sources | 241 |
+| Entiteit voor teruglevering ↔ | sources | 42 |
+| Entiteit voor teruglevering ↔ | sources | 246 |
+| Er is intussen ergens anders iets aan de configuratie gewijzigd, maar ↔ | sources | 792 |
+| Eén waarde met een plus- en minteken | sources | 208 |
+| Geen eenheid | sources | 93 |
+| Gescheiden afname en teruglevering | sources | 212 |
+| Hoe meet deze meter? ↔ | sources | 43 |
+| Hoe meet deze meter? ↔ | sources | 200 |
+| Ingeschakeld ↔ | sources | 39 |
+| Ingeschakeld ↔ | sources | 130 |
+| Intern geldt voor een thuisbatterij: positief is laden — de woning | sources | 714 |
+| Je hebt wijzigingen die nog niet zijn opgeslagen. Verwerp je ze, ↔ | sources | 927 |
+| Kies expliciet. Zonder deze keuze wordt de prijs niet gebruikt, omdat | sources | 162 |
+| Kies expliciet. Zonder deze keuze wordt de vergoeding niet | sources | 159 |
+| Laadstroom instellen ↔ | sources | 100 |
+| Let op de tekenconventie: positief betekent hier laden — de woning | sources | 348 |
+| Meestal niet nodig: gebruik hierboven "een positieve waarde betekent". | sources | 354 |
+| Naam ↔ | sources | 37 |
+| Naam ↔ | sources | 119 |
+| Naam van het attribuut ↔ | sources | 47 |
+| Naam van het attribuut ↔ | sources | 276 |
+| Naamloze bron | sources | 569 |
+| Netmeter | sources | 22 |
+| Niets aanvinken betekent "niet opgegeven", niet "kan niets". | sources | 371 |
+| Nog geen energiebronnen. Koppel je slimme meter, omvormer, prijsbron | sources | 483 |
+| Noteer waarom, zodat dit later terug te vinden is. ↔ | sources | 388 |
+| Notities ↔ | sources | 54 |
+| Notities ↔ | sources | 188 |
+| Notities ↔ | sources | 456 |
+| Opslaan ↔ | sources | 536 |
+| Prijsverwachting | sources | 26 |
+| Reden ↔ | sources | 53 |
+| Reden ↔ | sources | 385 |
+| Schaalfactor ↔ | sources | 49 |
+| Schaalfactor ↔ | sources | 292 |
+| Sluiten ↔ | sources | 753 |
+| Soort bron ↔ | sources | 38 |
+| Soort bron ↔ | sources | 122 |
+| Teken omdraaien ↔ | sources | 50 |
+| Teken omdraaien ↔ | sources | 298 |
+| Terug naar het formulier ↔ | sources | 930 |
+| Teruglevering aan het net | sources | 231 |
+| Thuisbatterij ↔ | sources | 28 |
+| Uitgeschakeld — wordt niet meegerekend. | sources | 603 |
+| Uitlezen ↔ | sources | 97 |
+| Vermenigvuldiger vóór de eenheidsconversie. Standaard 1. | sources | 293 |
+| Vermogensgrens instellen ↔ | sources | 99 |
+| Verwerpen ↔ | sources | 929 |
+| Verwijderen ↔ | sources | 553 |
+| Voor een prijs: EUR/kWh of ct/kWh. ↔ | sources | 330 |
+| Voor een prijs: EUR/kWh of ct/kWh. ↔ | sources | 331 |
+| Voor een vermogen: W of kW. ↔ | sources | 332 |
+| Voor een vermogen: W of kW. ↔ | sources | 333 |
+| Voor een vermogen: W of kW. ↔ | sources | 334 |
+| Voor een verwachte opbrengst meestal Wh of kWh. | sources | 335 |
+| W — watt | sources | 85 |
+| Waarde uitlezen uit ↔ | sources | 46 |
+| Waarde uitlezen uit ↔ | sources | 260 |
+| Wat betekent een positieve waarde? | sources | 44 |
+| Wat er gemeten wordt | sources | 435 |
+| Wat kan deze bron behalve uitlezen? | sources | 368 |
+| Wat kan deze bron? | sources | 51 |
+| Wat levert deze bron? ↔ | sources | 45 |
+| Wat levert deze bron? ↔ | sources | 151 |
+| Wh — wattuur | sources | 88 |
+| Wijzigingen verwerpen? ↔ | sources | 925 |
+| Zet aan wanneer deze sensor het tegenovergestelde teken rapporteert. | sources | 356 |
+| Zoals jij hem vaststelt: de eenheid van de entiteit zelf wordt nooit | sources | 339 |
+| Zonder deze keuze wordt de netmeter niet gebruikt. | sources | 201 |
+| Zonnepanelen | sources | 23 |
+| Zonverwachting | sources | 27 |
+| alleen bij een dynamisch teruglevercontract; bij een vast bedrag vul | sources | 316 |
+| als je hem terug wilt. | sources | 782 |
+| bewaard, maar er wordt op dit moment niets mee gedaan. | sources | 67 |
+| ct/kWh — cent per kilowattuur | sources | 91 |
+| dan zijn ze weg. ↔ | sources | 928 |
+| de kale marktprijs of de all-in prijs is. | sources | 313 |
+| deze schakelaar dan aan. | sources | 350 |
+| die je bij Woning invult; er komt geen energiebelasting of btw bij. | sources | 161 |
+| een kale marktprijs en een all-in prijs sterk verschillen. | sources | 163 |
+| gebruikt om te converteren. | sources | 340 |
+| gebruikt. Een kale marktprijs wordt omgerekend met de inhouding | sources | 160 |
+| geen reden genoteerd ↔ | sources | 655 |
+| het huidige moment en leest geen verwachtingen. De koppeling blijft | sources | 66 |
+| je dat in bij Woning. | sources | 317 |
+| kW — kilowatt | sources | 86 |
+| kWh — kilowattuur | sources | 89 |
+| niet aan deze bron. Je invoer staat er nog; druk opnieuw op Opslaan | sources | 793 |
+| of thuisbatterij om DomotiApp Energy iets te laten meten. | sources | 484 |
+| om hem te bewaren. | sources | 794 |
+| rapporteert en gebruik zo nodig "teken omdraaien". | sources | 716 |
+| staat er nog; als je nu opslaat, vervangt hij die andere wijziging. ↔ | sources | 788 |
+| staat hier nog, maar opslaan lukt niet meer; maak hem opnieuw aan | sources | 781 |
+| verbruikt — en negatief is ontladen. Controleer wat deze sensor | sources | 715 |
+| verbruikt — en negatief ontladen. Meldt deze sensor het andersom, zet | sources | 349 |
+| verwijderd; de lijst is opnieuw geladen. ↔ | sources | 885 |
+| verwijderen? De metingen van deze bron tellen daarna nergens meer mee. | sources | 903 |
+| zonder naam ↔ | sources | 812 |
+| €/kWh — euro per kilowattuur | sources | 90 |
 
 ## `custom_components/domotiapp_energy/panel.py`
 

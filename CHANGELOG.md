@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.31.1
+
+### Fixed
+
+- **"Het logboek zegt sinds wanneer" was geen Nederlandse zin**, en geen enkele testlaag kan
+  dat zien. Een bijzin met *"sinds wanneer"* heeft een werkwoord nodig. Gevonden door Sven op
+  zijn eigen scherm.
+
+  De zin is niet gerepareerd maar **weggehaald**, want zij beloofde ook iets dat vaak niet
+  waar is: een ontbrekende entiteit en een entiteit zonder waarde schrijven per §63.5 juist
+  géén logboekregel, en `unavailable` en `stale` pas nadat die bron ooit gelezen is. De rij
+  zegt nu alleen wat zij ziet: *"Compleet ingevuld, maar op dit moment niet uit te lezen."*
+
 ## 0.31.0
 
 Compleet ingevuld is niet hetzelfde als bruikbaar. SPEC §64.
