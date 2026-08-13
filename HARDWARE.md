@@ -112,6 +112,39 @@ prijsbron leek hetzelfde te doen en doet het niet; zie Frank Energie hieronder.
   mag `SETUP_RETRY` er nooit onder vallen — een integratie die blijft mislukken
   op te starten is wél een storing.
 
+## De schade per configuratie, uit de formules
+
+Met **P** = piekwaarde, **b** = werkelijke opwek op dat moment, **V** = huisverbruik,
+**S** = `min_solar_surplus_w` (standaard 500 W).
+
+| woning | wat er misgaat | wanneer het kantelt |
+|---|---|---|
+| **mét netmeter** — advies | niets, ooit. Het overschot komt uit `max(-netvermogen, 0)` en leest de zonnesensor niet | nooit |
+| **mét netmeter** — thuisverbruik | één meting lang **P − b** te hoog (`net + opwek − batterij`) | altijd, ongeacht V |
+| **mét netmeter** — zelfbenutting en score | de teruglevering komt van de meter, dus bij import is de uitkomst 100% wat de piek ook doet. Levert de woning terug, dan wordt `V/b` opgetrokken richting 100% | **V < b** |
+| **zonder netmeter** — vals zonneadvies | overschot = P − V, dus de piek wordt overschot | **P ≥ V + S** |
+| **laag basisverbruik** | versterkt beide: maakt `V < b` waarschijnlijk en verlaagt de lat `P ≥ V + S` | — |
+| **hoog basisverbruik** | beschermt tegen beide | — |
+
+Op de gemeten woning (V ≈ 520 W, dageraadbasislijn b = 43–75 W, grootste P = 499 W, mét
+netmeter) wordt geen van beide grenzen gehaald. Dat is **die woning**, niet het product.
+
+**En er zit een tweede rem op, gemeten:** de piek duurt ongeveer één seconde en de
+coordinator herberekent gedebounced per 15 s, dus van zeven pieken landde er **één** in een
+berekening. Ook waar de rekenkunde kantelt, is de verwachte frequentie laag.
+
+## Waarom hier geen filter staat
+
+**Het onderscheidende kenmerk van het artefact — omhoog en meteen terug naar dezelfde
+basislijn — is precies het kenmerk van een zonneflits door een wolkengat.** In dezelfde elf
+dagen telde `scripts/solar_spikes.py` op dit dak **7** dageraadpieken en **40** van die
+weersovergangen. Een filter dat ruim genoeg staat om de kleinste dageraadpiek (88 W) te
+vangen, gooit dus ook echte instraling weg — en dat zijn juist de momenten waarop een
+batterij of laadpaal terecht reageert.
+
+Een filter zou hier meer kapotmaken dan het repareert, en dat volgt uit de meting en niet
+uit een voorkeur.
+
 ## Niet gemeten
 
 Andere firmware, een andere omvormergrootte, een ander aantal strings, en het
